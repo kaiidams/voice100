@@ -11,6 +11,7 @@ from .encoder import encode_text
 
 CORPUSDATA_PATH = 'data/balance_sentences.txt'
 CORPUSDATA_CSS10JA_PATH = 'data/japanese-single-speaker-speech-dataset/transcript.txt'
+CORPUSDATA_KOKORO_PATH = 'data/kokoro-speech-v1_0/metadata.csv'
 
 WAVDATA_PATH = {
     'css10ja': 'data/japanese-single-speaker-speech-dataset/%s',
@@ -23,6 +24,7 @@ WAVDATA_PATH = {
 # F0 mean +/- 2.5 std
 F0_RANGE = {
     'css10ja': (57.46701428196299, 196.7528135117272),
+    'kokoro': (57.46701428196299, 196.7528135117272),
     'tsukuyomi_normal': (138.7640311667663, 521.2003965068923)
 }
 
@@ -34,10 +36,19 @@ def readcorpus(file):
         f.readline()
         for line in f:
             parts = line.rstrip('\r\n').split('\t')
-            id_, _, _, monophone = parts
+            id_, _, monophone, _ = parts
             monophone = monophone.replace('/', '').replace(',', '')
             corpus.append((id_, monophone))
 
+    return corpus
+
+def readcorpus_ljcorpus(file):
+    corpus = []
+    with open(file) as f:
+        for line in f:
+            parts = line.rstrip('\r\n').split('|')
+            id_, _, monophone = parts
+            corpus.append((id_, monophone))
     return corpus
 
 def readcorpus_css10ja(file):
@@ -182,6 +193,56 @@ def preprocess_css10ja(name):
     finish_data(data[0], OUTPUT_PATH % (name, "train"))
     finish_data(data[1], OUTPUT_PATH % (name, "val"))
 
+def preprocess_ljcorpus(name):
+
+    pitchshift = None
+    f0_floor, f0_ceil = F0_RANGE[name]
+
+    text_index = [0, 0]
+    audio_index = [0, 0]
+    data = [
+        make_empty_data(),
+        make_empty_data(),
+    ]
+
+    corpus = readcorpus_ljcorpus(CORPUSDATA_KOKORO_PATH)
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'wavs')
+    split_index = 13
+    split_total = 57 # We take 1 in 57 samples aside for validation
+    for id_, monophone in tqdm(corpus):
+
+        if not monophone:
+            print('Skipping: <empty>')
+            continue
+        try:
+            text = encode_text(monophone)
+        except:
+            print(f'Skipping: {monophone}')
+            continue
+    
+        file = os.path.join(wavs_dir, id_ + '.wav')
+        assert '..' not in file # Just make sure it is under the current directory.
+        cache_file = os.path.join('data', 'cache', name, id_.replace('.wav', '.npz'))
+        if os.path.exists(cache_file):
+            audio = np.load(cache_file, allow_pickle=True)['arr_0']
+            assert audio.shape[0] > 0
+        else:
+            x = readwav(file)
+            audio = encode_audio(x, f0_floor, f0_ceil, pitchshift=pitchshift)
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            np.savez(cache_file, audio)
+
+        split = 0 if split_index else 1
+        text_index[split] += text.shape[0]
+        audio_index[split] += audio.shape[0]
+        append_data(data[split], id_, text_index[split], text, audio_index[split], audio)
+
+        split_index += 1
+        if split_index == split_total: split_index = 0
+
+    finish_data(data[0], OUTPUT_PATH % (name, "train"))
+    finish_data(data[1], OUTPUT_PATH % (name, "val"))
+
 def preprocess_jvs(name):
     corpus = readcorpus(CORPUSDATA_PATH)
     f0_floor, f0_ceil = F0_RANGE[name]
@@ -240,5 +301,7 @@ if __name__ == '__main__':
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
+        if args.dataset == 'kokoro':
+            preprocess_ljcorpus(args.dataset)
         else:
             preprocess_jvs(args.dataset)
