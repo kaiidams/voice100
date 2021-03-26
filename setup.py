@@ -8,7 +8,7 @@ setup(
     description="Voice100 TTS",
     license="MIT",
     url="https://github.com/kaiidams/voice100",
-    packages=['voice100'],
+    packages=['voice100_tts'],
     long_description="Voice100 is a small TTS for Japanese.",
     entry_points={
         "console_scripts": [
