@@ -1,11 +1,11 @@
 from setuptools import setup
 
 setup(
-    name="voice100",
+    name="voice100-tts",
     version="0.0.1",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
-    description="Voice100",
+    description="Voice100 TTS",
     license="MIT",
     url="https://github.com/kaiidams/voice100",
     packages=['voice100'],
@@ -21,12 +21,14 @@ setup(
     ],
     extras_require={
         "preprocess": [
-            #'mecab-python3',
-            #'unidic-lite',
             'librosa',
             'soundfile',
             'pyworld>=0.2.12',
             'pysptk>=0.1.18',
             'tqdm'
         ],
+        "text": [
+            'mecab-python3',
+            'unidic-lite',
+        ]
     })
