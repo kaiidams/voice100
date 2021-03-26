@@ -24,7 +24,7 @@ WAVDATA_PATH = {
 # F0 mean +/- 2.5 std
 F0_RANGE = {
     'css10ja': (57.46701428196299, 196.7528135117272),
-    'kokoro': (57.46701428196299, 196.7528135117272),
+    'kokoro_small': (57.46701428196299, 196.7528135117272),
     'tsukuyomi_normal': (138.7640311667663, 521.2003965068923)
 }
 
@@ -61,6 +61,30 @@ def readcorpus_css10ja(file):
             monophone = css10ja2voca(yomi)
             corpus.append((id_, monophone))
     return corpus
+
+class IndexDataArray:
+    def __init__(self, file):
+        self.file = file
+        self.current = 0
+        self.indices = []
+        self.data = []
+
+    def __enter__(self):
+        return self
+
+    def write(self, data):
+        self.current += data.shape[0]
+        self.indices.append(self.current)
+        self.data.append(data)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            indices = np.array(self.indices, dtype=np.int32)
+            data = np.concatenate(self.data, axis=0)
+            np.savez(self.file, indices=indices, data=data)
+
+def open_index_data_for_write(file):
+    return IndexDataArray(file)
 
 def analyze_files(name, files, eps=1e-20):
     f0_list = []
@@ -195,53 +219,34 @@ def preprocess_css10ja(name):
 
 def preprocess_ljcorpus(name):
 
-    pitchshift = None
+    sr = 16000
     f0_floor, f0_ceil = F0_RANGE[name]
-
-    text_index = [0, 0]
-    audio_index = [0, 0]
-    data = [
-        make_empty_data(),
-        make_empty_data(),
-    ]
 
     corpus = readcorpus_ljcorpus(CORPUSDATA_KOKORO_PATH)
     wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'wavs')
-    split_index = 13
-    split_total = 57 # We take 1 in 57 samples aside for validation
-    for id_, monophone in tqdm(corpus):
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'cache')
 
-        if not monophone:
-            print('Skipping: <empty>')
-            continue
-        try:
-            text = encode_text(monophone)
-        except:
-            print(f'Skipping: {monophone}')
-            continue
-    
-        file = os.path.join(wavs_dir, id_ + '.wav')
-        assert '..' not in file # Just make sure it is under the current directory.
-        cache_file = os.path.join('data', 'cache', name, id_.replace('.wav', '.npz'))
-        if os.path.exists(cache_file):
-            audio = np.load(cache_file, allow_pickle=True)['arr_0']
-            assert audio.shape[0] > 0
-        else:
-            x = readwav(file)
-            audio = encode_audio(x, f0_floor, f0_ceil, pitchshift=pitchshift)
-            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-            np.savez(cache_file, audio)
+    text_file = os.path.join('data', f'{name}_text.npz')
+    audio_file = os.path.join('data', f'{name}_audio_{sr}.npz')
+    os.makedirs(cache_dir, exist_ok=True)
 
-        split = 0 if split_index else 1
-        text_index[split] += text.shape[0]
-        audio_index[split] += audio.shape[0]
-        append_data(data[split], id_, text_index[split], text, audio_index[split], audio)
+    with open_index_data_for_write(text_file) as text_f:
+        with open_index_data_for_write(audio_file) as audio_f:
+            for id_, monophone in tqdm(corpus):
+                text = encode_text(monophone)            
+                assert '..' not in id_ # Just make sure the file name is under the directory.
+                wav_file = os.path.join(wavs_dir, f'{id_}.wav')
+                cache_file = os.path.join(cached_dir, f'{id_}.npz')
+                if os.path.exists(cache_file):
+                    audio = np.load(cache_file, allow_pickle=False)['arr_0']
+                    assert audio.shape[0] > 0
+                else:
+                    x = readwav(wav_file)
+                    audio = encode_audio(x, f0_floor, f0_ceil)
+                    np.savez(cache_file, audio)
 
-        split_index += 1
-        if split_index == split_total: split_index = 0
-
-    finish_data(data[0], OUTPUT_PATH % (name, "train"))
-    finish_data(data[1], OUTPUT_PATH % (name, "val"))
+                text_f.write(text)
+                audio_f.write(audio)
 
 def preprocess_jvs(name):
     corpus = readcorpus(CORPUSDATA_PATH)
@@ -301,7 +306,7 @@ if __name__ == '__main__':
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
-        if args.dataset == 'kokoro':
+        if args.dataset == 'kokoro_small':
             preprocess_ljcorpus(args.dataset)
         else:
             preprocess_jvs(args.dataset)
