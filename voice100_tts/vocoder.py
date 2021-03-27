@@ -8,6 +8,9 @@ import numpy as np
 
 SAMPLE_RATE = 16000
 FFT_SIZE = 1024
+FRAME_PERIOD = 20.0
+MCEP_DIM = 24
+MCEP_ALPHA = 0.410
 
 def readwav(file, fs=SAMPLE_RATE):
     x, origfs = sf.read(file)
@@ -19,7 +22,7 @@ def readwav(file, fs=SAMPLE_RATE):
 def writewav(file, x, fs=SAMPLE_RATE):
     sf.write(file, x, fs, 'PCM_16')
 
-def estimatef0(x, fs=SAMPLE_RATE, frame_period=20):
+def estimatef0(x, fs=SAMPLE_RATE, frame_period=FRAME_PERIOD):
     f0, _ = pyworld.harvest(x, fs, f0_floor=40, f0_ceil=700, frame_period=frame_period)
     return f0
 
@@ -29,20 +32,20 @@ def analyze_world(x, fs, f0_floor, f0_ceil, frame_period):
     ap = pyworld.d4c(x, f0, time_axis, fs, fft_size=FFT_SIZE)
     return f0, spc, ap
 
-def analyze(x, fs, f0_floor, f0_ceil, frame_period=20.0, pitchshift=None):
+def analyze(x, fs, f0_floor, f0_ceil, frame_period=FRAME_PERIOD, pitchshift=None):
     if pitchshift is not None:
         f0, spc, ap = analyze_world(x, fs * pitchshift, f0_floor, f0_ceil, frame_period / pitchshift)
     else:
         f0, spc, ap = analyze_world(x, fs, f0_floor, f0_ceil, frame_period)
-    mcep = pysptk.sp2mc(spc, 24, 0.410)
+    mcep = pysptk.sp2mc(spc, MCEP_DIM, MCEP_ALPHA)
     codeap = pyworld.code_aperiodicity(ap, fs)
     
     #return x, fs, f0, time_axis, spc, ap, mcep, codeap
     return f0, mcep, codeap
 
-def synthesize(f0, mcep, codeap, fs, frame_period=20):
+def synthesize(f0, mcep, codeap, fs, frame_period=FRAME_PERIOD):
     ap = pyworld.decode_aperiodicity(codeap, fs, FFT_SIZE)
-    spc = pysptk.mc2sp(mcep, 0.410, FFT_SIZE)
+    spc = pysptk.mc2sp(mcep, MCEP_ALPHA, FFT_SIZE)
     y = pyworld.synthesize(f0, spc, ap, fs, frame_period=frame_period)
     return y
 

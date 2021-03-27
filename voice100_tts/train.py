@@ -6,6 +6,7 @@ from absl import logging
 import tensorflow as tf
 from .transformer import *
 from .data_pipeline import train_input_fn, eval_input_fn
+from .encoder import VOCAB_SIZE
 import time
 import os
 
@@ -15,7 +16,7 @@ class Voice100Task(object):
     self.flags_obj = flags_obj
     self.params = dict(
       dataset='css10ja', #'tsukuyomi_normal',
-      vocab_size=29,
+      vocab_size=VOCAB_SIZE,
       audio_dim=27,
       hidden_size=128,
       num_hidden_layers=4,
