@@ -283,7 +283,6 @@ class Voice100CTCTask(object):
         for i in range(probs.shape[0]):
           labels = text[i, :text_len[i]].numpy()
           logits = tf.math.log(probs[i, :audio_len[i]]).numpy()
-          print(logits.shape)
           _, best_path = ctc_best_path(logits, labels)
           align_f.write(bytes(memoryview(best_path)))
           assert audio_len[i] == len(best_path)
