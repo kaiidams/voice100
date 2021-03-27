@@ -6,7 +6,7 @@ import math
 from tqdm import tqdm
 import argparse
 
-from .vocoder import readwav, estimatef0, encode_audio
+from .vocoder import readwav, estimatef0, encode_audio, SAMPLE_RATE
 from .encoder import encode_text
 from .data import open_index_data_for_write
 
@@ -174,7 +174,7 @@ def preprocess_css10ja(name):
 
 def preprocess_ljcorpus(name):
 
-    sr = 16000
+    sr = SAMPLE_RATE
     f0_floor, f0_ceil = F0_RANGE[name]
 
     corpus = readcorpus_ljcorpus(CORPUSDATA_KOKORO_PATH)
@@ -198,7 +198,7 @@ def preprocess_ljcorpus(name):
                 else:
                     x = readwav(wav_file)
                     audio = encode_audio(x, f0_floor, f0_ceil)
-                    np.savez(cache_file, audio)
+                    np.savez(cache_file, audio=audio)
 
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))

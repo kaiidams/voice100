@@ -6,11 +6,18 @@ import pyworld
 import pysptk
 import numpy as np
 
-SAMPLE_RATE = 16000
-FFT_SIZE = 1024
-FRAME_PERIOD = 20.0
-MCEP_DIM = 24
-MCEP_ALPHA = 0.410
+if False:
+    SAMPLE_RATE = 16000
+    FFT_SIZE = 1024
+    FRAME_PERIOD = 20.0
+    MCEP_DIM = 24
+    MCEP_ALPHA = 0.410
+else:
+    SAMPLE_RATE = 22050
+    FFT_SIZE = 1024
+    FRAME_PERIOD = 2 * 4.988662131519274
+    MCEP_DIM = 34
+    MCEP_ALPHA = 0.455
 
 def readwav(file, fs=SAMPLE_RATE):
     x, origfs = sf.read(file)
@@ -57,7 +64,7 @@ def encode_audio(x, f0_floor, f0_ceil, fs=SAMPLE_RATE, pitchshift=None):
 def decode_audio(encoded, fs=SAMPLE_RATE):
     encoded = encoded.astype(np.float)
     f0 = encoded[:, 0].copy()
-    mcep = encoded[:, 1:26].copy()
-    codeap = encoded[:, 26:].copy()
+    mcep = encoded[:, 1:2 + MCEP_DIM].copy()
+    codeap = encoded[:, 2 + MCEP_DIM:].copy()
     y = synthesize(f0, mcep, codeap, fs)
     return y

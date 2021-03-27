@@ -2,7 +2,7 @@ import soundfile as sf
 import os
 import numpy as np
 from tqdm import tqdm
-from .vocoder import writewav, decode_audio
+from .vocoder import readwav, writewav, decode_audio, encode_audio
 from .encoder import decode_text
 
 def test_data(name='css10ja'):
@@ -33,9 +33,17 @@ def test_data2(name='kokoro_tiny'):
         print(decode_text(align))
         print(len(align))
 
+def test_data3():
+    x = readwav('data/tsuchiya_normal/tsuchiya_normal_001.wav', 22050)
+    #y = encode_audio(x, 57.46701428196299, 196.7528135117272)
+    y = encode_audio(x, 57.46701428196299, 396.7528135117272)
+    x2 = decode_audio(y)
+    writewav('data/a.wav', x2)
+
 def main():
     #test_data('tsukuyomi_normal')
-    test_data2()
+    #test_data2()
+    test_data3()
 
 if __name__ == '__main__':
     main()
