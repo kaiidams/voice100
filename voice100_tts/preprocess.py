@@ -10,10 +10,12 @@ from .vocoder import readwav, estimatef0, encode_audio, SAMPLE_RATE
 from .encoder import encode_text
 from .data import open_index_data_for_write
 
-CORPUSDATA_PATH = 'data/balance_sentences.txt'
-CORPUSDATA_CSS10JA_PATH = 'data/japanese-single-speaker-speech-dataset/transcript.txt'
-#CORPUSDATA_KOKORO_PATH = 'data/kokoro-speech-v1_0/metadata.csv'
-CORPUSDATA_KOKORO_PATH = 'data/kokoro-speech-v1_0-tiny/metadata.csv'
+CORPUSDATA_PATH = {
+    'tsukuyomi_normal': 'data/balance_sentences.txt',
+    'css10ja': 'data/japanese-single-speaker-speech-dataset/transcript.txt',
+    'kokoro_small': 'data/kokoro-speech-v1_0-small/metadata.csv',
+    'kokoro_tiny': 'data/kokoro-speech-v1_0-tiny/metadata.csv',
+}
 
 WAVDATA_PATH = {
     'css10ja': 'data/japanese-single-speaker-speech-dataset/%s',
@@ -177,9 +179,9 @@ def preprocess_ljcorpus(name):
     sr = SAMPLE_RATE
     f0_floor, f0_ceil = F0_RANGE[name]
 
-    corpus = readcorpus_ljcorpus(CORPUSDATA_KOKORO_PATH)
-    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'wavs')
-    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), f'cache-{sr}')
+    corpus = readcorpus_ljcorpus(CORPUSDATA_PATH[name])
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'wavs')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
 
     text_file = os.path.join('data', f'{name}-text')
     audio_file = os.path.join('data', f'{name}-audio-{sr}')
