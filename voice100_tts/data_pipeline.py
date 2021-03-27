@@ -47,7 +47,6 @@ def to_tf_dataset(ds, shuffle, audio_dim):
   return tf.data.Dataset.from_generator(gen,
     output_signature=(
       tf.TensorSpec(shape=(None,), dtype=tf.uint8), # text
-      #tf.TensorSpec(shape=(None,), dtype=tf.int64), # align
       tf.TensorSpec(shape=(None, audio_dim), dtype=tf.float32), # audio
     ))
 
@@ -65,7 +64,6 @@ def get_dataset(params, ds, shuffle=False):
       padding_values=(
         tf.constant(0, dtype=tf.int64), # text
         tf.constant(0, dtype=tf.int32), # text_len
-        #tf.constant(0, dtype=tf.int64), # align
         tf.constant(0.0, dtype=tf.float32), # audio
         tf.constant(0, dtype=tf.int32), # audio_len
         ),
@@ -73,7 +71,7 @@ def get_dataset(params, ds, shuffle=False):
 
   return ds
 
-def get_input_fn(params, split=True, use_align=True, **kwargs):
+def get_input_fn(params, split=True, **kwargs):
   from .data import IndexDataDataset
   ds = IndexDataDataset(
     [
@@ -91,38 +89,69 @@ def get_input_fn(params, split=True, use_align=True, **kwargs):
     ds = get_dataset(params, ds, shuffle=False)
     return ds
 
+def to_tf_dataset_tts(ds, shuffle, audio_dim, sos, eos):
+  def gen():
+    indices = list(range(len(ds)))
+    if shuffle:
+      random.shuffle(indices)
+    for index in indices:
+      text, align, audio = ds[index]
+      target_output = np.append(align[1:], eos)
+      target_input = align
+      target_input[0] = sos
+      audio = normalize(audio)
+      yield text, target_input, target_output, audio
+
+  return tf.data.Dataset.from_generator(gen,
+    output_signature=(
+      tf.TensorSpec(shape=(None,), dtype=tf.uint8), # text
+      tf.TensorSpec(shape=(None,), dtype=tf.int8), # target_input
+      tf.TensorSpec(shape=(None,), dtype=tf.int8), # target_output
+      tf.TensorSpec(shape=(None, audio_dim), dtype=tf.float32), # audio
+    ))
+
+def get_dataset_tts(params, ds, shuffle=False):
+  sos, eos = 0, params['vocab_size']
+  ds = to_tf_dataset_tts(ds, shuffle, params['audio_dim'], sos, eos)
+
+  ds = ds.map(lambda text, target_input, target_output, audio: (
+    tf.cast(text, tf.int64),
+    tf.cast(tf.shape(text)[0], tf.int32), # text_len
+    tf.cast(target_input, tf.int64),
+    tf.cast(target_output, tf.int64),
+    audio,
+    tf.cast(tf.shape(audio)[0], tf.int32))) # audio_len
+  ds = ds.padded_batch(
+      params['batch_size'],
+      padding_values=(
+        tf.constant(0, dtype=tf.int64), # text
+        tf.constant(0, dtype=tf.int32), # text_len
+        tf.constant(0, dtype=tf.int64), # target_input
+        tf.constant(0, dtype=tf.int64), # target_output
+        tf.constant(0.0, dtype=tf.float32), # audio
+        tf.constant(0, dtype=tf.int32), # audio_len
+        ),
+      drop_remainder=False)
+
+  return ds
+
+def get_input_fn_tts(params, **kwargs):
+  from .data import IndexDataDataset
+  ds = IndexDataDataset(
+    [
+    'data/%s-text' % params['dataset'],
+    'data/%s-align-16000' % params['dataset'],
+    'data/%s-audio-16000' % params['dataset']
+    ],
+     [(-1,), (-1,), (-1, params['audio_dim'])],
+      [np.uint8, np.uint8, np.float32])
+  train_ds, test_ds = ds.split([9, 1])
+  train_ds = get_dataset_tts(params, train_ds, shuffle=True)
+  test_ds = get_dataset_tts(params, test_ds, shuffle=False)
+  return train_ds, test_ds
+
 def normalize(audio):
   return (audio - NORMPARAMS[:, 0]) / NORMPARAMS[:, 1]
 
 def unnormalize(audio):
   return NORMPARAMS[:, 1] * audio + NORMPARAMS[:, 0]
-
-def test_dataset(name):
-  import os
-  import sys
-  from .encoder import decode_text
-  from .vocoder import decode_audio, writewav
-  params = dict(vocab_size=29, audio_dim=27, batch_size=3, dataset=name)
-  train_ds, test_ds = get_input_fn(params, use_align=True)
-  if sys.argv[1] == 'train':
-    ds = train_ds
-  else:
-    ds = test_ds
-  wav_index = 0
-  for example in ds.take(4):
-    text, text_len, audio, audio_len = example
-    for i in range(text.shape[0]):
-      print('---')
-      print('text:', decode_text(text[i, :text_len[i]].numpy()))
-      #print('align:', decode_text(align[i, :audio_len[i]].numpy()))
-      x = audio[i, :audio_len[i]].numpy()
-      x = unnormalize(x)
-      x = decode_audio(x)
-      audio_file = 'data/synthesized/%s_%04d.wav' % (name, wav_index)
-      os.makedirs(os.path.dirname(audio_file), exist_ok=True)
-      print('audio:', audio_file)
-      writewav(audio_file, x)
-      wav_index += 1
-
-if __name__ == '__main__':
-  test_dataset('kokoro_tiny')
