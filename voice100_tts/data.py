@@ -35,7 +35,7 @@ class IndexDataFileReader:
         return len(self.indices)
 
     def __getitem__(self, index):
-        start = self.indices[index - 1]
+        start = self.indices[index - 1] if index > 0 else 0
         end = self.indices[index]
         return self.data[start:end]
 

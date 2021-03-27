@@ -52,7 +52,9 @@ def ctc_best_path(logits, labels):
             
     cands = next_cands
 
-  return cands[-1]
+  logprob, best_path = cands[-1]
+  best_path = np.array(best_path, dtype=np.uint8)
+  return logprob, best_path
 
 def parse_decoded(decoded):
   from .preprocess import feature2text
@@ -199,25 +201,69 @@ class Voice100CTCTask(object):
       for t in parsed_decoded:
         print(t)
   
-  def convert(self):
+  def predict(self):
 
     import numpy as np
 
     flags_obj = self.flags_obj
     params = self.params
 
-    convert_step_signature = [
+    predict_step_signature = [
         tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
         tf.TensorSpec(shape=[None], dtype=tf.int32),
     ]
 
-    @tf.function(input_signature=convert_step_signature)
-    def convert_step(audio, audio_len):
+    @tf.function(input_signature=predict_step_signature)
+    def predict_step(audio, audio_len):
       audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
       logits = model(audio, mask=audio_mask)
       return tf.nn.softmax(logits)
 
-    train_ds = train_input_fn(params, shuffle=False, use_align=False)
+    train_ds, test_ds = get_input_fn(params, use_align=False)
+    model = self.create_model()
+    optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
+
+    ckpt = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    #ckpt = tf.train.Checkpoint(model=model)
+    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
+    if not ckpt_manager.latest_checkpoint:
+      raise ValueError()
+    print(ckpt_manager.latest_checkpoint)
+    ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
+
+    for batch, example in enumerate(test_ds):
+      text, text_len, audio, audio_len = example
+      probs = predict_step(audio, audio_len)
+      print(probs.shape)
+
+      x = tf.argmax(probs, axis=-1)
+      print(x.shape)
+      for i in range(probs.shape[0]):
+        from .encoder import decode_text
+        print(decode_text(x[i, :].numpy()))
+
+      if batch % 10 == 0:
+        print(f'Batch {batch}')
+
+  def align(self):
+
+    import numpy as np
+
+    flags_obj = self.flags_obj
+    params = self.params
+
+    align_step_signature = [
+        tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
+        tf.TensorSpec(shape=[None], dtype=tf.int32),
+    ]
+
+    @tf.function(input_signature=align_step_signature)
+    def align_step(audio, audio_len):
+      audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
+      logits = model(audio, mask=audio_mask)
+      return tf.nn.softmax(logits)
+
+    train_ds = get_input_fn(params, split=False, use_align=False)
     model = self.create_model()
     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
@@ -228,27 +274,21 @@ class Voice100CTCTask(object):
       raise ValueError()
     ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
 
-    align_data = []
-    align_index = []
-    align_start = 0
-    for batch, example in enumerate(train_ds):
-      text, text_len, align, audio, end, audio_len = example
-      probs = convert_step(audio, audio_len)
+    from .data import open_index_data_for_write
+    with open_index_data_for_write('data/%s-align' % params['dataset']) as align_f:
+      for batch, example in enumerate(train_ds):
+        text, text_len, audio, audio_len = example
+        probs = align_step(audio, audio_len) # [batch_size, audio_len, vocab_size]
 
-      for i in range(probs.shape[0]):
-        labels = text[i, :text_len[i]].numpy()
-        logits = tf.math.log(probs[i, :audio_len[i]]).numpy()
-        _, best_path = ctc_best_path(logits, labels)
-        align_data.append(best_path)
-        align_start += audio_len[i]
-        assert audio_len[i] == len(best_path)
-        align_index.append(align_start)
-      if batch % 10 == 0:
-        print(f'Batch {batch}')
-    align_data = np.concatenate(align_data, axis=0)
-    align_index = np.array(align_index, dtype=np.int)
-    np.savez('data/%s_train_align.npz' % params['dataset'],
-      align_data=align_data, align_index=align_index)
+        for i in range(probs.shape[0]):
+          labels = text[i, :text_len[i]].numpy()
+          logits = tf.math.log(probs[i, :audio_len[i]]).numpy()
+          print(logits.shape)
+          _, best_path = ctc_best_path(logits, labels)
+          align_f.write(bytes(memoryview(best_path)))
+          assert audio_len[i] == len(best_path)
+        if batch % 10 == 0:
+          print(f'Batch {batch}')
 
 def main(_):
   flags_obj = flags.FLAGS
@@ -261,10 +301,10 @@ def main(_):
     task.eval()
   elif flags_obj.mode == 'predict':
     task.predict()
-  elif flags_obj.mode == 'convert':
-    task.convert()
+  elif flags_obj.mode == 'align':
+    task.align()
   else:
-    raise ValueError()
+    raise ValueError(flags_obj.mode)
 
 if __name__ == '__main__':
   flags.DEFINE_string(
@@ -274,7 +314,7 @@ if __name__ == '__main__':
       help="The location of the model checkpoint files.")
   flags.DEFINE_string(
       name='dataset',
-      default='css10ja',
+      default='kokoro_tiny',
       help='Dataset to use')
   flags.DEFINE_string(
       name='mode',

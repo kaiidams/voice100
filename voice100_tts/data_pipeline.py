@@ -73,7 +73,7 @@ def get_dataset(params, ds, shuffle=False):
 
   return ds
 
-def get_input_fn(params, split=None, use_align=True, **kwargs):
+def get_input_fn(params, split=True, use_align=True, **kwargs):
   from .data import IndexDataDataset
   ds = IndexDataDataset(
     [
@@ -82,11 +82,14 @@ def get_input_fn(params, split=None, use_align=True, **kwargs):
     ],
      [(-1,), (-1, params['audio_dim'])],
       [np.uint8, np.float32])
-  train_ds, test_ds = ds.split([9, 1])
-  train_ds = get_dataset(params, train_ds, shuffle=True)
-  test_ds = get_dataset(params, test_ds, shuffle=False)
-
-  return train_ds, test_ds
+  if split:
+    train_ds, test_ds = ds.split([9, 1])
+    train_ds = get_dataset(params, train_ds, shuffle=True)
+    test_ds = get_dataset(params, test_ds, shuffle=False)
+    return train_ds, test_ds
+  else:
+    ds = get_dataset(params, ds, shuffle=False)
+    return ds
 
 def normalize(audio):
   return (audio - NORMPARAMS[:, 0]) / NORMPARAMS[:, 1]
