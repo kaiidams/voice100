@@ -6,7 +6,7 @@ from absl import logging
 
 import tensorflow as tf
 
-from .data_pipeline import train_input_fn, eval_input_fn
+from .data_pipeline import get_input_fn
 
 # It achieves 65-75 loss after 40 epochs.
 
@@ -91,14 +91,12 @@ class Voice100CTCTask(object):
     train_step_signature = [
         tf.TensorSpec(shape=[None, None], dtype=tf.int64),
         tf.TensorSpec(shape=[None], dtype=tf.int32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
         tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
         tf.TensorSpec(shape=[None], dtype=tf.int32),
     ]
 
     @tf.function(input_signature=train_step_signature)
-    def train_step(text, text_len, align, audio, end, audio_len):
+    def train_step(text, text_len, audio, audio_len):
 
       audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
       #audio_mask = tf.expand_dims(audio_mask, axis=-1)
@@ -113,7 +111,7 @@ class Voice100CTCTask(object):
 
       return loss
 
-    train_ds = train_input_fn(params, use_align=False)
+    train_ds, test_ds = get_input_fn(params, use_align=False)
     model = self.create_model()
     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
@@ -126,6 +124,8 @@ class Voice100CTCTask(object):
       print ('Latest checkpoint restored!!')
       print(f'{ckpt_manager.latest_checkpoint}')
       start_epoch = ckpt.save_counter.numpy()
+    else:
+      start_epoch = 0
 
     log_dir = flags_obj.model_dir
     summary_writer = tf.summary.create_file_writer(log_dir)

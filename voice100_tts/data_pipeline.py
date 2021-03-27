@@ -34,88 +34,62 @@ NORMPARAMS = np.array([ # mean, std
     [-3.051176135342112, 3.043502724255181],
 ], dtype=np.float64)
 
-def _readdata(file, align_file):
-  with np.load(file) as f:
-    data = {k:v for k, v in f.items()}
-  if align_file:
-    with np.load(align_file) as f:
-      data['align_data'] = f['align_data']
-      assert np.all(data['audio_index'] == f['align_index'])
-  data['audio_data'] = (data['audio_data'] - NORMPARAMS[:, 0]) / NORMPARAMS[:, 1]
-  return data
-
-def _getdataitem(data, index, vocab_size):
-  id_ = data['id'][index]
-  text_start = data['text_index'][index - 1] if index else 0
-  text_end = data['text_index'][index]
-  audio_start = data['audio_index'][index - 1] if index else 0
-  audio_end = data['audio_index'][index]
-  assert text_start < text_end
-  assert audio_start < audio_end
-
-  text = data['text_data'][text_start:text_end]
-  audio = data['audio_data'][audio_start:audio_end, :]
-  if 'align_data' in data:
-    align = data['align_data'][audio_start:audio_end]
-  else:
-    align = np.zeros([audio_end - audio_start], dtype=np.float32)
-  end = np.zeros([audio_end - audio_start], dtype=np.int64)
-  end[-1] = 1
-  return id_, text, align, audio, end
-
-def get_dataset(params, file, shuffle=False, align_file=None):
-  vocab_size = params['vocab_size']
-  data = _readdata(file, align_file)
+def to_tf_dataset(ds, shuffle, audio_dim):
   def gen():
-    indices = list(range(len(data['id'])))
+    indices = list(range(len(ds)))
     if shuffle:
       random.shuffle(indices)
     for index in indices:
-      yield _getdataitem(data, index, vocab_size)
+      text, audio = ds[index]
+      audio = normalize(audio)
+      yield text, audio
 
   return tf.data.Dataset.from_generator(gen,
     output_signature=(
-      tf.TensorSpec(shape=(), dtype=tf.string), # id
-      tf.TensorSpec(shape=(None,), dtype=tf.int64), # text
-      tf.TensorSpec(shape=(None,), dtype=tf.int64), # align
-      tf.TensorSpec(shape=(None, params['audio_dim']), dtype=tf.float32), # audio
-      tf.TensorSpec(shape=(None,), dtype=tf.int64))) # end
+      tf.TensorSpec(shape=(None,), dtype=tf.uint8), # text
+      #tf.TensorSpec(shape=(None,), dtype=tf.int64), # align
+      tf.TensorSpec(shape=(None, audio_dim), dtype=tf.float32), # audio
+    ))
 
-def get_input_fn(params, split=None, use_align=True, **kwargs):
-  if split == 'train':
-    ds = get_dataset(params, 'data/%s_train.npz' % params['dataset'],
-      align_file='data/%s_train_align.npz' % params['dataset'] if use_align else None,
-      **kwargs)
-  else:
-    ds = get_dataset(params, 'data/%s_val.npz' % params['dataset'])
+def get_dataset(params, ds, shuffle=False):
+  ds = to_tf_dataset(ds, shuffle, params['audio_dim'])
 
-  ds = ds.map(lambda id_, text, align, audio, end: (
-    text,
+  ds = ds.map(lambda text, audio: (
+    tf.cast(text, tf.int64),
     tf.cast(tf.shape(text)[0], tf.int32),
-    align,
+    #align,
     audio,
-    end,
     tf.cast(tf.shape(audio)[0], tf.int32)))
   ds = ds.padded_batch(
       params['batch_size'],
       padding_values=(
         tf.constant(0, dtype=tf.int64), # text
         tf.constant(0, dtype=tf.int32), # text_len
-        tf.constant(0, dtype=tf.int64), # align
+        #tf.constant(0, dtype=tf.int64), # align
         tf.constant(0.0, dtype=tf.float32), # audio
-        tf.constant(0, dtype=tf.int64), # end
         tf.constant(0, dtype=tf.int32), # audio_len
         ),
-      drop_remainder=False
-  )
+      drop_remainder=False)
 
   return ds
 
-def train_input_fn(params, shuffle=True, **kwargs):
-  return get_input_fn(params, split='train', shuffle=shuffle, **kwargs)
+def get_input_fn(params, split=None, use_align=True, **kwargs):
+  from .data import IndexDataDataset
+  ds = IndexDataDataset(
+    [
+    'data/%s-text' % params['dataset'],
+    'data/%s-audio-16000' % params['dataset']
+    ],
+     [(-1,), (-1, params['audio_dim'])],
+      [np.uint8, np.float32])
+  train_ds, test_ds = ds.split([9, 1])
+  train_ds = get_dataset(params, train_ds, shuffle=True)
+  test_ds = get_dataset(params, test_ds, shuffle=False)
 
-def eval_input_fn(params, **kwargs):
-  return get_input_fn(params, split='eval', shuffle=False, **kwargs)
+  return train_ds, test_ds
+
+def normalize(audio):
+  return (audio - NORMPARAMS[:, 0]) / NORMPARAMS[:, 1]
 
 def unnormalize(audio):
   return NORMPARAMS[:, 1] * audio + NORMPARAMS[:, 0]
@@ -126,17 +100,18 @@ def test_dataset(name):
   from .encoder import decode_text
   from .vocoder import decode_audio, writewav
   params = dict(vocab_size=29, audio_dim=27, batch_size=3, dataset=name)
+  train_ds, test_ds = get_input_fn(params, use_align=True)
   if sys.argv[1] == 'train':
-    ds = train_input_fn(params, use_align=True)
+    ds = train_ds
   else:
-    ds = eval_input_fn(params, use_align=False)
+    ds = test_ds
   wav_index = 0
   for example in ds.take(4):
-    text, text_len, align, audio, end, audio_len = example
+    text, text_len, audio, audio_len = example
     for i in range(text.shape[0]):
       print('---')
       print('text:', decode_text(text[i, :text_len[i]].numpy()))
-      print('align:', decode_text(align[i, :audio_len[i]].numpy()))
+      #print('align:', decode_text(align[i, :audio_len[i]].numpy()))
       x = audio[i, :audio_len[i]].numpy()
       x = unnormalize(x)
       x = decode_audio(x)
@@ -147,4 +122,4 @@ def test_dataset(name):
       wav_index += 1
 
 if __name__ == '__main__':
-  test_dataset('css10ja')
+  test_dataset('kokoro_tiny')

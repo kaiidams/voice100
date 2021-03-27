@@ -52,11 +52,13 @@ class IndexDataDataset:
     def split(self, weights):
         slots = []
         for i, weight in enumerate(weights):
-            slots.append([i] * weight)
-        for i in enumerate(slots):
+            slots.extend([i] * weight)
+        res = []
+        for i in range(len(weights)):
             ds = IndexDataDataset(self.readers, self.shapes, self.dtypes)
-            ds.indices = filter(range(len(self)), lambda j: slots[i % len(slots)] == i)
-            return ds
+            ds.indices = list(filter(lambda j: slots[j % len(slots)] == i, range(len(self))))
+            res.append(ds)
+        return res
 
     @staticmethod
     def _getreader(reader_or_file):
