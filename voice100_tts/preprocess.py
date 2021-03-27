@@ -8,6 +8,7 @@ import argparse
 
 from .vocoder import readwav, estimatef0, encode_audio
 from .encoder import encode_text
+from .data import open_index_data_for_write
 
 CORPUSDATA_PATH = 'data/balance_sentences.txt'
 CORPUSDATA_CSS10JA_PATH = 'data/japanese-single-speaker-speech-dataset/transcript.txt'
@@ -62,30 +63,6 @@ def readcorpus_css10ja(file):
             corpus.append((id_, monophone))
     return corpus
 
-class IndexDataArray:
-    def __init__(self, file):
-        self.file = file
-        self.current = 0
-        self.indices = []
-        self.data = []
-
-    def __enter__(self):
-        return self
-
-    def write(self, data):
-        self.current += data.shape[0]
-        self.indices.append(self.current)
-        self.data.append(data)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type is None:
-            indices = np.array(self.indices, dtype=np.int32)
-            data = np.concatenate(self.data, axis=0)
-            np.savez(self.file, indices=indices, data=data)
-
-def open_index_data_for_write(file):
-    return IndexDataArray(file)
-
 def analyze_files(name, files, eps=1e-20):
     f0_list = []
     power_list = []
@@ -139,30 +116,6 @@ def analyze_jvs(name):
         files.append(file)
     analyze_files(name, files)
 
-def make_empty_data():
-    return {
-        'id': [],
-        'text_index': [],
-        'text_data': [],
-        'audio_index': [],
-        'audio_data': []
-    }
-
-def append_data(data, id_, text_index, text, audio_index, audio):
-    data['id'].append(id_)
-    data['text_index'].append(text_index)
-    data['text_data'].append(text)
-    data['audio_index'].append(audio_index)
-    data['audio_data'].append(audio)
-
-def finish_data(data, file):
-    data['id'] = np.array(data['id'])
-    data['text_index'] = np.array(data['text_index'], dtype=np.int32)
-    data['text_data'] = np.concatenate(data['text_data'], axis=0)
-    data['audio_index'] = np.array(data['audio_index'], dtype=np.int32)
-    data['audio_data'] = np.concatenate(data['audio_data'], axis=0)
-    np.savez(file, **data)
-
 def preprocess_css10ja(name):
 
     if name.endswith('_highpitch'):
@@ -209,7 +162,7 @@ def preprocess_css10ja(name):
         split = 0 if split_index else 1
         text_index[split] += text.shape[0]
         audio_index[split] += audio.shape[0]
-        append_data(data[split], id_, text_index[split], text, audio_index[split], audio)
+#append_data(data[split], id_, text_index[split], text, audio_index[split], audio)
 
         split_index += 1
         if split_index == split_total: split_index = 0
@@ -224,19 +177,19 @@ def preprocess_ljcorpus(name):
 
     corpus = readcorpus_ljcorpus(CORPUSDATA_KOKORO_PATH)
     wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'wavs')
-    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), 'cache')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_KOKORO_PATH), f'cache-{sr}')
 
-    text_file = os.path.join('data', f'{name}_text.npz')
-    audio_file = os.path.join('data', f'{name}_audio_{sr}.npz')
+    text_file = os.path.join('data', f'{name}-text')
+    audio_file = os.path.join('data', f'{name}-audio-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 
     with open_index_data_for_write(text_file) as text_f:
         with open_index_data_for_write(audio_file) as audio_f:
             for id_, monophone in tqdm(corpus):
-                text = encode_text(monophone)            
+                text = encode_text(monophone)
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 wav_file = os.path.join(wavs_dir, f'{id_}.wav')
-                cache_file = os.path.join(cached_dir, f'{id_}.npz')
+                cache_file = os.path.join(cache_dir, f'{id_}.npz')
                 if os.path.exists(cache_file):
                     audio = np.load(cache_file, allow_pickle=False)['arr_0']
                     assert audio.shape[0] > 0
@@ -245,8 +198,8 @@ def preprocess_ljcorpus(name):
                     audio = encode_audio(x, f0_floor, f0_ceil)
                     np.savez(cache_file, audio)
 
-                text_f.write(text)
-                audio_f.write(audio)
+                text_f.write(bytes(memoryview(text)))
+                audio_f.write(bytes(memoryview(audio)))
 
 def preprocess_jvs(name):
     corpus = readcorpus(CORPUSDATA_PATH)

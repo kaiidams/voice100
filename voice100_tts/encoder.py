@@ -14,7 +14,7 @@ def encode_text(text):
     return np.array([v2i[token] for token in text.split(' ') if token in v2i], dtype=np.int8)
 
 def decode_text(encoded):
-    return ' '.join(vocab2[id_] for id_ in encoded)
+    return ' '.join(vocab[id_] for id_ in encoded)
 
 def merge_repeated(text):
     import re
