@@ -114,7 +114,7 @@ class Voice100CTCTask(object):
 
       return loss
 
-    train_ds, test_ds = get_input_fn(params, use_align=False)
+    train_ds, test_ds = get_input_fn(params)
     model = self.create_model()
     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
