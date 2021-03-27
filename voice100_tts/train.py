@@ -200,7 +200,7 @@ class Voice100Task(object):
 
       print(f'Time taken for 1 epoch: {time.time() - start:.2f} secs\n')
 
-  def predict_step(self, model, text, text_len, tgt_align, tgt_audio, tgt_end, audio_len, max_length=400):
+  def predict_step(self, model, text, text_len, target_input, tgt_align, tgt_audio, audio_len, max_length=400):
 
     flags_obj = self.flags_obj
     params = self.params
@@ -209,17 +209,16 @@ class Voice100Task(object):
         tf.TensorSpec(shape=(None, None), dtype=tf.int64),
         tf.TensorSpec(shape=(None,), dtype=tf.int32),
         tf.TensorSpec(shape=(None, None), dtype=tf.int64),
-        tf.TensorSpec(shape=(None, None, params['audio_dim']), dtype=tf.float32),
     ]
 
     @tf.function(input_signature=predict_one_signature)
-    def predict_one(text, text_len, output_align, output_audio):
+    def predict_one(text, text_len, output_align):
       text_mask = tf.sequence_mask(text_len, maxlen=tf.shape(text)[1])
       text_mask = tf.cast(tf.logical_not(text_mask), tf.float32)
       enc_padding_mask = text_mask[:, tf.newaxis, tf.newaxis, :]
       dec_padding_mask = text_mask[:, tf.newaxis, tf.newaxis, :]
 
-      look_ahead_mask = create_look_ahead_mask(tf.shape(output_audio)[1])
+      look_ahead_mask = create_look_ahead_mask(tf.shape(output_align)[1])
       combined_mask = look_ahead_mask
           
       # predictions.shape == (batch_size, seq_len, vocab_size)
@@ -236,7 +235,7 @@ class Voice100Task(object):
 
       tgt_align_pred_id = tf.argmax(tgt_align_pred, axis=-1) # (batch_size, 1)
 
-      return tgt_align_pred_id, tgt_audio_pred, tgt_end_pred, attention_weights
+      return tgt_align_pred_id, tgt_audio_pred, attention_weights
 
     output_align = tf.zeros([1, 1], dtype=tf.int64)
     #output_audio = tf.zeros([1, 1, self.params['audio_dim']], dtype=tf.float32)
@@ -245,16 +244,17 @@ class Voice100Task(object):
     for i in range(max_length):
       print(f'\rStep {i}', end='')
 
-      tgt_align_pred_id, tgt_audio_pred, tgt_end_pred, attention_weights = predict_one(text, text_len, output_align, output_audio)
+      tgt_align_pred_id, tgt_audio_pred, attention_weights = predict_one(text, text_len, output_align)
+
+      output_audio = tf.concat([output_audio, tgt_audio_pred], axis=1)
+
+      # return the result if the predicted_id is equal to the end token
+      if tgt_align_pred_id == VOCAB_SIZE:
+        break
 
       # concatentate the predicted_id to the output which is given to the decoder
       # as its input.
       output_align = tf.concat([output_align, tgt_align_pred_id], axis=1)
-      output_audio = tf.concat([output_audio, tgt_audio_pred], axis=1)
-
-      # return the result if the predicted_id is equal to the end token
-      if tf.reduce_any(tgt_end_pred > 0.6) and i > 30:
-        break
 
     return output_align, output_audio, attention_weights
 
@@ -282,9 +282,9 @@ class Voice100Task(object):
     else:
       raise ValueError()
 
-    eval_ds = eval_input_fn(params)
+    train_ds, test_ds = get_input_fn_tts(params)
 
-    for batch, example in enumerate(eval_ds):
+    for batch, example in enumerate(test_ds):
       t = decode_text(example[0][0])
       print(t)
       output_align, output_audio, attention_weights = self.predict_step(model, *example)
@@ -300,8 +300,9 @@ class Voice100Task(object):
       output_file = 'data/predict/%s_%s.wav' % (params['dataset'], batch)
       os.makedirs(os.path.dirname(output_file), exist_ok=True)
       np.savez('data/predict/%s_%s.npz' % (params['dataset'], batch), x=x, t=t, a=a, **attention_weights)
+      x = (x * 32000 / np.max(x)).astype(np.int16)
       sf.write(output_file, x, 16000, 'PCM_16')
-      break
+      #break
 
     print('done')
 
