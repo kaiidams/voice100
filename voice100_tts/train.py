@@ -24,7 +24,7 @@ class Voice100Task(object):
       filter_size=512,
       dropout=0.1,
       batch_size=50,
-      num_epochs=300,
+      num_epochs=600,
     )
 
   def create_model(self):
@@ -193,6 +193,7 @@ class Voice100Task(object):
         tf.summary.scalar('train_loss_align', train_loss_align.result(), step=epoch)
         tf.summary.scalar('train_loss_audio', train_loss_audio.result(), step=epoch)
         tf.summary.scalar('train_accuracy_align', train_accuracy_align.result(), step=epoch)
+        tf.summary.scalar('learning_rate', optimizer.learning_rate, step=epoch)
 
       print(f'Epoch {epoch + 1}')
       print(f'Align Loss {train_loss_align.result():.4f} Accuracy {train_accuracy_align.result():.4f}')
