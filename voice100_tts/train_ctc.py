@@ -75,7 +75,8 @@ class Voice100CTCTask(object):
     self.flags_obj = flags_obj
     self.params = dict(
       dataset=flags_obj.dataset,
-      batch_size=128, audio_dim=AUDIO_DIM, vocab_size=VOCAB_SIZE,
+      batch_size=128, audio_dim=AUDIO_DIM, sample_rate=SAMPLE_RATE,
+      vocab_size=VOCAB_SIZE,
       hidden_dim=128, learning_rate=0.001,
       num_epochs=50)
 
