@@ -54,7 +54,7 @@ def to_tf_dataset(ds, shuffle, normed, audio_dim):
     ))
 
 def get_dataset(params, ds, shuffle=False, normed=True, **kwargs):
-  ds = to_tf_dataset(ds, shuffle, params['audio_dim'])
+  ds = to_tf_dataset(ds, shuffle, normed, params['audio_dim'])
 
   ds = ds.map(lambda text, audio: (
     tf.cast(text, tf.int64),
