@@ -20,7 +20,7 @@ setup(
         'tensorflow'
     ],
     extras_require={
-        "preprocess": [
+        "audio": [
             'librosa',
             'soundfile',
             'pyworld>=0.2.12',
