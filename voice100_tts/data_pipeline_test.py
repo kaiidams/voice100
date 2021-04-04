@@ -3,15 +3,29 @@
 import os
 import sys
 from .encoder import decode_text, VOCAB_SIZE
-from .vocoder import decode_audio, writewav, AUDIO_DIM
+from .vocoder import decode_audio, writewav, AUDIO_DIM, SAMPLE_RATE
 from .data_pipeline import get_input_fn_ctc, get_input_fn_tts, unnormalize
 
 def dump_params(params):
   for k, v in params.items():
     print(f'{k}: {v}')
 
+def analyze_dataset_ctc(dataset):
+  from .data import IndexDataFileReader
+  import numpy as np
+  params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=SAMPLE_RATE, batch_size=3, dataset=dataset)
+  dump_params(params)
+  reader = IndexDataFileReader(f'data/{dataset}-audio-{SAMPLE_RATE}')
+  audio = np.frombuffer(reader.data, dtype=np.float32).reshape((-1, AUDIO_DIM))
+  audio_mean = np.mean(audio, axis=0)
+  audio_std = np.std(audio, axis=0)
+  x = np.stack([audio_mean, audio_std]).T
+  print(x.shape)
+  for i in range(x.shape[0]):
+    print(f'  [{x[i,0]}, {x[i,1]}],')
+
 def test_dataset_ctc(name):
-  params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=22050, batch_size=3, dataset=name)
+  params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=SAMPLE_RATE, batch_size=3, dataset=name)
   dump_params(params)
   train_ds, test_ds = get_input_fn_ctc(params, normed=False)
   if sys.argv[1] == 'train':
@@ -61,4 +75,5 @@ def test_dataset_tts(name):
 if __name__ == '__main__':
   #test_dataset('kokoro_tiny')
   #test_dataset2('kokoro_tiny')
-  test_dataset_ctc('kokoro_large')
+  analyze_dataset_ctc('kokoro_large')
+  #test_dataset_ctc('kokoro_large')
