@@ -13,7 +13,7 @@ def dump_params(params):
 def test_dataset_ctc(name):
   params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=22050, batch_size=3, dataset=name)
   dump_params(params)
-  train_ds, test_ds = get_input_fn_ctc(params)
+  train_ds, test_ds = get_input_fn_ctc(params, normed=False)
   if sys.argv[1] == 'train':
     ds = train_ds
   else:

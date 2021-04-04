@@ -36,14 +36,15 @@ NORMPARAMS = np.array([ # mean, std
 
 # For CTC
 
-def to_tf_dataset(ds, shuffle, audio_dim):
+def to_tf_dataset(ds, shuffle, normed, audio_dim):
   def gen():
     indices = list(range(len(ds)))
     if shuffle:
       random.shuffle(indices)
     for index in indices:
       text, audio = ds[index]
-      audio = normalize(audio)
+      if normed:
+        audio = normalize(audio)
       yield text, audio
 
   return tf.data.Dataset.from_generator(gen,
@@ -52,7 +53,7 @@ def to_tf_dataset(ds, shuffle, audio_dim):
       tf.TensorSpec(shape=(None, audio_dim), dtype=tf.float32), # audio
     ))
 
-def get_dataset(params, ds, shuffle=False):
+def get_dataset(params, ds, shuffle=False, normed=True, **kwargs):
   ds = to_tf_dataset(ds, shuffle, params['audio_dim'])
 
   ds = ds.map(lambda text, audio: (
@@ -84,11 +85,11 @@ def get_input_fn_ctc(params, split=True, **kwargs):
       [np.uint8, np.float32])
   if split:
     train_ds, test_ds = ds.split([9, 1])
-    train_ds = get_dataset(params, train_ds, shuffle=True)
-    test_ds = get_dataset(params, test_ds, shuffle=False)
+    train_ds = get_dataset(params, train_ds, shuffle=True, **kwargs)
+    test_ds = get_dataset(params, test_ds, shuffle=False, **kwargs)
     return train_ds, test_ds
   else:
-    ds = get_dataset(params, ds, shuffle=False)
+    ds = get_dataset(params, ds, shuffle=False, **kwargs)
     return ds
 
 # For TTS
