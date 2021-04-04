@@ -279,7 +279,8 @@ class Voice100CTCTask(object):
     ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
 
     from .data import open_index_data_for_write
-    with open_index_data_for_write('data/%s-align' % params['dataset']) as align_f:
+    align_file = 'data/%s-align-%d' % (params['dataset'], params['sample_rate'])
+    with open_index_data_for_write(align_file) as align_f:
       for batch, example in enumerate(train_ds):
         text, text_len, audio, audio_len = example
         probs = align_step(audio, audio_len) # [batch_size, audio_len, vocab_size]
