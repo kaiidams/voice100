@@ -6,8 +6,11 @@ from absl import logging
 
 import tensorflow as tf
 
-from .data_pipeline import get_input_fn
+from .data_pipeline import get_input_fn_ctc as get_input_fn
 from .encoder import VOCAB_SIZE
+AUDIO_DIM = 27
+AUDIO_DIM = 38
+SAMPLE_RATE = 22050
 
 # It achieves 65-75 loss after 40 epochs.
 
@@ -72,7 +75,7 @@ class Voice100CTCTask(object):
     self.flags_obj = flags_obj
     self.params = dict(
       dataset=flags_obj.dataset,
-      batch_size=128, audio_dim=27, vocab_size=VOCAB_SIZE,
+      batch_size=128, audio_dim=AUDIO_DIM, vocab_size=VOCAB_SIZE,
       hidden_dim=128, learning_rate=0.001,
       num_epochs=50)
 
