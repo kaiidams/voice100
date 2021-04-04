@@ -75,5 +75,5 @@ def test_dataset_tts(name):
 if __name__ == '__main__':
   #test_dataset('kokoro_tiny')
   #test_dataset2('kokoro_tiny')
-  #analyze_dataset_ctc('kokoro_large')
-  test_dataset_ctc('kokoro_large')
+  analyze_dataset_ctc('kokoro_large')
+  #test_dataset_ctc('kokoro_large')
