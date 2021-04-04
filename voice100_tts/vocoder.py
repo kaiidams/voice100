@@ -6,7 +6,7 @@ import pyworld
 import pysptk
 import numpy as np
 
-if True:
+if False:
     SAMPLE_RATE = 16000
     FFT_SIZE = 1024
     FRAME_PERIOD = 20.0

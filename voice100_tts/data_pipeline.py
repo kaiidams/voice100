@@ -34,6 +34,8 @@ NORMPARAMS = np.array([ # mean, std
     [-3.051176135342112, 3.043502724255181],
 ], dtype=np.float64)
 
+# For CTC
+
 def to_tf_dataset(ds, shuffle, audio_dim):
   def gen():
     indices = list(range(len(ds)))
@@ -71,12 +73,12 @@ def get_dataset(params, ds, shuffle=False):
 
   return ds
 
-def get_input_fn(params, split=True, **kwargs):
+def get_input_fn_ctc(params, split=True, **kwargs):
   from .data import IndexDataDataset
   ds = IndexDataDataset(
     [
     'data/%s-text' % params['dataset'],
-    'data/%s-audio-16000' % params['dataset']
+    'data/%s-audio-%d' % (params['dataset'], params['sample_rate'])
     ],
      [(-1,), (-1, params['audio_dim'])],
       [np.uint8, np.float32])
@@ -88,6 +90,8 @@ def get_input_fn(params, split=True, **kwargs):
   else:
     ds = get_dataset(params, ds, shuffle=False)
     return ds
+
+# For TTS
 
 def to_tf_dataset_tts(ds, shuffle, audio_dim, sos, eos):
   def gen():
@@ -149,6 +153,8 @@ def get_input_fn_tts(params, **kwargs):
   train_ds = get_dataset_tts(params, train_ds, shuffle=True)
   test_ds = get_dataset_tts(params, test_ds, shuffle=False)
   return train_ds, test_ds
+
+# Utils
 
 def normalize(audio):
   return (audio - NORMPARAMS[:, 0]) / NORMPARAMS[:, 1]

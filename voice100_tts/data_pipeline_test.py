@@ -4,11 +4,16 @@ import os
 import sys
 from .encoder import decode_text, VOCAB_SIZE
 from .vocoder import decode_audio, writewav, AUDIO_DIM
-from .data_pipeline import get_input_fn, get_input_fn_tts, unnormalize
+from .data_pipeline import get_input_fn_ctc, get_input_fn_tts, unnormalize
 
-def test_dataset(name):
-  params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, batch_size=3, dataset=name)
-  train_ds, test_ds = get_input_fn(params)
+def dump_params(params):
+  for k, v in params.items():
+    print(f'{k}: {v}')
+
+def test_dataset_ctc(name):
+  params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=22050, batch_size=3, dataset=name)
+  dump_params(params)
+  train_ds, test_ds = get_input_fn_ctc(params)
   if sys.argv[1] == 'train':
     ds = train_ds
   else:
@@ -28,8 +33,9 @@ def test_dataset(name):
       writewav(audio_file, x)
       wav_index += 1
 
-def test_dataset2(name):
+def test_dataset_tts(name):
   params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, batch_size=3, dataset=name)
+  dump_params(params)
   train_ds, test_ds = get_input_fn_tts(params)
   if sys.argv[1] == 'train':
     ds = train_ds
@@ -54,4 +60,5 @@ def test_dataset2(name):
 
 if __name__ == '__main__':
   #test_dataset('kokoro_tiny')
-  test_dataset2('kokoro_tiny')
+  #test_dataset2('kokoro_tiny')
+  test_dataset_ctc('kokoro_large')
