@@ -27,7 +27,7 @@ def analyze_dataset_ctc(dataset):
 def test_dataset_ctc(name):
   params = dict(vocab_size=VOCAB_SIZE, audio_dim=AUDIO_DIM, sample_rate=SAMPLE_RATE, batch_size=3, dataset=name)
   dump_params(params)
-  train_ds, test_ds = get_input_fn_ctc(params, normed=False)
+  train_ds, test_ds = get_input_fn_ctc(params)
   if sys.argv[1] == 'train':
     ds = train_ds
   else:
@@ -75,5 +75,5 @@ def test_dataset_tts(name):
 if __name__ == '__main__':
   #test_dataset('kokoro_tiny')
   #test_dataset2('kokoro_tiny')
-  analyze_dataset_ctc('kokoro_large')
-  #test_dataset_ctc('kokoro_large')
+  #analyze_dataset_ctc('kokoro_large')
+  test_dataset_ctc('kokoro_large')
