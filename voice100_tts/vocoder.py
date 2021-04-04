@@ -19,7 +19,8 @@ else:
     FRAME_PERIOD = 2 * 4.988662131519274
     MCEP_DIM = 34
     MCEP_ALPHA = 0.455
-    AUDIO_DIM = MCEP_DIM + 3
+    CODEAP_DIM = 2
+    AUDIO_DIM = 1 + (MCEP_DIM + 1) + CODEAP_DIM
 
 def readwav(file, fs=SAMPLE_RATE):
     x, origfs = sf.read(file)
