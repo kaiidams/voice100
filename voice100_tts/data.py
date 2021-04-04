@@ -16,7 +16,7 @@ class IndexDataFileWriter:
 
     def write(self, data):
         self.current += len(data)
-        self.idx_f.write(bytes(memoryview(np.array(self.current, dtype=np.int32))))
+        self.idx_f.write(bytes(memoryview(np.array(self.current, dtype=np.int64))))
         self.bin_f.write(data)
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -28,7 +28,7 @@ def open_index_data_for_write(prefix):
 
 class IndexDataFileReader:
     def __init__(self, file):
-        self.indices = np.fromfile(file + '.idx', dtype=np.int32)
+        self.indices = np.fromfile(file + '.idx', dtype=np.int64)
         self.data = np.fromfile(file + '.bin', dtype=np.uint8)
 
     def __len__(self):
