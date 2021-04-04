@@ -275,7 +275,6 @@ class Transformer(tf.keras.Model):
 
     self.final_layer_align = tf.keras.layers.Dense(target_vocab_size)
     self.final_layer_audio = tf.keras.layers.Dense(target_audio_dim)
-    self.final_layer_end = tf.keras.layers.Dense(1)
 
   def call(self, inp, tar, training, enc_padding_mask, 
            look_ahead_mask, dec_padding_mask):
@@ -288,9 +287,8 @@ class Transformer(tf.keras.Model):
     
     final_output_align = self.final_layer_align(dec_output)  # (batch_size, tar_seq_len, target_vocab_size)
     final_output_audio = self.final_layer_audio(dec_output)  # (batch_size, tar_seq_len, target_audio_dim)
-    final_output_end = self.final_layer_end(dec_output)  # (batch_size, tar_seq_len, 1)
     
-    return final_output_align, final_output_audio, final_output_end, attention_weights
+    return final_output_align, final_output_audio, attention_weights
 
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
   def __init__(self, d_model, warmup_steps=4000):

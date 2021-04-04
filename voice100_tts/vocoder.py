@@ -6,18 +6,20 @@ import pyworld
 import pysptk
 import numpy as np
 
-if False:
+if True:
     SAMPLE_RATE = 16000
     FFT_SIZE = 1024
     FRAME_PERIOD = 20.0
     MCEP_DIM = 24
     MCEP_ALPHA = 0.410
+    AUDIO_DIM = MCEP_DIM + 3
 else:
     SAMPLE_RATE = 22050
     FFT_SIZE = 1024
     FRAME_PERIOD = 2 * 4.988662131519274
     MCEP_DIM = 34
     MCEP_ALPHA = 0.455
+    AUDIO_DIM = MCEP_DIM + 3
 
 def readwav(file, fs=SAMPLE_RATE):
     x, origfs = sf.read(file)
