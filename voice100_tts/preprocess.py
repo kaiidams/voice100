@@ -13,6 +13,7 @@ from .data import open_index_data_for_write
 CORPUSDATA_PATH = {
     'tsukuyomi_normal': 'data/balance_sentences.txt',
     'css10ja': 'data/japanese-single-speaker-speech-dataset/transcript.txt',
+    'kokoro_large': 'data/kokoro-speech-v1_1-large/metadata.csv',
     'kokoro_small': 'data/kokoro-speech-v1_0-small/metadata.csv',
     'kokoro_tiny': 'data/kokoro-speech-v1_0-tiny/metadata.csv',
 }
@@ -28,6 +29,7 @@ WAVDATA_PATH = {
 # F0 mean +/- 2.5 std
 F0_RANGE = {
     'css10ja': (57.46701428196299, 196.7528135117272),
+    'kokoro_large': (57.46701428196299, 196.7528135117272),
     'kokoro_small': (57.46701428196299, 196.7528135117272),
     'kokoro_tiny': (57.46701428196299, 196.7528135117272),
     'tsukuyomi_normal': (138.7640311667663, 521.2003965068923)
@@ -263,7 +265,7 @@ if __name__ == '__main__':
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
-        if args.dataset == 'kokoro_small' or args.dataset == 'kokoro_tiny':
+        if args.dataset.startswith('kokoro_'):
             preprocess_ljcorpus(args.dataset)
         else:
             preprocess_jvs(args.dataset)
