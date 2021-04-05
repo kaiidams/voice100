@@ -267,7 +267,7 @@ class Voice100CTCTask(object):
       logits = model(audio, mask=audio_mask)
       return tf.nn.softmax(logits)
 
-    train_ds = get_input_fn(params, split=False, use_align=False)
+    train_ds = get_input_fn(params, split=False)
     model = self.create_model()
     optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
 
