@@ -144,7 +144,7 @@ def to_tf_dataset_tts(ds, shuffle, audio_dim, sos, eos):
     for index in indices:
       text, align, audio = ds[index]
       target_output = np.append(align[1:], eos)
-      target_input = align
+      target_input = np.copy(align)
       target_input[0] = sos
       audio = normalize(audio)
       yield text, target_input, target_output, audio
@@ -187,8 +187,8 @@ def get_input_fn_tts(params, **kwargs):
   ds = IndexDataDataset(
     [
     'data/%s-text' % params['dataset'],
-    'data/%s-align-16000' % params['dataset'],
-    'data/%s-audio-16000' % params['dataset']
+    'data/%s-align-%d' % (params['dataset'], params['sample_rate']),
+    'data/%s-audio-%d' % (params['dataset'], params['sample_rate'])
     ],
      [(-1,), (-1,), (-1, params['audio_dim'])],
       [np.uint8, np.uint8, np.float32])
