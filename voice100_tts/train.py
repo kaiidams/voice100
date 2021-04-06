@@ -43,8 +43,8 @@ class Voice100Task(object):
         input_vocab_size=params['vocab_size'],
         target_vocab_size=params['vocab_size'] + 1,
         target_audio_dim=params['audio_dim'],
-        pe_input=1000,
-        pe_target=1000,
+        pe_input=2000,
+        pe_target=2000,
         rate=params['dropout'])
     return model
 
