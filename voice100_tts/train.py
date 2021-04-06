@@ -10,6 +10,10 @@ from .encoder import VOCAB_SIZE
 import time
 import os
 
+AUDIO_DIM = 27
+AUDIO_DIM = 38
+SAMPLE_RATE = 22050
+
 class Voice100Task(object):
 
   def __init__(self, flags_obj):
@@ -17,7 +21,8 @@ class Voice100Task(object):
     self.params = dict(
       dataset=flags_obj.dataset,
       vocab_size=VOCAB_SIZE,
-      audio_dim=27,
+      audio_dim=AUDIO_DIM,
+      sample_rate=SAMPLE_RATE,
       hidden_size=128,
       num_hidden_layers=4,
       num_heads=8,
