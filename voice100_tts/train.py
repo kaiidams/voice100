@@ -28,7 +28,7 @@ class Voice100Task(object):
       num_heads=8,
       filter_size=512,
       dropout=0.1,
-      batch_size=30,
+      batch_size=20,
       num_epochs=600,
     )
 
