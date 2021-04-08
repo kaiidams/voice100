@@ -307,7 +307,7 @@ class Voice100Task(object):
       os.makedirs(os.path.dirname(output_file), exist_ok=True)
       np.savez('data/predict/%s_%s.npz' % (params['dataset'], batch), x=x, t=t, a=a, **attention_weights)
       x = (x * 32000 / np.max(x)).astype(np.int16)
-      sf.write(output_file, x, 16000, 'PCM_16')
+      sf.write(output_file, x, self.params['sample_rate'], 'PCM_16')
       #break
 
     print('done')
