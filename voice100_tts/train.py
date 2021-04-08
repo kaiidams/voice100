@@ -28,8 +28,9 @@ class Voice100Task(object):
       num_heads=8,
       filter_size=512,
       dropout=0.1,
-      batch_size=12,
+      batch_size=flags_obj.batch_size,
       num_epochs=600,
+      checkpoint_interval=flags_obj.checkpoint_interval
     )
 
   def create_model(self):
@@ -190,7 +191,7 @@ class Voice100Task(object):
           print(f'Align Loss {train_loss_align.result():.4f} Accuracy {train_accuracy_align.result():.4f}')
           print(f'Audio Loss {train_loss_audio.result():.4f}')
           
-      if (epoch + 1) % 10 == 0:
+      if (epoch + 1) % self.params['checkpoint_interval'] == 0:
         ckpt_save_path = ckpt_manager.save()
         print (f'Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}')
         
@@ -340,6 +341,12 @@ def define_voice100_flags():
   flags.DEFINE_string(
       'init_checkpoint', None,
       'Initial checkpoint (usually from a pre-trained BERT model).')
+  flags.DEFINE_integer(
+      'checkpoint_interval', default=5,
+      help='')
+  flags.DEFINE_integer(
+      'batch_size', default=12,
+      help='')
 
 if __name__ == "__main__":
   define_voice100_flags()
