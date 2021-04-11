@@ -22,6 +22,11 @@ else:
     CODEAP_DIM = 2
     AUDIO_DIM = 1 + (MCEP_DIM + 1) + CODEAP_DIM
 
+def readmp3(file, fs=SAMPLE_RATE):
+    x, origfs = librosa.load(file, fs)
+    x = x / x.max()
+    return x.astype(np.float64)
+
 def readwav(file, fs=SAMPLE_RATE):
     x, origfs = sf.read(file)
     if fs is not None:

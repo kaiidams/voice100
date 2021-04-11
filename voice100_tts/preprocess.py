@@ -6,7 +6,7 @@ import math
 from tqdm import tqdm
 import argparse
 
-from .vocoder import readwav, estimatef0, encode_audio, SAMPLE_RATE
+from .vocoder import readwav, readmp3, estimatef0, encode_audio, SAMPLE_RATE
 from .encoder import encode_text
 from .data import open_index_data_for_write
 
@@ -16,6 +16,7 @@ CORPUSDATA_PATH = {
     'kokoro_large': 'data/kokoro-speech-v1_1-large/metadata.csv',
     'kokoro_small': 'data/kokoro-speech-v1_0-small/metadata.csv',
     'kokoro_tiny': 'data/kokoro-speech-v1_0-tiny/metadata.csv',
+    'cv_ja': 'data/cv-corpus-6.1-2020-12-11/ja/validated.tsv',
 }
 
 WAVDATA_PATH = {
@@ -24,6 +25,7 @@ WAVDATA_PATH = {
     'hiroshiba_normal': 'data/hiroshiba_normal/hiroshiba_normal_%s.wav',
     'tsukuyomi_normal': 'data/つくよみちゃんコーパス Vol.1 声優統計コーパス（JVSコーパス準拠）'
         '/01 WAV（収録時の音量のまま）/VOICEACTRESS100_%s.wav',
+    'cv_ja': 'data/cv-corpus-6.1-2020-12-11/ja/clips/%s',
 }
 
 # F0 mean +/- 2.5 std
@@ -32,7 +34,8 @@ F0_RANGE = {
     'kokoro_large': (57.46701428196299, 196.7528135117272),
     'kokoro_small': (57.46701428196299, 196.7528135117272),
     'kokoro_tiny': (57.46701428196299, 196.7528135117272),
-    'tsukuyomi_normal': (138.7640311667663, 521.2003965068923)
+    'tsukuyomi_normal': (138.7640311667663, 521.2003965068923),
+    'cv_ja': (60, 520),
 }
 
 OUTPUT_PATH = 'data/%s_%s.npz'
@@ -68,6 +71,18 @@ def readcorpus_css10ja(file):
             monophone = css10ja2voca(yomi)
             corpus.append((id_, monophone))
     return corpus
+
+def readcorpus_commonvoice(file):
+    from ._text2voca import text2voca
+    res = []
+    with open(file, 'rt') as f:
+        for line in f:
+            parts = line.rstrip('\r\n').split('\t')
+            _, path, sentence, _, _, _, _, _, _, _ = parts
+            voca = ' '.join(x for _, x in text2voca(sentence))
+            res.append((path, voca))
+    res = res[1:]
+    return res
 
 def analyze_files(name, files, eps=1e-20):
     f0_list = []
@@ -225,6 +240,37 @@ def preprocess_jvs(name):
 
     finish_data(data, OUTPUT_PATH % (name, "train"))
 
+def preprocess_commonvoice(name):
+
+    sr = SAMPLE_RATE
+    f0_floor, f0_ceil = F0_RANGE[name]
+
+    corpus = readcorpus_commonvoice(CORPUSDATA_PATH[name])
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'clips')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
+
+    text_file = os.path.join('data', f'{name}-text')
+    audio_file = os.path.join('data', f'{name}-audio-{sr}')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    with open_index_data_for_write(text_file) as text_f:
+        with open_index_data_for_write(audio_file) as audio_f:
+            for id_, monophone in tqdm(corpus):
+                text = encode_text(monophone)
+                assert '..' not in id_ # Just make sure the file name is under the directory.
+                mp3_file = os.path.join(wavs_dir, id_)
+                cache_file = os.path.join(cache_dir, f'{id_}.npz')
+                if os.path.exists(cache_file):
+                    audio = np.load(cache_file, allow_pickle=False)['audio']
+                    assert audio.shape[0] > 0
+                else:
+                    x = readmp3(mp3_file)
+                    audio = encode_audio(x, f0_floor, f0_ceil)
+                    np.savez(cache_file, audio=audio)
+
+                text_f.write(bytes(memoryview(text)))
+                audio_f.write(bytes(memoryview(audio)))
+
 def normalize_css10ja(name):
 
     if False:
@@ -265,7 +311,9 @@ if __name__ == '__main__':
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
-        if args.dataset.startswith('kokoro_'):
+        elif args.dataset.startswith('kokoro_'):
             preprocess_ljcorpus(args.dataset)
+        elif args.dataset.startswith('cv_'):
+            preprocess_commonvoice(args.dataset)
         else:
             preprocess_jvs(args.dataset)
