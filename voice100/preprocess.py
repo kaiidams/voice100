@@ -9,6 +9,7 @@ import torchaudio
 
 from .encoder import encode_text
 from .encoder import encode_text2
+from .data import open_index_data_for_write
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -16,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 CORPUSDATA_CSS10JA_PATH = 'data/japanese-single-speaker-speech-dataset'
 CORPUSDATA_COMMONVOICE_PATH = 'data/cv-corpus-6.1-2020-12-11/ja'
 
-TEXT_PATH = 'data/%s-text.npz'
-AUDIO_PATH = 'data/%s-audio.npz'
+TEXT_PATH = 'data/%s-text'
+AUDIO_PATH = 'data/%s-audio'
 
 def readcorpus_css10ja(file):
     from ._css10ja2voca import css10ja2voca
@@ -29,30 +30,6 @@ def readcorpus_css10ja(file):
             monophone = css10ja2voca(yomi)
             corpus.append((id_, monophone))
     return corpus
-
-class IndexDataArray:
-    def __init__(self, file):
-        self.file = file
-        self.current = 0
-        self.indices = []
-        self.data = []
-
-    def __enter__(self):
-        return self
-
-    def write(self, data):
-        self.current += data.shape[0]
-        self.indices.append(self.current)
-        self.data.append(data)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type is None:
-            indices = np.array(self.indices, dtype=np.int32)
-            data = np.concatenate(self.data, axis=0)
-            np.savez(self.file, indices=indices, data=data)
-
-def open_index_data_for_write(file):
-    return IndexDataArray(file)
 
 def get_silent_ranges(voiced):
     silent_to_voiced = np.where((~voiced[:-1]) & voiced[1:])[0] + 1 # The position where the voice starts
