@@ -1,328 +1,294 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from absl import app
-from absl import flags
-from absl import logging
+import argparse
+import os
+import numpy as np
+import torch
+from torch import nn
+from tqdm import tqdm
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pack_sequence, pad_sequence, pad_packed_sequence
+from .encoder import decode_text, merge_repeated, VOCAB_SIZE
+from .data import IndexDataDataset
 
-import tensorflow as tf
-
-from .data_pipeline import get_input_fn_ctc as get_input_fn
-from .encoder import VOCAB_SIZE
+SAMPLE_RATE = 16000
 AUDIO_DIM = 27
-AUDIO_DIM = 38
-SAMPLE_RATE = 22050
+BLANK_IDX = 0
+assert VOCAB_SIZE == 47, VOCAB_SIZE
 
-# It achieves 65-75 loss after 40 epochs.
+DEFAULT_PARAMS = dict(
+    audio_dim=AUDIO_DIM,
+    hidden_dim=128,
+    bottleneck_dim=16,
+    vocab_size=VOCAB_SIZE
+)
 
-def ctc_best_path(logits, labels):
-  # Expand label with blanks
-  import numpy as np
-  tmp = labels
-  labels = np.zeros(labels.shape[0] * 2 + 1, dtype=np.int32)
-  labels[1::2] = tmp
+class TextAudioDataset(Dataset, IndexDataDataset):
+    def __init__(self, text_file, audio_file):
+        self.dataset = IndexDataDataset(
+            [text_file, audio_file], [(-1,), (-1, AUDIO_DIM)], [np.int8, np.float32])
 
-  cands = [
-      (logits[0, labels[0]], [labels[0]])
-  ]
-  for i in range(1, logits.shape[0]):
-    next_cands = []
-    for pos, (logit1, path1) in enumerate(cands):
-      logit1 = logit1 + logits[i, labels[pos]]
-      path1 = path1 + [labels[pos]]
-      next_cands.append((logit1, path1))
+    def __len__(self):
+        return len(self.dataset)
 
-    for pos, (logit2, path2) in enumerate(cands):
-      if pos + 1 < len(labels):
-        logit2 = logit2 + logits[i, labels[pos + 1]]
-        path2 = path2 + [labels[pos + 1]]
-        if pos + 1 == len(next_cands):
-          next_cands.append((logit2, path2))
-        else:
-          logit, _ = next_cands[pos + 1]
-          if logit2 > logit:
-            next_cands[pos + 1] = (logit2, path2)
-            
-    for pos, (logit3, path3) in enumerate(cands):
-      if pos + 2 < len(labels) and labels[pos + 1] == 0:
-        logit3 = logit3 + logits[i, labels[pos + 2]]
-        path3.append(labels[pos + 2])
-        if pos + 2 == len(next_cands):
-          next_cands.append((logit3, path3))
-        else:
-          logit, _ = next_cands[pos + 2]
-          if logit3 > logit:
-            next_cands[pos + 2] = (logit3, path3)
-            
-    cands = next_cands
+    def __getitem__(self, idx):
+        text, audio = self.dataset[idx]
+        text = torch.from_numpy(text.copy())
+        audio = torch.from_numpy(audio.copy())
+        return text, audio
 
-  logprob, best_path = cands[-1]
-  best_path = np.array(best_path, dtype=np.uint8)
-  return logprob, best_path
+class AudioToChar(nn.Module):
 
-def parse_decoded(decoded):
-  from .preprocess import feature2text
-  res = [[] for _ in range(decoded.shape[0])]
-  for (idx, pos), value in zip(decoded.indices, decoded.values):
-    res[idx].append(value)
-  return [
-    feature2text(t)
-    for t in res
-  ]
+    def __init__(self, audio_dim, hidden_dim, bottleneck_dim, vocab_size):
+        super(AudioToChar, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
+        self.dense1 = nn.Linear(hidden_dim * 2, bottleneck_dim)
+        self.dropout1 = nn.Dropout()
+        self.dense2 = nn.Linear(bottleneck_dim, vocab_size)
 
-class Voice100CTCTask(object):
+    def forward(self, audio):
+        lstm_out, _ = self.lstm(audio)
+        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
+        out = self.dense1(lstm_out)
+        out = self.dropout1(out)
+        out = torch.tanh(out)
+        out = self.dense2(out)
+        return out, lstm_out_len
 
-  def __init__(self, flags_obj):
-    self.flags_obj = flags_obj
-    self.params = dict(
-      dataset=flags_obj.dataset,
-      batch_size=128, audio_dim=AUDIO_DIM, sample_rate=SAMPLE_RATE,
-      vocab_size=VOCAB_SIZE,
-      hidden_dim=128, learning_rate=0.001,
-      num_epochs=50)
-
-  def create_model(self):
-    params = self.params
-    model = tf.keras.Sequential([
-      tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(params['hidden_dim'], return_sequences=True, time_major=False),
-        merge_mode="concat"),
-      tf.keras.layers.Dense(params['vocab_size'])
-    ])
-    return model
-
-  def train(self):
-
-    flags_obj = self.flags_obj
-    params = self.params
-
-    train_step_signature = [
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-        tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-    ]
-
-    @tf.function(input_signature=train_step_signature)
-    def train_step(text, text_len, audio, audio_len):
-
-      audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
-      #audio_mask = tf.expand_dims(audio_mask, axis=-1)
-
-      with tf.GradientTape() as tape:
-        logits = model(audio, mask=audio_mask)
-        loss = tf.nn.ctc_loss(text, logits, text_len, audio_len, logits_time_major=False)
-        loss = tf.reduce_mean(loss)
-
-        gradients = tape.gradient(loss, model.trainable_variables)    
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-
-      return loss
-
-    train_ds, test_ds = get_input_fn(params)
-    model = self.create_model()
-    optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
-
-    ckpt = tf.train.Checkpoint(model=model, optimizer=optimizer)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
-
-    # if a checkpoint exists, restore the latest checkpoint.
-    if ckpt_manager.latest_checkpoint:
-      ckpt.restore(ckpt_manager.latest_checkpoint)
-      print ('Latest checkpoint restored!!')
-      print(f'{ckpt_manager.latest_checkpoint}')
-      start_epoch = ckpt.save_counter.numpy()
+def generate_batch(data_batch):
+    text_batch, audio_batch = [], []
+    for (text_item, audio_item) in data_batch:
+        text_batch.append(text_item)
+        audio_batch.append(audio_item)
+    if False:
+        text_batch = sorted(text_batch, key=lambda x: len(x), reverse=True)
+        audio_batch = sorted(audio_batch, key=lambda x: len(x), reverse=True)
+        text_batch = pack_sequence(text_batch)
+        audio_batch = pack_sequence(audio_batch)
+        return text_batch, audio_batch
+    elif False:
+        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+        audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
+        text_batch = pad_sequence(text_batch, BLANK_IDX)
+        audio_batch = pad_sequence(audio_batch, BLANK_IDX)
+        return text_batch, audio_batch, text_len, audio_len
     else:
-      start_epoch = 0
+        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+        text_batch = pad_sequence(text_batch, BLANK_IDX)
+        audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
+        return text_batch, audio_batch, text_len
 
-    log_dir = flags_obj.model_dir
-    summary_writer = tf.summary.create_file_writer(log_dir)
+def generate_batch_audio(data_batch):
+    audio_batch = data_batch
+    audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
+    return audio_batch
 
-    train_loss = tf.keras.metrics.Mean(name='train_loss')
+def train_loop(dataloader, model, device, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    model.train()
+    for batch, (text, audio, text_len) in enumerate(dataloader):
+        text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        logits, probs_len = model(audio)
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        text = text.transpose(0, 1)
+        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
+        loss = loss_fn(log_probs, text, probs_len, text_len)
 
-    for epoch in range(start_epoch, params['num_epochs']):
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-      train_loss.reset_states()
-
-      for batch, example in enumerate(train_ds):
-        loss = train_step(*example).numpy()
-        train_loss(loss)
-
-      with summary_writer.as_default():
-        tf.summary.scalar('loss', train_loss.result(), step=epoch)
-
-      print(f'Epoch {epoch} Loss {train_loss.result():.4f}')
-
-      ckpt_save_path = ckpt_manager.save()
-      print (f'Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}')
-  
-  def eval(self):
-
-    flags_obj = self.flags_obj
-    params = self.params
-    params['batch_size'] = 4
-
-    eval_step_signature = [
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-        tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-    ]
-
-    @tf.function(input_signature=eval_step_signature)
-    def eval_step(text, text_len, align, audio, end, audio_len):
-
-      audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
-      #audio_mask = tf.expand_dims(audio_mask, axis=-1)
-
-      logits = model(audio, mask=audio_mask) # (batch_size, audio_len, vocab_size)
-      loss = tf.nn.ctc_loss(text, logits, text_len, audio_len, logits_time_major=False)
-      loss = tf.reduce_mean(loss)
-
-      logits = tf.transpose(logits, [1, 0, 2]) # (audio_len, batch_size, vocab_size)
-      decoded, log_probability = tf.nn.ctc_beam_search_decoder(logits, audio_len)
-      # Truth must be a SparseTensor.
-      error_rate = 0 # tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), text))
-
-      return decoded[0], log_probability, error_rate
-
-    eval_ds = eval_input_fn(params, use_align=False)
-    model = self.create_model()
-
-    ckpt = tf.train.Checkpoint(model=model)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
-    if not ckpt_manager.latest_checkpoint:
-      raise ValueError()
-    ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
-
-    for batch, example in enumerate(eval_ds):
-      decoded, log_probability, error_rate = eval_step(*example)
-      if batch % 10 == 0:
-        print(f'Batch {batch} log_probability {log_probability}')
-      parsed_decoded = parse_decoded(decoded[0])
-      for t in parsed_decoded:
-        print(t)
-  
-  def predict(self):
-
-    import numpy as np
-
-    flags_obj = self.flags_obj
-    params = self.params
-
-    predict_step_signature = [
-        tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-    ]
-
-    @tf.function(input_signature=predict_step_signature)
-    def predict_step(audio, audio_len):
-      audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
-      logits = model(audio, mask=audio_mask)
-      return tf.nn.softmax(logits)
-
-    train_ds, test_ds = get_input_fn(params, use_align=False)
-    model = self.create_model()
-    optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
-
-    ckpt = tf.train.Checkpoint(model=model, optimizer=optimizer)
-    #ckpt = tf.train.Checkpoint(model=model)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
-    if not ckpt_manager.latest_checkpoint:
-      raise ValueError()
-    print(ckpt_manager.latest_checkpoint)
-    ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
-
-    for batch, example in enumerate(test_ds):
-      text, text_len, audio, audio_len = example
-      probs = predict_step(audio, audio_len)
-      print(probs.shape)
-
-      x = tf.argmax(probs, axis=-1)
-      print(x.shape)
-      for i in range(probs.shape[0]):
-        from .encoder import decode_text
-        print(decode_text(x[i, :].numpy()))
-
-      if batch % 10 == 0:
-        print(f'Batch {batch}')
-
-  def align(self):
-
-    import numpy as np
-
-    flags_obj = self.flags_obj
-    params = self.params
-
-    align_step_signature = [
-        tf.TensorSpec(shape=[None, None, params['audio_dim']], dtype=tf.float32),
-        tf.TensorSpec(shape=[None], dtype=tf.int32),
-    ]
-
-    @tf.function(input_signature=align_step_signature)
-    def align_step(audio, audio_len):
-      audio_mask = tf.sequence_mask(audio_len, maxlen=tf.shape(audio)[1])
-      logits = model(audio, mask=audio_mask)
-      return tf.nn.softmax(logits)
-
-    train_ds = get_input_fn(params, split=False)
-    model = self.create_model()
-    optimizer = tf.keras.optimizers.Adam(params['learning_rate'])
-
-    ckpt = tf.train.Checkpoint(model=model, optimizer=optimizer)
-    #ckpt = tf.train.Checkpoint(model=model)
-    ckpt_manager = tf.train.CheckpointManager(ckpt, flags_obj.model_dir, max_to_keep=5)
-    if not ckpt_manager.latest_checkpoint:
-      raise ValueError()
-    ckpt.restore(ckpt_manager.latest_checkpoint).expect_partial()
-
-    from .data import open_index_data_for_write
-    align_file = 'data/%s-align-%d' % (params['dataset'], params['sample_rate'])
-    with open_index_data_for_write(align_file) as align_f:
-      for batch, example in enumerate(train_ds):
-        text, text_len, audio, audio_len = example
-        probs = align_step(audio, audio_len) # [batch_size, audio_len, vocab_size]
-
-        for i in range(probs.shape[0]):
-          labels = text[i, :text_len[i]].numpy()
-          logits = tf.math.log(probs[i, :audio_len[i]]).numpy()
-          _, best_path = ctc_best_path(logits, labels)
-          align_f.write(bytes(memoryview(best_path)))
-          assert audio_len[i] == len(best_path)
         if batch % 10 == 0:
-          print(f'Batch {batch}')
+            loss, current = loss.item(), batch * len(text)
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
-def main(_):
-  flags_obj = flags.FLAGS
+def test_loop(dataloader, model, device, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    test_loss = 0
+    model.eval()
+    for batch, (text, audio, text_len) in enumerate(dataloader):
+        text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        logits, probs_len = model(audio)
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        text = text.transpose(0, 1)
+        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
+        loss = loss_fn(log_probs, text, probs_len, text_len)
 
-  task = Voice100CTCTask(flags_obj)
+        test_loss += loss.item() * text.shape[0]
 
-  if flags_obj.mode == 'train':
-    task.train()
-  elif flags_obj.mode == 'eval':
-    task.eval()
-  elif flags_obj.mode == 'predict':
-    task.predict()
-  elif flags_obj.mode == 'align':
-    task.align()
-  else:
-    raise ValueError(flags_obj.mode)
+    test_loss /= size
+    print(f"Avg loss: {test_loss:>8f} \n")
+    return test_loss
+
+def train(args, device, sample_rate=SAMPLE_RATE):
+
+    learning_rate = 0.001
+    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    loss_fn = nn.CTCLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    loss_fn = loss_fn.to(device)
+
+    ds = TextAudioDataset(
+        text_file=f'data/{args.dataset}-text-{sample_rate}',
+        audio_file=f'data/{args.dataset}-audio-{sample_rate}')
+    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
+
+    train_dataloader = DataLoader(train_ds, batch_size=128, shuffle=True, num_workers=0, collate_fn=generate_batch)
+    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+
+    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    if os.path.exists(ckpt_path):
+        state = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(state['model'])
+        optimizer.load_state_dict(state['optimizer'])
+        epoch = state['epoch']
+        #loss = checkpoint['loss']
+    else:
+        epoch = 0
+
+    epochs = 100
+    for t in range(epoch, epochs):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loop(train_dataloader, model, device, loss_fn, optimizer)
+        test_loss = test_loop(test_dataloader, model, device, loss_fn, optimizer)
+        os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+        torch.save({
+            'epoch': epoch + 1,
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'loss': test_loss,
+            }, ckpt_path)
+
+def evaluate(args, device):
+
+    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    state = torch.load(ckpt_path, map_location=device)
+    model.load_state_dict(state['model'])
+
+    ds = TextAudioDataset(
+        text_file=f'data/{args.dataset}-text.npz',
+        audio_file=f'data/{args.dataset}-audio.npz')
+    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
+    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+
+    model.eval()
+    for batch, (text, audio, text_len) in enumerate(test_dataloader):
+        text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        logits, logits_len = model(audio)
+        # logits: [audio_len, batch_size, vocab_size]
+        preds = torch.argmax(logits, axis=-1).T
+        preds_len = logits_len
+        for i in range(preds.shape[0]):
+            pred_decoded = decode_text2(preds[i, :preds_len[i]])
+            pred_decoded = merge_repeated2(pred_decoded)
+            target_decoded = decode_text2(text[:text_len[i], i])
+            print('----')
+            print(target_decoded)
+            print(pred_decoded)
+
+def predict(args, device):
+
+    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    state = torch.load(ckpt_path, map_location=device)
+    model.load_state_dict(state['model'])
+
+    ds = IndexArrayDataset(args.audio)
+    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch_audio)
+
+    from .preprocess import open_index_data_for_write
+
+    model.eval()
+    with torch.no_grad():
+        with open_index_data_for_write(args.output) as file:
+            with open(args.text, 'wt') as txtfile:
+                audio_index = 0
+                for i, audio in enumerate(tqdm(dataloader)):
+                    #audio = pack_sequence([audio], enforce_sorted=False)
+                    logits, logits_len = model(audio)
+                    # logits: [audio_len, batch_size, vocab_size]
+                    preds = torch.argmax(logits, axis=-1).T
+                    # preds: [batch_size, audio_len]
+                    preds_len = logits_len
+                    for j in range(preds.shape[0]):
+                        pred_decoded = decode_text2(preds[j, :preds_len[j]])
+                        pred_decoded = merge_repeated2(pred_decoded)
+                        x = logits[:preds_len[j], j, :].numpy().astype(np.float32)
+                        file.write(x)
+                        txtfile.write(f'{audio_index+1}|{pred_decoded}\n')
+                        audio_index += 1
+
+def export(args, device):
+
+    class AudioToChar(nn.Module):
+
+        def __init__(self, n_mfcc, hidden_dim, vocab_size):
+            super(AudioToChar, self).__init__()
+            self.hidden_dim = hidden_dim
+            self.lstm = nn.LSTM(n_mfcc, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
+            self.dense = nn.Linear(hidden_dim * 2, vocab_size)
+
+        def forward(self, audio):
+            lstm_out, _ = self.lstm(audio)
+            return self.dense(lstm_out)
+
+    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    state = torch.load(ckpt_path, map_location=device)
+    model.load_state_dict(state['model'])
+    model.eval()
+    batch_size = 1
+    audio_len = 17
+    audio_dim = DEFAULT_PARAMS['n_mfcc']
+    audio_batch = torch.rand([audio_len, batch_size, audio_dim], dtype=torch.float32)
+    #audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
+    with torch.no_grad():
+        outputs = model(audio_batch)
+        print(outputs.shape)
+        assert outputs.shape[2] == VOCAB_SIZE
+        print(type(audio_batch))
+        output_file = 'voice100.onnx'
+        torch.onnx.export(
+            model,
+            (audio_batch,),
+            output_file,
+            export_params=True,
+            opset_version=13,
+            do_constant_folding=True,
+            input_names = ['input'],
+            output_names = ['output'],
+            dynamic_axes={'input' : {0: 'input_length'},
+                        'output' : {0: 'input_length'}})
 
 if __name__ == '__main__':
-  flags.DEFINE_string(
-      name="model_dir",
-      short_name="md",
-      default="/tmp",
-      help="The location of the model checkpoint files.")
-  flags.DEFINE_string(
-      name='dataset',
-      default='kokoro_tiny',
-      help='Dataset to use')
-  flags.DEFINE_string(
-      name='mode',
-      default='train',
-      help='mode: train, eval, or predict')
-  logging.set_verbosity(logging.INFO)
-  app.run(main)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train', action='store_true', help='Split audio and encode with WORLD vocoder.')
+    parser.add_argument('--eval', action='store_true', help='Split audio and encode with WORLD vocoder.')
+    parser.add_argument('--predict', action='store_true', help='Split audio and encode with WORLD vocoder.')
+    parser.add_argument('--export', action='store_true', help='Export to ONNX')
+    parser.add_argument('--no-cuda', action='store_true', default=False,
+                        help='disables CUDA training')
+    parser.add_argument('--seed', type=int, default=1, metavar='S',
+                        help='random seed (default: 1)')
+    parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
+    parser.add_argument('--model-dir', help='Directory to save checkpoints.')
+    parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
+    args = parser.parse_args()
+    use_cuda = not args.no_cuda and torch.cuda.is_available()
+
+    torch.manual_seed(args.seed)
+    
+    device = torch.device("cuda" if use_cuda else "cpu")
+    
+    if args.train:
+        train(args, device)
+    elif args.eval:
+        evaluate(args, device)
+    elif args.predict:
+        predict(args, device)
+    elif args.export:
+        export(args, device)
+    else:
+        raise ValueError('Unknown command')
