@@ -7,14 +7,12 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_sequence, pad_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pad_packed_sequence
 from .encoder import decode_text, merge_repeated, VOCAB_SIZE
-from .data import IndexDataDataset
-from .normalization import NORMPARAMS
+from .dataset import get_input_fn
 
 SAMPLE_RATE = 16000
 AUDIO_DIM = 27
-BLANK_IDX = 0
 assert VOCAB_SIZE == 47, VOCAB_SIZE
 
 DEFAULT_PARAMS = dict(
@@ -23,33 +21,6 @@ DEFAULT_PARAMS = dict(
     bottleneck_dim=16,
     vocab_size=VOCAB_SIZE
 )
-
-normparams = NORMPARAMS['cv_ja_kokoro_tiny-16000']
-
-# Utils
-
-def normalize(audio):
-  return (audio - normparams[:, 0]) / normparams[:, 1]
-
-def unnormalize(audio):
-  return normparams[:, 1] * audio + normparams[:, 0]
-
-# Dataset
-
-class TextAudioDataset(Dataset, IndexDataDataset):
-    def __init__(self, text_file, audio_file):
-        self.dataset = IndexDataDataset(
-            [text_file, audio_file], [(-1,), (-1, AUDIO_DIM)], [np.uint8, np.float32])
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        text, audio = self.dataset[idx]
-        text = torch.from_numpy(text.copy())
-        audio = normalize(audio)
-        audio = torch.from_numpy(audio.copy())
-        return text, audio
 
 class AudioToChar(nn.Module):
 
@@ -64,34 +35,6 @@ class AudioToChar(nn.Module):
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
         out = self.dense(lstm_out)
         return out, lstm_out_len
-
-def generate_batch(data_batch):
-    text_batch, audio_batch = [], []       
-    for (text_item, audio_item) in data_batch:
-        text_batch.append(text_item)
-        audio_batch.append(audio_item)
-    if False:
-        text_batch = sorted(text_batch, key=lambda x: len(x), reverse=True)
-        audio_batch = sorted(audio_batch, key=lambda x: len(x), reverse=True)
-        text_batch = pack_sequence(text_batch)
-        audio_batch = pack_sequence(audio_batch)
-        return text_batch, audio_batch
-    elif False:
-        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-        audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
-        text_batch = pad_sequence(text_batch, BLANK_IDX)
-        audio_batch = pad_sequence(audio_batch, BLANK_IDX)
-        return text_batch, audio_batch, text_len, audio_len
-    else:
-        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-        text_batch = pad_sequence(text_batch, BLANK_IDX)
-        audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-        return text_batch, audio_batch, text_len
-
-def generate_batch_audio(data_batch):
-    audio_batch = data_batch
-    audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-    return audio_batch
 
 def train_loop(dataloader, model, device, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -136,7 +79,7 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
     print(f"Avg loss: {test_loss:>8f} \n")
     return test_loss
 
-def train(args, device, sample_rate=SAMPLE_RATE):
+def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
 
     learning_rate = 0.001
     model = AudioToChar(**DEFAULT_PARAMS).to(device)
@@ -144,16 +87,11 @@ def train(args, device, sample_rate=SAMPLE_RATE):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = loss_fn.to(device)
 
-    ds = TextAudioDataset(
-        text_file=f'data/{args.dataset}-text-{sample_rate}',
-        audio_file=f'data/{args.dataset}-audio-{sample_rate}')
-    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
-
-    train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_batch)
-    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    train_dataloader, test_dataloader = get_input_fn(args, sample_rate, audio_dim)
 
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     if os.path.exists(ckpt_path):
+        print(f'Loding from checkpoint {ckpt_path}')
         state = torch.load(ckpt_path, map_location=device)
         model.load_state_dict(state['model'])
         optimizer.load_state_dict(state['optimizer'])
@@ -297,6 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
     parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
+    parser.add_argument('--init-checkpoint', help='Initial checkpoint')
     parser.add_argument('--model-dir', help='Directory to save checkpoints.')
     parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
     args = parser.parse_args()
