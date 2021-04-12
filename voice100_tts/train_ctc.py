@@ -231,7 +231,6 @@ def predict(args, device, sample_rate=SAMPLE_RATE):
                     preds_len = logits_len
                     for j in range(preds.shape[0]):
                         #pred_decoded = decode_text(text[:text_len[j], j])
-                        print(preds.shape)
                         pred_decoded = decode_text(preds[j, :preds_len[j]])
                         pred_decoded = merge_repeated(pred_decoded)
                         x = logits[:preds_len[j], j, :].numpy().astype(np.float32)

@@ -174,7 +174,7 @@ def train(args, device, sample_rate=SAMPLE_RATE):
         epoch = state['epoch']
         #loss = checkpoint['loss']
     else:
-        init_ckpt = 'model/vc_ctc-20210412/ctc-last.pth'
+        init_ckpt = os.path.join(args.model_dir, 'ctc-last.pth')
         state = torch.load(init_ckpt, map_location=device)
         model_state = state['model']
         print(model_state.keys())
@@ -250,7 +250,9 @@ def predict(args, device, sample_rate=SAMPLE_RATE):
             #audio = pack_sequence([audio], enforce_sorted=False)
             output, output_len = model(audio)
             for j in range(output.shape[1]):
-                output_decoded = decode_audio(output[:output_len[j], j].numpy())
+                o = output[:output_len[j], j].numpy()
+                o = unnormalize(o)
+                output_decoded = decode_audio(o)
                 file = f'data/predict/{args.dataset}_{audio_index}.wav'
                 writewav(file, output_decoded, sample_rate)
                 audio_index += 1
