@@ -224,37 +224,36 @@ def evaluate(args, device):
             print(target_decoded)
             print(pred_decoded)
 
-def predict(args, device):
+def predict(args, device, sample_rate=SAMPLE_RATE):
 
     model = VoiceConvert(**DEFAULT_PARAMS).to(device)
-    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    ckpt_path = os.path.join(args.model_dir, 'vc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
 
-    ds = IndexArrayDataset(args.audio)
-    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch_audio)
+    ds = TextAudioDataset(
+        text_file=f'data/{args.dataset}-text-{sample_rate}',
+        audio_file=f'data/{args.dataset}-audio-{sample_rate}')
+    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
+    ds = test_ds
+
+    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
+
 
     from .preprocess import open_index_data_for_write
+    from .vocoder import decode_audio, writewav
 
     model.eval()
     with torch.no_grad():
-        with open_index_data_for_write(args.output) as file:
-            with open(args.text, 'wt') as txtfile:
-                audio_index = 0
-                for i, audio in enumerate(tqdm(dataloader)):
-                    #audio = pack_sequence([audio], enforce_sorted=False)
-                    logits, logits_len = model(audio)
-                    # logits: [audio_len, batch_size, vocab_size]
-                    preds = torch.argmax(logits, axis=-1).T
-                    # preds: [batch_size, audio_len]
-                    preds_len = logits_len
-                    for j in range(preds.shape[0]):
-                        pred_decoded = decode_text2(preds[j, :preds_len[j]])
-                        pred_decoded = merge_repeated2(pred_decoded)
-                        x = logits[:preds_len[j], j, :].numpy().astype(np.float32)
-                        file.write(x)
-                        txtfile.write(f'{audio_index+1}|{pred_decoded}\n')
-                        audio_index += 1
+        audio_index = 0
+        for i, (text, audio, text_len) in enumerate(tqdm(dataloader)):
+            #audio = pack_sequence([audio], enforce_sorted=False)
+            output, output_len = model(audio)
+            for j in range(output.shape[1]):
+                output_decoded = decode_audio(output[:output_len[j], j].numpy())
+                file = f'data/predict/{args.dataset}_{audio_index}.wav'
+                writewav(file, output_decoded, sample_rate)
+                audio_index += 1
 
 def export(args, device):
 

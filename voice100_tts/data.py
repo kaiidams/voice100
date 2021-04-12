@@ -95,3 +95,7 @@ class IndexDataDataset:
             np.frombuffer(reader[index], dtype=dtype).reshape(shape)
             for reader, shape, dtype in zip(self.readers, self.shapes, self.dtypes)
         ]
+
+    def close(self):
+        for reader in self.readers:
+            reader.close()
