@@ -111,7 +111,7 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
         loss = loss_fn(output, target)
 
         mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
-        mask = mask.to(torch.float32)
+        mask = mask.to(torch.float32).to(device)
         loss = torch.sum(loss * mask) / torch.sum(mask)
 
         optimizer.zero_grad()

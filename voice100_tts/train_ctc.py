@@ -114,7 +114,7 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
         optimizer.step()
 
         if batch % 10 == 0:
-            loss, current = loss.item(), batch * len(text)
+            loss, current = loss.item(), batch * text.shape[1]
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 def test_loop(dataloader, model, device, loss_fn, optimizer):
@@ -129,7 +129,7 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         loss = loss_fn(log_probs, text, probs_len, text_len)
 
-        test_loss += loss.item() * text.shape[0]
+        test_loss += loss.item() * text.shape[1]
 
     test_loss /= size
     print(f"Avg loss: {test_loss:>8f} \n")
