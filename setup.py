@@ -7,17 +7,13 @@ setup(
     author_email="katsuya.iida@gmail.com",
     description="Voice100 TTS",
     license="MIT",
-    url="https://github.com/kaiidams/voice100",
+    url="https://github.com/kaiidams/voice100-tts",
     packages=['voice100_tts'],
     long_description="Voice100 is a small TTS for Japanese.",
     entry_points={
-        "console_scripts": [
-            "voice100-preprocess = voice100.preprocess",
-            "voice100-train = voice100.train"
-        ]
     },
     install_requires=[
-        'tensorflow'
+        'pytorch'
     ],
     extras_require={
         "audio": [
