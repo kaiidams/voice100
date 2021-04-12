@@ -207,7 +207,7 @@ def evaluate(args, device):
         text_file=f'data/{args.dataset}-text.npz',
         audio_file=f'data/{args.dataset}-audio.npz')
     train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
-    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
 
     model.eval()
     for batch, (text, audio, text_len) in enumerate(test_dataloader):
@@ -310,7 +310,7 @@ if __name__ == '__main__':
                         help='random seed (default: 1)')
     parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
     parser.add_argument('--model-dir', help='Directory to save checkpoints.')
-    parser.add_argument('--batch-size', type=int, default=2, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
