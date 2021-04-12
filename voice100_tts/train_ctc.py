@@ -98,18 +98,21 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
     model.train()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
-        logits, probs_len = model(audio)
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
+        logits, log_probs_len = model(audio)
+        # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         text = text.transpose(0, 1)
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = loss_fn(log_probs, text, probs_len, text_len)
+        loss = loss_fn(log_probs, text, log_probs_len, text_len)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         if batch % 10 == 0:
-            loss, current = loss.item(), batch * text.shape[1]
+            loss, current = loss.item(), batch * text.shape[0]
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 def test_loop(dataloader, model, device, loss_fn, optimizer):
@@ -118,13 +121,16 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
     model.eval()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
         logits, probs_len = model(audio)
+        # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         text = text.transpose(0, 1)
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         loss = loss_fn(log_probs, text, probs_len, text_len)
 
-        test_loss += loss.item() * text.shape[1]
+        test_loss += loss.item() * text.shape[0]
 
     test_loss /= size
     print(f"Avg loss: {test_loss:>8f} \n")
@@ -143,8 +149,8 @@ def train(args, device, sample_rate=SAMPLE_RATE):
         audio_file=f'data/{args.dataset}-audio-{sample_rate}')
     train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
 
-    train_dataloader = DataLoader(train_ds, batch_size=128, shuffle=True, num_workers=0, collate_fn=generate_batch)
-    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_batch)
+    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
 
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     if os.path.exists(ckpt_path):
@@ -180,7 +186,7 @@ def evaluate(args, device):
         text_file=f'data/{args.dataset}-text.npz',
         audio_file=f'data/{args.dataset}-audio.npz')
     train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
-    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
 
     model.eval()
     for batch, (text, audio, text_len) in enumerate(test_dataloader):
