@@ -19,7 +19,7 @@ assert VOCAB_SIZE == 47, VOCAB_SIZE
 DEFAULT_PARAMS = dict(
     audio_dim=AUDIO_DIM,
     hidden_dim=128,
-    bottleneck_dim=16,
+    bottleneck_dim=128,
     vocab_size=VOCAB_SIZE
 )
 
