@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence, pad_packed_sequence
 from .encoder import decode_text, merge_repeated, VOCAB_SIZE
 from .data import IndexDataDataset
+from .normalization import NORMPARAMS
 
 SAMPLE_RATE = 16000
 AUDIO_DIM = 27
@@ -19,9 +20,21 @@ assert VOCAB_SIZE == 47, VOCAB_SIZE
 DEFAULT_PARAMS = dict(
     audio_dim=AUDIO_DIM,
     hidden_dim=128,
-    bottleneck_dim=128,
+    bottleneck_dim=16,
     vocab_size=VOCAB_SIZE
 )
+
+normparams = NORMPARAMS['cv_ja_kokoro_tiny-16000']
+
+# Utils
+
+def normalize(audio):
+  return (audio - normparams[:, 0]) / normparams[:, 1]
+
+def unnormalize(audio):
+  return normparams[:, 1] * audio + normparams[:, 0]
+
+# Dataset
 
 class TextAudioDataset(Dataset, IndexDataDataset):
     def __init__(self, text_file, audio_file):
@@ -34,6 +47,7 @@ class TextAudioDataset(Dataset, IndexDataDataset):
     def __getitem__(self, idx):
         text, audio = self.dataset[idx]
         text = torch.from_numpy(text.copy())
+        audio = normalize(audio)
         audio = torch.from_numpy(audio.copy())
         return text, audio
 

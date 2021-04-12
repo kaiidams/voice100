@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence, pad_packed_sequence
 from .encoder import decode_text, merge_repeated, VOCAB_SIZE
 from .data import IndexDataDataset
+from .normalization import NORMPARAMS
 
 SAMPLE_RATE = 16000
 AUDIO_DIM = 27
@@ -23,6 +24,18 @@ DEFAULT_PARAMS = dict(
     vocab_size=VOCAB_SIZE
 )
 
+normparams = NORMPARAMS['cv_ja_kokoro_tiny-16000']
+
+# Utils
+
+def normalize(audio):
+  return (audio - normparams[:, 0]) / normparams[:, 1]
+
+def unnormalize(audio):
+  return normparams[:, 1] * audio + normparams[:, 0]
+
+# Dataset
+
 class TextAudioDataset(Dataset, IndexDataDataset):
     def __init__(self, text_file, audio_file):
         self.dataset = IndexDataDataset(
@@ -34,26 +47,29 @@ class TextAudioDataset(Dataset, IndexDataDataset):
     def __getitem__(self, idx):
         text, audio = self.dataset[idx]
         text = torch.from_numpy(text.copy())
+        audio = normalize(audio)
         audio = torch.from_numpy(audio.copy())
         return text, audio
 
-class AudioToChar(nn.Module):
+class VoiceConvert(nn.Module):
 
     def __init__(self, audio_dim, hidden_dim, bottleneck_dim, vocab_size):
-        super(AudioToChar, self).__init__()
+        super(VoiceConvert, self).__init__()
         self.hidden_dim = hidden_dim
         self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
         self.dense1 = nn.Linear(hidden_dim * 2, bottleneck_dim)
-        self.dropout1 = nn.Dropout()
-        self.dense2 = nn.Linear(bottleneck_dim, vocab_size)
+        self.conv1 = nn.Conv1d(bottleneck_dim, audio_dim, 5, padding=2)
 
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
         out = self.dense1(lstm_out)
-        out = self.dropout1(out)
         out = torch.tanh(out)
-        out = self.dense2(out)
+        out = out.transpose(0, 1)
+        out = out.transpose(1, 2)
+        out = self.conv1(out)
+        out = out.transpose(1, 2)
+        out = out.transpose(0, 1)
         return out, lstm_out_len
 
 def generate_batch(data_batch):
@@ -89,43 +105,56 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
     model.train()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
-        logits, probs_len = model(audio)
-        log_probs = nn.functional.log_softmax(logits, dim=-1)
-        text = text.transpose(0, 1)
+        output, output_len = model(audio)
+        target, target_len = pad_packed_sequence(audio)
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = loss_fn(log_probs, text, probs_len, text_len)
+        loss = loss_fn(output, target)
+
+        mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
+        mask = mask.to(torch.float32)
+        loss = torch.sum(loss * mask) / torch.sum(mask)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         if batch % 10 == 0:
-            loss, current = loss.item(), batch * len(text)
+            loss, current = loss.item(), batch * text.shape[1]
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 def test_loop(dataloader, model, device, loss_fn, optimizer):
-    size = len(dataloader.dataset)
     test_loss = 0
+    test_sum = 0
     model.eval()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
-        logits, probs_len = model(audio)
-        log_probs = nn.functional.log_softmax(logits, dim=-1)
-        text = text.transpose(0, 1)
+        output, output_len = model(audio)
+        target, target_len = pad_packed_sequence(audio)
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = loss_fn(log_probs, text, probs_len, text_len)
+        loss = loss_fn(output, target)
 
-        test_loss += loss.item() * text.shape[0]
+        mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
+        mask = mask.to(torch.float32)
+        loss = torch.sum(loss * mask)
+        
+        test_loss += loss.item()
+        test_sum += torch.sum(mask)
 
-    test_loss /= size
+    test_loss /= test_sum
     print(f"Avg loss: {test_loss:>8f} \n")
     return test_loss
 
 def train(args, device, sample_rate=SAMPLE_RATE):
 
     learning_rate = 0.001
-    model = AudioToChar(**DEFAULT_PARAMS).to(device)
-    loss_fn = nn.CTCLoss()
+    model = VoiceConvert(**DEFAULT_PARAMS).to(device)
+
+    for param in model.dense1.parameters():
+        param.requires_grad = False
+    for param in model.lstm.parameters():
+        param.requires_grad = False
+
+    loss_fn = nn.MSELoss(reduction='none')
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = loss_fn.to(device)
 
@@ -134,10 +163,10 @@ def train(args, device, sample_rate=SAMPLE_RATE):
         audio_file=f'data/{args.dataset}-audio-{sample_rate}')
     train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
 
-    train_dataloader = DataLoader(train_ds, batch_size=128, shuffle=True, num_workers=0, collate_fn=generate_batch)
-    test_dataloader = DataLoader(test_ds, batch_size=128, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_batch)
+    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
 
-    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
+    ckpt_path = os.path.join(args.model_dir, 'vc-last.pth')
     if os.path.exists(ckpt_path):
         state = torch.load(ckpt_path, map_location=device)
         model.load_state_dict(state['model'])
@@ -145,6 +174,13 @@ def train(args, device, sample_rate=SAMPLE_RATE):
         epoch = state['epoch']
         #loss = checkpoint['loss']
     else:
+        init_ckpt = 'model/vc_ctc-20210412/ctc-last.pth'
+        state = torch.load(init_ckpt, map_location=device)
+        model_state = state['model']
+        print(model_state.keys())
+        #del model_state['dense2.weight']
+        #del model_state['dense2.bias']
+        model.load_state_dict(model_state, strict=False)
         epoch = 0
 
     epochs = 100
@@ -162,7 +198,7 @@ def train(args, device, sample_rate=SAMPLE_RATE):
 
 def evaluate(args, device):
 
-    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    model = VoiceConvert(**DEFAULT_PARAMS).to(device)
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
@@ -190,7 +226,7 @@ def evaluate(args, device):
 
 def predict(args, device):
 
-    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    model = VoiceConvert(**DEFAULT_PARAMS).to(device)
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
@@ -222,10 +258,10 @@ def predict(args, device):
 
 def export(args, device):
 
-    class AudioToChar(nn.Module):
+    class VoiceConvert(nn.Module):
 
         def __init__(self, n_mfcc, hidden_dim, vocab_size):
-            super(AudioToChar, self).__init__()
+            super(VoiceConvert, self).__init__()
             self.hidden_dim = hidden_dim
             self.lstm = nn.LSTM(n_mfcc, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
             self.dense = nn.Linear(hidden_dim * 2, vocab_size)
@@ -234,7 +270,7 @@ def export(args, device):
             lstm_out, _ = self.lstm(audio)
             return self.dense(lstm_out)
 
-    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    model = VoiceConvert(**DEFAULT_PARAMS).to(device)
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
@@ -274,7 +310,7 @@ if __name__ == '__main__':
                         help='random seed (default: 1)')
     parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
     parser.add_argument('--model-dir', help='Directory to save checkpoints.')
-    parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=2, help='Batch size')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
