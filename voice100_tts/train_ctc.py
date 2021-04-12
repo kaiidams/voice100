@@ -57,17 +57,12 @@ class AudioToChar(nn.Module):
         super(AudioToChar, self).__init__()
         self.hidden_dim = hidden_dim
         self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
-        self.dense1 = nn.Linear(hidden_dim * 2, bottleneck_dim)
-        self.dropout1 = nn.Dropout()
-        self.dense2 = nn.Linear(bottleneck_dim, vocab_size)
+        self.dense = nn.Linear(hidden_dim * 2, vocab_size)
 
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
-        out = self.dense1(lstm_out)
-        out = self.dropout1(out)
-        out = torch.tanh(out)
-        out = self.dense2(out)
+        out = self.dense(lstm_out)
         return out, lstm_out_len
 
 def generate_batch(data_batch):
