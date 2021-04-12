@@ -200,7 +200,7 @@ def preprocess_ljcorpus(name):
     wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'wavs')
     cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
 
-    text_file = os.path.join('data', f'{name}-text')
+    text_file = os.path.join('data', f'{name}-text-{sr}')
     audio_file = os.path.join('data', f'{name}-audio-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -249,7 +249,7 @@ def preprocess_commonvoice(name):
     wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'clips')
     cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
 
-    text_file = os.path.join('data', f'{name}-text')
+    text_file = os.path.join('data', f'{name}-text-{sr}')
     audio_file = os.path.join('data', f'{name}-audio-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 

@@ -54,6 +54,10 @@ class IndexDataFileReader:
         end = self.indices[index]
         return self.data[start:end]
 
+    def close(self):
+        self.data.close()
+        self.file_obj.close()
+
 class IndexDataDataset:
     def __init__(self, readers_or_files, shapes, dtypes):
         self.readers = [
