@@ -58,7 +58,7 @@ class VoiceConvert(nn.Module):
         self.hidden_dim = hidden_dim
         self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_dim * 2, vocab_size)
-        self.conv = nn.Conv1d(bottleneck_dim, audio_dim, 5, padding=2)
+        self.conv = nn.Conv1d(vocab_size, audio_dim, 5, padding=2)
 
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
