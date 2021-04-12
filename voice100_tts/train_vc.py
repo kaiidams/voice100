@@ -249,6 +249,9 @@ def predict(args, device, sample_rate=SAMPLE_RATE):
         for i, (text, audio, text_len) in enumerate(tqdm(dataloader)):
             #audio = pack_sequence([audio], enforce_sorted=False)
             output, output_len = model(audio)
+            audio, audio_len = pad_packed_sequence(audio)
+            output[:, :, 0] = audio[:, :, 0]
+            output[:, :, -1] = audio[:, :, -1]
             for j in range(output.shape[1]):
                 o = output[:output_len[j], j].numpy()
                 o = unnormalize(o)

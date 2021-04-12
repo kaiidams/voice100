@@ -20,12 +20,16 @@ def merge_data(src_list, dst, sample_rate):
 
 merge_data(['cv_ja', 'kokoro_tiny'], 'cv_ja_kokoro_tiny', 16000)
 
-def a():
+def fix_index():
     import os
-    dataset = 'kokoro_tiny'
-    tag = 'audio'
-    sample_rate=16000
-    os.rename(f'data/{dataset}-{tag}-{sample_rate}.idx', f'data/{dataset}-{tag}-{sample_rate}.idx.bak')
-    indices = np.fromfile(f'data/{dataset}-{tag}-{sample_rate}.idx.bak', dtype=np.int32).astype(np.int64)
-    with open(f'data/{dataset}-{tag}-{sample_rate}.idx', 'wb') as f:
+    import sys
+    file = sys.argv[1] + '.idx'
+    assert not os.path.exists(file + '.bak')
+    os.rename(file, file + '.bak')
+    indices = np.fromfile(file + '.bak', dtype=np.int32).astype(np.int64)
+    assert indices[0] != 0
+    assert indices[1] != 0
+    assert indices[2] != 0
+    assert indices[3] != 0
+    with open(file, 'wb') as f:
         f.write(bytes(memoryview(indices)))
