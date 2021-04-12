@@ -57,17 +57,17 @@ class VoiceConvert(nn.Module):
         super(VoiceConvert, self).__init__()
         self.hidden_dim = hidden_dim
         self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
-        self.dense1 = nn.Linear(hidden_dim * 2, bottleneck_dim)
-        self.conv1 = nn.Conv1d(bottleneck_dim, audio_dim, 5, padding=2)
+        self.dense = nn.Linear(hidden_dim * 2, vocab_size)
+        self.conv = nn.Conv1d(bottleneck_dim, audio_dim, 5, padding=2)
 
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
-        out = self.dense1(lstm_out)
+        out = self.dense(lstm_out)
         out = torch.tanh(out)
         out = out.transpose(0, 1)
         out = out.transpose(1, 2)
-        out = self.conv1(out)
+        out = self.conv(out)
         out = out.transpose(1, 2)
         out = out.transpose(0, 1)
         return out, lstm_out_len
@@ -149,7 +149,7 @@ def train(args, device, sample_rate=SAMPLE_RATE):
     learning_rate = 0.001
     model = VoiceConvert(**DEFAULT_PARAMS).to(device)
 
-    for param in model.dense1.parameters():
+    for param in model.dense.parameters():
         param.requires_grad = False
     for param in model.lstm.parameters():
         param.requires_grad = False
