@@ -6,7 +6,7 @@ import math
 from tqdm import tqdm
 import argparse
 
-from .vocoder import readwav, readmp3, estimatef0, encode_audio, SAMPLE_RATE
+from .vocoder import readwav, readmp3, estimatef0, encode_audio, SAMPLE_RATE, AUDIO_DIM
 from .encoder import encode_text
 from .data import open_index_data_for_write
 
@@ -271,22 +271,24 @@ def preprocess_commonvoice(name):
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))
 
-def normalize_css10ja(name):
+def compute_normalization(args, sample_rate=SAMPLE_RATE):
+    from .data import IndexDataFileReader
+    reader = IndexDataFileReader('data/%s-audio-%d' % (args.dataset, sample_rate))
+    audio_list = []
+    for index in tqdm(range(len(reader))):
+        audio = np.frombuffer(reader[index], dtype=np.float32).reshape((-1, AUDIO_DIM))
+        audio_list.append(audio)
+    reader.close()
+    audio = np.concatenate(audio_list, axis=0)
 
-    if False:
-        from .data_pipeline import normparams
-        for split in 'train', 'val':
-            with np.load(OUTPUT_PATH % (name, split) + '.bak') as f:
-                data = {k:v for k, v in f.items()}
-            print(data.keys())
-            print(data['audio_data'].shape)
-            data['audio_data'] = data['audio_data'] * normparams[:, 0] + normparams[:, 1]
-            np.savez(OUTPUT_PATH % (name, split), **data)
+    f0 = audio[:, 0]
+    f0mean = np.mean(f0[f0 >= 30])
+    f0std = np.std(f0[f0 >= 30])
 
-    with np.load(OUTPUT_PATH % (name, "train")) as f:
-        audio = f['audio_data']
     mean = np.mean(audio, axis=0)
     std = np.std(audio, axis=0)
+    mean[0] = f0mean
+    std[0] = f0std
     x = np.stack([mean, std], axis=1)
     for i in range(x.shape[0]):
         print('    [%s, %s],' % (str(x[i, 0]), str(x[i, 1])))
@@ -304,10 +306,7 @@ if __name__ == '__main__':
         else:
             analyze_jvs(args.dataset)
     if args.normalize:
-        if args.dataset == 'css10ja':
-            normalize_css10ja(args.dataset)
-        else:
-            assert False
+        compute_normalization(args)
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
