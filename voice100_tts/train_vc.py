@@ -47,10 +47,6 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
         output = pack_padded_sequence(output, output_len)
         loss = loss_fn(output.data, audio.data)
 
-        mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
-        mask = mask.to(torch.float32).to(device)
-        loss = torch.sum(loss * mask) / torch.sum(mask)
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -69,16 +65,11 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
         # audio: PackedSequence
         output, output_len = model(audio)
         # output: [audio_len, batch_size, vocab_size]
-        target, target_len = pad_packed_sequence(audio)
-        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = loss_fn(output, target)
-
-        mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
-        mask = mask.to(torch.float32).to(device)
-        loss = torch.sum(loss * mask)
+        output = pack_padded_sequence(output, output_len)
+        loss = loss_fn(output.data, audio.data)
         
-        test_loss += loss.item()
-        test_sum += torch.sum(mask)
+        test_loss += loss.item() * text.shape[1]
+        test_sum += text.shape[1]
 
     test_loss /= test_sum
     print(f"Avg loss: {test_loss:>8f} \n")
@@ -94,17 +85,11 @@ def train(args, device, sample_rate=SAMPLE_RATE):
     for param in model.lstm.parameters():
         param.requires_grad = False
 
-    loss_fn = nn.MSELoss(reduction='none')
+    loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = loss_fn.to(device)
 
-    ds = TextAudioDataset(
-        text_file=f'data/{args.dataset}-text-{sample_rate}',
-        audio_file=f'data/{args.dataset}-audio-{sample_rate}')
-    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
-
-    train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_batch)
-    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
+    train_dataloader, test_dataloader = get_input_fn(args, sample_rate, audio_dim)
 
     ckpt_path = os.path.join(args.model_dir, 'vc-last.pth')
     if os.path.exists(ckpt_path):
