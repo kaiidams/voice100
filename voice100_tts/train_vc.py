@@ -18,13 +18,11 @@ assert VOCAB_SIZE == 47, VOCAB_SIZE
 DEFAULT_PARAMS = dict(
     audio_dim=AUDIO_DIM,
     hidden_dim=128,
-    bottleneck_dim=16,
-    vocab_size=VOCAB_SIZE
 )
 
 class VoiceConvert(nn.Module):
 
-    def __init__(self, audio_dim, hidden_dim, bottleneck_dim):
+    def __init__(self, audio_dim, hidden_dim):
         super(VoiceConvert, self).__init__()
         self.hidden_dim = hidden_dim
         self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=4, dropout=0.2, bidirectional=True)
