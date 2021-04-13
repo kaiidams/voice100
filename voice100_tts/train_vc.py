@@ -79,10 +79,18 @@ def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
     learning_rate = 0.001
     model = VoiceConvert(**DEFAULT_PARAMS).to(device)
 
-    for param in model.dense.parameters():
-        param.requires_grad = False
-    for param in model.lstm.parameters():
-        param.requires_grad = False
+    #for param in model.dense.parameters():
+    #    param.requires_grad = False
+    #for param in model.lstm.parameters():
+    #    param.requires_grad = False
+    lstm.weight_ih_l0.requires_grad = False
+    lstm.weight_hh_l0.requires_grad = False
+    lstm.bias_ih_l0.requires_grad = False
+    lstm.bias_hh_l0.requires_grad = False
+    lstm.weight_ih_l0_reverse.requires_grad = False
+    lstm.weight_hh_l0_reverse.requires_grad = False
+    lstm.bias_ih_l0_reverse.requires_grad = False
+    lstm.bias_hh_l0_reverse.requires_grad = False
 
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
