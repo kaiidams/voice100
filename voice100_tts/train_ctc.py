@@ -97,6 +97,7 @@ def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
         optimizer.load_state_dict(state['optimizer'])
         epoch = state['epoch']
         #loss = checkpoint['loss']
+        epoch = 40
     else:
         epoch = 0
 
@@ -106,7 +107,7 @@ def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
         test_loss = test_loop(test_dataloader, model, device, loss_fn, optimizer)
         os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
         torch.save({
-            'epoch': epoch + 1,
+            'epoch': t + 1,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'loss': test_loss,

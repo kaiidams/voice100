@@ -7,14 +7,12 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_sequence, pad_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pad_packed_sequence
 from .encoder import decode_text, merge_repeated, VOCAB_SIZE
-from .data import IndexDataDataset
-from .normalization import NORMPARAMS
+from .dataset import get_input_fn
 
 SAMPLE_RATE = 16000
 AUDIO_DIM = 27
-BLANK_IDX = 0
 assert VOCAB_SIZE == 47, VOCAB_SIZE
 
 DEFAULT_PARAMS = dict(
@@ -24,91 +22,32 @@ DEFAULT_PARAMS = dict(
     vocab_size=VOCAB_SIZE
 )
 
-normparams = NORMPARAMS['cv_ja_kokoro_tiny-16000']
-
-# Utils
-
-def normalize(audio):
-  return (audio - normparams[:, 0]) / normparams[:, 1]
-
-def unnormalize(audio):
-  return normparams[:, 1] * audio + normparams[:, 0]
-
-# Dataset
-
-class TextAudioDataset(Dataset, IndexDataDataset):
-    def __init__(self, text_file, audio_file):
-        self.dataset = IndexDataDataset(
-            [text_file, audio_file], [(-1,), (-1, AUDIO_DIM)], [np.int8, np.float32])
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        text, audio = self.dataset[idx]
-        text = torch.from_numpy(text.copy())
-        audio = normalize(audio)
-        audio = torch.from_numpy(audio.copy())
-        return text, audio
-
 class VoiceConvert(nn.Module):
 
-    def __init__(self, audio_dim, hidden_dim, bottleneck_dim, vocab_size):
+    def __init__(self, audio_dim, hidden_dim, bottleneck_dim):
         super(VoiceConvert, self).__init__()
         self.hidden_dim = hidden_dim
-        self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(hidden_dim * 2, vocab_size)
-        self.conv = nn.Conv1d(vocab_size, audio_dim, 5, padding=2)
+        self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=4, dropout=0.2, bidirectional=True)
+        self.dense = nn.Linear(hidden_dim * 2, audio_dim)
 
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
+        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
         out = self.dense(lstm_out)
-        out = torch.tanh(out)
-        out = out.transpose(0, 1)
-        out = out.transpose(1, 2)
-        out = self.conv(out)
-        out = out.transpose(1, 2)
-        out = out.transpose(0, 1)
         return out, lstm_out_len
-
-def generate_batch(data_batch):
-    text_batch, audio_batch = [], []
-    for (text_item, audio_item) in data_batch:
-        text_batch.append(text_item)
-        audio_batch.append(audio_item)
-    if False:
-        text_batch = sorted(text_batch, key=lambda x: len(x), reverse=True)
-        audio_batch = sorted(audio_batch, key=lambda x: len(x), reverse=True)
-        text_batch = pack_sequence(text_batch)
-        audio_batch = pack_sequence(audio_batch)
-        return text_batch, audio_batch
-    elif False:
-        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-        audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
-        text_batch = pad_sequence(text_batch, BLANK_IDX)
-        audio_batch = pad_sequence(audio_batch, BLANK_IDX)
-        return text_batch, audio_batch, text_len, audio_len
-    else:
-        text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-        text_batch = pad_sequence(text_batch, BLANK_IDX)
-        audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-        return text_batch, audio_batch, text_len
-
-def generate_batch_audio(data_batch):
-    audio_batch = data_batch
-    audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-    return audio_batch
 
 def train_loop(dataloader, model, device, loss_fn, optimizer):
     size = len(dataloader.dataset)
     model.train()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
         output, output_len = model(audio)
-        target, target_len = pad_packed_sequence(audio)
-        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = loss_fn(output, target)
+        # output: [audio_len, batch_size, vocab_size]
+        output = pack_padded_sequence(output, output_len)
+        loss = loss_fn(output.data, audio.data)
 
         mask = torch.arange(target.shape[0])[:, None, None] < target_len[None, :, None]
         mask = mask.to(torch.float32).to(device)
@@ -128,7 +67,10 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
     model.eval()
     for batch, (text, audio, text_len) in enumerate(dataloader):
         text, audio, text_len = text.to(device), audio.to(device), text_len.to(device)
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
         output, output_len = model(audio)
+        # output: [audio_len, batch_size, vocab_size]
         target, target_len = pad_packed_sequence(audio)
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         loss = loss_fn(output, target)
