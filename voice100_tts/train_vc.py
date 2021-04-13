@@ -31,7 +31,6 @@ class VoiceConvert(nn.Module):
     def forward(self, audio):
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
-        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
         out = self.dense(lstm_out)
         return out, lstm_out_len
 
