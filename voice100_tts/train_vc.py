@@ -43,7 +43,7 @@ def train_loop(dataloader, model, device, loss_fn, optimizer):
         # audio: PackedSequence
         output, output_len = model(audio)
         # output: [audio_len, batch_size, vocab_size]
-        output = pack_padded_sequence(output, output_len)
+        output = pack_padded_sequence(output, output_len, enforce_sorted=False)
         loss = loss_fn(output.data, audio.data)
 
         optimizer.zero_grad()
@@ -64,7 +64,7 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
         # audio: PackedSequence
         output, output_len = model(audio)
         # output: [audio_len, batch_size, vocab_size]
-        output = pack_padded_sequence(output, output_len)
+        output = pack_padded_sequence(output, output_len, enforce_sorted=False)
         loss = loss_fn(output.data, audio.data)
         
         test_loss += loss.item() * text.shape[1]
