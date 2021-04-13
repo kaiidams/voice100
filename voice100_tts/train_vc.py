@@ -75,7 +75,7 @@ def test_loop(dataloader, model, device, loss_fn, optimizer):
     print(f"Avg loss: {test_loss:>8f} \n")
     return test_loss
 
-def train(args, device, sample_rate=SAMPLE_RATE):
+def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
 
     learning_rate = 0.001
     model = VoiceConvert(**DEFAULT_PARAMS).to(device)
