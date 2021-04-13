@@ -120,19 +120,18 @@ def train(args, device, sample_rate=SAMPLE_RATE):
         state = torch.load(init_ckpt, map_location=device)
         model_state = state['model']
         print(model_state.keys())
-        #del model_state['dense2.weight']
-        #del model_state['dense2.bias']
+        del model_state['dense.weight']
+        del model_state['dense.bias']
         model.load_state_dict(model_state, strict=False)
         epoch = 0
 
-    epochs = 100
-    for t in range(epoch, epochs):
+    for t in range(epoch, args.epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train_loop(train_dataloader, model, device, loss_fn, optimizer)
         test_loss = test_loop(test_dataloader, model, device, loss_fn, optimizer)
         os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
         torch.save({
-            'epoch': epoch + 1,
+            'epoch': t + 1,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'loss': test_loss,
@@ -256,6 +255,7 @@ if __name__ == '__main__':
                         help='random seed (default: 1)')
     parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
     parser.add_argument('--model-dir', help='Directory to save checkpoints.')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()

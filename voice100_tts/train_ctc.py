@@ -97,7 +97,6 @@ def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
         optimizer.load_state_dict(state['optimizer'])
         epoch = state['epoch']
         #loss = checkpoint['loss']
-        epoch = 40
     else:
         epoch = 0
 
