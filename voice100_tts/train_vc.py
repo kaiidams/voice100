@@ -83,14 +83,14 @@ def train(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
     #    param.requires_grad = False
     #for param in model.lstm.parameters():
     #    param.requires_grad = False
-    lstm.weight_ih_l0.requires_grad = False
-    lstm.weight_hh_l0.requires_grad = False
-    lstm.bias_ih_l0.requires_grad = False
-    lstm.bias_hh_l0.requires_grad = False
-    lstm.weight_ih_l0_reverse.requires_grad = False
-    lstm.weight_hh_l0_reverse.requires_grad = False
-    lstm.bias_ih_l0_reverse.requires_grad = False
-    lstm.bias_hh_l0_reverse.requires_grad = False
+    model.lstm.weight_ih_l0.requires_grad = False
+    model.lstm.weight_hh_l0.requires_grad = False
+    model.lstm.bias_ih_l0.requires_grad = False
+    model.lstm.bias_hh_l0.requires_grad = False
+    model.lstm.weight_ih_l0_reverse.requires_grad = False
+    model.lstm.weight_hh_l0_reverse.requires_grad = False
+    model.lstm.bias_ih_l0_reverse.requires_grad = False
+    model.lstm.bias_hh_l0_reverse.requires_grad = False
 
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
