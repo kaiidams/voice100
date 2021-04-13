@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_packed_sequence
+from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from .encoder import decode_text, merge_repeated, VOCAB_SIZE
 from .dataset import get_input_fn
 
