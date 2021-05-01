@@ -163,37 +163,32 @@ def evaluate(args, device):
             print(target_decoded)
             print(pred_decoded)
 
-def predict(args, device, sample_rate=SAMPLE_RATE):
+def predict(args, device, sample_rate=SAMPLE_RATE, audio_dim=AUDIO_DIM):
 
     model = VoiceConvert(**DEFAULT_PARAMS).to(device)
     ckpt_path = os.path.join(args.model_dir, 'vc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
 
-    ds = TextAudioDataset(
-        text_file=f'data/{args.dataset}-text-{sample_rate}',
-        audio_file=f'data/{args.dataset}-audio-{sample_rate}')
-    train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
-    ds = test_ds
-
-    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
-
+    train_dataloader, test_dataloader = get_input_fn(args, sample_rate, audio_dim)
 
     from .preprocess import open_index_data_for_write
     from .vocoder import decode_audio, writewav
+    from .dataset import unnormalize
 
     model.eval()
     with torch.no_grad():
         audio_index = 0
-        for i, (text, audio, text_len) in enumerate(tqdm(dataloader)):
+        for i, (text, audio, text_len) in enumerate(tqdm(test_dataloader)):
             #audio = pack_sequence([audio], enforce_sorted=False)
             output, output_len = model(audio)
             audio, audio_len = pad_packed_sequence(audio)
-            output[:, :, 0] = audio[:, :, 0]
-            output[:, :, -1] = audio[:, :, -1]
+            #output[:, :, 0] = audio[:, :, 0]
+            #output[:, :, -1] = audio[:, :, -1]
             for j in range(output.shape[1]):
                 o = output[:output_len[j], j].numpy()
                 o = unnormalize(o)
+                #o[:, 0] = o[:, 0] * 1.5
                 output_decoded = decode_audio(o)
                 file = f'data/predict/{args.dataset}_{audio_index}.wav'
                 writewav(file, output_decoded, sample_rate)

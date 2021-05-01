@@ -11,7 +11,7 @@ from .encoder import encode_text
 from .data import open_index_data_for_write
 
 CORPUSDATA_PATH = {
-    'tsukuyomi_normal': 'data/balance_sentences.txt',
+    'jvs': 'data/balance_sentences.txt',
     'css10ja': 'data/japanese-single-speaker-speech-dataset/transcript.txt',
     'kokoro_large': 'data/kokoro-speech-v1_1-large/metadata.csv',
     'kokoro_small': 'data/kokoro-speech-v1_0-small/metadata.csv',
@@ -34,20 +34,22 @@ F0_RANGE = {
     'kokoro_large': (57.46701428196299, 196.7528135117272),
     'kokoro_small': (57.46701428196299, 196.7528135117272),
     'kokoro_tiny': (57.46701428196299, 196.7528135117272),
+    'tsuchiya_normal': (108.7640311667663, 421.2003965068923), # ?
     'tsukuyomi_normal': (138.7640311667663, 521.2003965068923),
     'cv_ja': (60, 520),
 }
 
 OUTPUT_PATH = 'data/%s_%s.npz'
 
-def readcorpus(file):
+def readcorpus_jvs(file):
+    from ._text2voca import text2voca
     corpus = []
     with open(file) as f:
         f.readline()
         for line in f:
             parts = line.rstrip('\r\n').split('\t')
-            id_, _, monophone, _ = parts
-            monophone = monophone.replace('/', '').replace(',', '')
+            id_, _, _, monophone = parts
+            monophone = monophone.replace('/', ' ').replace(',', ' ')
             corpus.append((id_, monophone))
 
     return corpus
@@ -129,7 +131,7 @@ def analyze_css10ja(name):
     analyze_files(name, files)
 
 def analyze_jvs(name):
-    corpus = readcorpus(CORPUSDATA_PATH)
+    corpus = readcorpus_jvs(CORPUSDATA_PATH)
     files = []
     for id_, monophone in corpus:
         assert len(id_) == 3
@@ -222,23 +224,37 @@ def preprocess_ljcorpus(name):
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))
 
-def preprocess_jvs(name):
-    corpus = readcorpus(CORPUSDATA_PATH)
-    f0_floor, f0_ceil = F0_RANGE[name]
-    data = make_empty_data()
-    text_index = 0
-    audio_index = 0
-    for id_, monophone in tqdm(corpus):
-        assert len(id_) == 3
-        file = WAVDATA_PATH[name] % id_
-        x = readwav(file)
-        text = encode_text(monophone)
-        audio = encode_audio(x, f0_floor, f0_ceil)
-        text_index += text.shape[0]
-        audio_index += audio.shape[0]
-        append_data(data, id_, text_index, text, audio_index, audio)
+def preprocess_jvs(args):
+    corpus = readcorpus_jvs(CORPUSDATA_PATH['jvs'])
+    f0_floor, f0_ceil = F0_RANGE[args.dataset]
 
-    finish_data(data, OUTPUT_PATH % (name, "train"))
+    sr = SAMPLE_RATE
+
+    wavs_dir = WAVDATA_PATH[args.dataset]
+    cache_dir = os.path.join(WAVDATA_PATH[args.dataset], f'cache-{sr}')
+
+    text_file = os.path.join('data', f'{args.dataset}-text-{sr}')
+    audio_file = os.path.join('data', f'{args.dataset}-audio-{sr}')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    with open_index_data_for_write(text_file) as text_f:
+        with open_index_data_for_write(audio_file) as audio_f:
+            for id_, monophone in tqdm(corpus):
+                print(monophone)
+                text = encode_text(monophone)
+                assert '..' not in id_ # Just make sure the file name is under the directory.
+                mp3_file = os.path.join(wavs_dir % id_)
+                cache_file = os.path.join(cache_dir, f'{id_}.npz')
+                if os.path.exists(cache_file):
+                    audio = np.load(cache_file, allow_pickle=False)['audio']
+                    assert audio.shape[0] > 0
+                else:
+                    x = readmp3(mp3_file)
+                    audio = encode_audio(x, f0_floor, f0_ceil)
+                    np.savez(cache_file, audio=audio)
+
+                text_f.write(bytes(memoryview(text)))
+                audio_f.write(bytes(memoryview(audio)))
 
 def preprocess_commonvoice(name):
 
@@ -315,4 +331,4 @@ if __name__ == '__main__':
         elif args.dataset.startswith('cv_'):
             preprocess_commonvoice(args.dataset)
         else:
-            preprocess_jvs(args.dataset)
+            preprocess_jvs(args)
