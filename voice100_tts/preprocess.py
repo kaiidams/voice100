@@ -6,7 +6,7 @@ import math
 from tqdm import tqdm
 import argparse
 
-from .vocoder import readwav, readmp3, estimatef0, encode_audio, SAMPLE_RATE, AUDIO_DIM
+from .vocoder import *
 from .encoder import encode_text
 from .data import open_index_data_for_write
 
@@ -224,6 +224,53 @@ def preprocess_ljcorpus(name):
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))
 
+def preprocess_vc_ljcorpus(name):
+
+    melspec_per_audio = 5
+    sr = SAMPLE_RATE
+    f0_floor, f0_ceil = F0_RANGE[name]
+
+    corpus = readcorpus_ljcorpus(CORPUSDATA_PATH[name])
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'wavs')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-vc-{sr}')
+
+    melspec_file = os.path.join('data', f'{name}-vc-melspec-{sr}')
+    audio_file = os.path.join('data', f'{name}-vc-audio-{sr}')
+    os.makedirs(cache_dir, exist_ok=True)
+
+    melspec_vocoder = MelSpectrogramVocoder()
+    world_vocoder = WORLDVocoder()
+
+    with open_index_data_for_write(melspec_file) as melspec_f:
+        with open_index_data_for_write(audio_file) as audio_f:
+            for id_, _ in tqdm(corpus):                
+                assert '..' not in id_ # Just make sure the file name is under the directory.
+                wav_file = os.path.join(wavs_dir, f'{id_}.wav')
+                waveform, _ = librosa.load(wav_file, SAMPLE_RATE)
+
+                cache_file = os.path.join(cache_dir, f'{id_}.npz')
+                if os.path.exists(cache_file):
+                    audio = np.load(cache_file, allow_pickle=False)['arr_0']#['audio']
+                    assert audio.shape[0] > 0
+                else:
+                    audio = world_vocoder.encode(waveform)
+                    np.savez(cache_file, audio=audio)
+
+                audio_len = audio.shape[0]
+                audio_f.write(bytes(memoryview(audio)))
+
+                for i in range(melspec_per_audio):
+                    cache_file = os.path.join(cache_dir, f'{id_}_{i}.npz')
+                    if os.path.exists(cache_file):
+                        melspec = np.load(cache_file, allow_pickle=False)['melspec']
+                        assert melspec.shape[0] > 0
+                    else:
+                        melspec = melspec_vocoder.encode(waveform)
+                        np.savez(cache_file, melspec=melspec)
+
+                    assert melspec.shape[0] == audio_len, f'{audio.shape} {melspec.shape}'
+                    melspec_f.write(bytes(memoryview(melspec)))
+
 def preprocess_jvs(args):
     corpus = readcorpus_jvs(CORPUSDATA_PATH['jvs'])
     f0_floor, f0_ceil = F0_RANGE[args.dataset]
@@ -312,6 +359,7 @@ def compute_normalization(args, sample_rate=SAMPLE_RATE):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--analyze', action='store_true', help='Analyze F0 of sampled data.')
+    parser.add_argument('--vc', action='store_true', help='Preprocess data for voice convertion task')
     parser.add_argument('--normalize', action='store_true', help='Compute normalization parameters.')
     parser.add_argument('--dataset', required=True, help='Dataset to process, css10ja, tsukuyomi_normal')
     args = parser.parse_args()
@@ -321,7 +369,9 @@ if __name__ == '__main__':
             analyze_css10ja(args.dataset)
         else:
             analyze_jvs(args.dataset)
-    if args.normalize:
+    elif args.vc:
+        preprocess_vc_ljcorpus(args.dataset)
+    elif args.normalize:
         compute_normalization(args)
     else:
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
