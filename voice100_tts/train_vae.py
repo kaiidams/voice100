@@ -11,7 +11,7 @@ class Voice100AutoEncoder(pl.LightningModule):
 
     def __init__(self):
         super().__init__()
-        self.model = create_model()
+        self.model = create_model().cuda()
 
     def forward(self, melspec):
         return self.model(melspec)
