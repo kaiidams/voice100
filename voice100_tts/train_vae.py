@@ -51,5 +51,6 @@ if __name__ == '__main__':
     device = torch.device("cuda" if use_cuda else "cpu")
     autoencoder = Voice100AutoEncoder()
     trainer = pl.Trainer(gpus=1)
+    autoencoder.load_from_checkpoint('./lightning_logs/version_5/checkpoints/epoch=30-step=42119.ckpt')
     train_loader = get_vc_input_fn(args, 16000, 64, 27)
     trainer.fit(autoencoder, train_loader)
