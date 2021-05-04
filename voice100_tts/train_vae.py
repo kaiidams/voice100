@@ -24,7 +24,7 @@ class Voice100AutoEncoder(pl.LightningModule):
         audio_len = audio_len.cuda()
         audio_hat, _ = self.model(melspec)
         loss = F.mse_loss(audio_hat, audio, reduction='none')
-        loss_weights = (torch.arange(audio.shape[1])[None, :] < audio_len[:, None]).cuda().float()
+        loss_weights = (torch.arange(audio.shape[1]).cuda()[None, :] < audio_len[:, None]).float()
         loss = torch.mean(loss * loss_weights[:, :, None])
         self.log('train_loss', loss)
         return loss
