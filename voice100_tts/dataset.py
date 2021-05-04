@@ -110,5 +110,5 @@ def get_vc_input_fn(args, sample_rate, melspec_dim, audio_dim):
         melspec_dim=melspec_dim,
         audio_file=f'data/{args.dataset}-vc-audio-{sample_rate}',
         audio_dim=audio_dim)
-    train_dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=generate_vc_batch)
+    train_dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_vc_batch)
     return train_dataloader

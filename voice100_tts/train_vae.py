@@ -11,21 +11,17 @@ class Voice100AutoEncoder(pl.LightningModule):
 
     def __init__(self):
         super().__init__()
-        self.model = create_model().cuda()
+        self.model = create_model()
 
     def forward(self, melspec):
         return self.model(melspec)
 
     def training_step(self, batch, batch_idx):
         melspec, melspec_len, audio, audio_len = batch
-        melspec = melspec.cuda()
-        melspec_len = melspec.cuda()
-        audio = audio.cuda()
-        audio_len = audio_len.cuda()
         audio_hat, _ = self.model(melspec)
         loss = F.mse_loss(audio_hat, audio, reduction='none')
-        loss_weights = (torch.arange(audio.shape[1]).cuda()[None, :] < audio_len[:, None]).float()
-        loss = torch.mean(loss * loss_weights[:, :, None])
+        loss_weights = (torch.arange(audio.shape[1]).to(audio.device)[None, :] < audio_len[:, None]).float()
+        loss = torch.sum(loss * loss_weights[:, :, None]) / torch.sum(loss_weights)
         self.log('train_loss', loss)
         return loss
 
