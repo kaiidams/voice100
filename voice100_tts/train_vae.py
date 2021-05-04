@@ -49,7 +49,6 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     
     device = torch.device("cuda" if use_cuda else "cpu")
-    args.dataset = 'kokoro_tiny'
     autoencoder = Voice100AutoEncoder()
     trainer = pl.Trainer()
     train_loader = get_vc_input_fn(args, 16000, 64, 27)
