@@ -50,6 +50,6 @@ if __name__ == '__main__':
     
     device = torch.device("cuda" if use_cuda else "cpu")
     autoencoder = Voice100AutoEncoder()
-    trainer = pl.Trainer()
+    trainer = pl.Trainer(gpus=1)
     train_loader = get_vc_input_fn(args, 16000, 64, 27)
     trainer.fit(autoencoder, train_loader)
