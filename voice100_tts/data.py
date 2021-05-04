@@ -59,7 +59,7 @@ class IndexDataFileReader:
         self.file_obj.close()
 
 class IndexDataDataset:
-    def __init__(self, readers_or_files, shapes, dtypes):
+    def __init__(self, readers_or_files, shapes, dtypes, dups=None):
         self.readers = [
             IndexDataDataset._getreader(reader_or_file)
             for reader_or_file in readers_or_files
@@ -67,6 +67,10 @@ class IndexDataDataset:
         self.shapes = shapes
         self.dtypes = dtypes
         self.indices = None
+        if dups:
+            self.dups = dups
+        else:
+            self.dups = [1] * len(readers_or_files)
 
     def split(self, weights):
         slots = []
@@ -74,7 +78,7 @@ class IndexDataDataset:
             slots.extend([i] * weight)
         res = []
         for i in range(len(weights)):
-            ds = IndexDataDataset(self.readers, self.shapes, self.dtypes)
+            ds = IndexDataDataset(self.readers, self.shapes, self.dtypes, dups=self.dups)
             ds.indices = list(filter(lambda j: slots[j % len(slots)] == i, range(len(self))))
             res.append(ds)
         return res
@@ -92,8 +96,8 @@ class IndexDataDataset:
         if self.indices:
             index = self.indices[index]
         return [
-            np.frombuffer(reader[index], dtype=dtype).reshape(shape)
-            for reader, shape, dtype in zip(self.readers, self.shapes, self.dtypes)
+            np.frombuffer(reader[index // dup], dtype=dtype).reshape(shape)
+            for reader, shape, dtype, dup in zip(self.readers, self.shapes, self.dtypes, self.dups)
         ]
 
     def close(self):

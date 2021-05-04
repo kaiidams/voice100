@@ -250,7 +250,7 @@ def preprocess_vc_ljcorpus(name):
 
                 cache_file = os.path.join(cache_dir, f'{id_}.npz')
                 if os.path.exists(cache_file):
-                    audio = np.load(cache_file, allow_pickle=False)['arr_0']#['audio']
+                    audio = np.load(cache_file, allow_pickle=False)['audio']
                     assert audio.shape[0] > 0
                 else:
                     audio = world_vocoder.encode(waveform)

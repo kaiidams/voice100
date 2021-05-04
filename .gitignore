@@ -131,3 +131,4 @@ dmypy.json
 # Training data
 /data
 /model
+/lightning_logs

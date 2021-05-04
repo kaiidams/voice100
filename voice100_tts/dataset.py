@@ -36,6 +36,24 @@ class TextAudioDataset(Dataset):
         audio = torch.from_numpy(audio.copy())
         return text, audio
 
+class MelSpecAudioDataset(Dataset):
+    def __init__(self, melspec_file, melspec_dim, audio_file, audio_dim):
+        self.dataset = IndexDataDataset(
+            [melspec_file, audio_file],
+            [(-1, melspec_dim), (-1, audio_dim)],
+            [np.float32, np.float32],
+            dups=[1, 5])
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        melspec, audio = self.dataset[idx]
+        melspec = torch.from_numpy(melspec.copy())
+        audio = normalize(audio)
+        audio = torch.from_numpy(audio.copy())
+        return melspec, audio
+
 def generate_batch(data_batch):
     text_batch, audio_batch = [], []       
     for (text_item, audio_item) in data_batch:
@@ -74,3 +92,23 @@ def get_input_fn(args, sample_rate, audio_dim):
     train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_batch)
     test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch)
     return train_dataloader, test_dataloader
+
+def generate_vc_batch(data_batch):
+    melspec_batch, audio_batch = [], []       
+    for (melspec_item, audio_item) in data_batch:
+        melspec_batch.append(melspec_item)
+        audio_batch.append(audio_item)
+    melspec_len = torch.tensor([len(x) for x in melspec_batch], dtype=torch.int32)
+    audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
+    melspec_batch = pad_sequence(melspec_batch, batch_first=True, padding_value=BLANK_IDX)
+    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=BLANK_IDX)
+    return melspec_batch, melspec_len, audio_batch, audio_len
+
+def get_vc_input_fn(args, sample_rate, melspec_dim, audio_dim):
+    ds = MelSpecAudioDataset(
+        melspec_file=f'data/{args.dataset}-vc-melspec-{sample_rate}',
+        melspec_dim=melspec_dim,
+        audio_file=f'data/{args.dataset}-vc-audio-{sample_rate}',
+        audio_dim=audio_dim)
+    train_dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=generate_vc_batch)
+    return train_dataloader
