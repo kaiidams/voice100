@@ -18,6 +18,10 @@ class Voice100AutoEncoder(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         melspec, melspec_len, audio, audio_len = batch
+        melspec = melspec.cuda()
+        melspec_len = melspec.cuda()
+        audio = audio.cuda()
+        audio_len = audio_len.cuda()
         audio_hat, _ = self.model(melspec)
         loss = F.mse_loss(audio_hat, audio, reduction='none')
         loss_weights = (torch.arange(audio.shape[1])[None, :] < audio_len[:, None]).float()
