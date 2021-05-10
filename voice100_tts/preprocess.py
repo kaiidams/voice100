@@ -226,7 +226,7 @@ def preprocess_ljcorpus(name):
 
 def preprocess_vc_ljcorpus(name):
 
-    melspec_per_audio = 5
+    melspec_per_audio = 3
     sr = SAMPLE_RATE
     f0_floor, f0_ceil = F0_RANGE[name]
 
@@ -240,6 +240,7 @@ def preprocess_vc_ljcorpus(name):
 
     melspec_vocoder = MelSpectrogramVocoder()
     world_vocoder = WORLDVocoder()
+    augmentation = AudioAugmentation()
 
     with open_index_data_for_write(melspec_file) as melspec_f:
         with open_index_data_for_write(audio_file) as audio_f:
@@ -247,6 +248,7 @@ def preprocess_vc_ljcorpus(name):
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 wav_file = os.path.join(wavs_dir, f'{id_}.wav')
                 waveform, _ = librosa.load(wav_file, SAMPLE_RATE)
+                waveform = 0.8 * waveform / np.max(waveform)
 
                 cache_file = os.path.join(cache_dir, f'{id_}.npz')
                 if os.path.exists(cache_file):
@@ -265,7 +267,11 @@ def preprocess_vc_ljcorpus(name):
                         melspec = np.load(cache_file, allow_pickle=False)['melspec']
                         assert melspec.shape[0] > 0
                     else:
-                        melspec = melspec_vocoder.encode(waveform)
+                        if i == 0:
+                            waveform2 = waveform
+                        else:
+                            waveform2 = augmentation.augment(waveform)
+                        melspec = melspec_vocoder.encode(waveform2)
                         np.savez(cache_file, melspec=melspec)
 
                     assert melspec.shape[0] == audio_len, f'{audio.shape} {melspec.shape}'

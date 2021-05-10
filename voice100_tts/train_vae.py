@@ -1,6 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-import argparse
+from argparse import ArgumentParser
 import torch
 import torch.nn.functional as F
 from .yamnet import create_model
@@ -29,28 +29,37 @@ class Voice100AutoEncoder(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--train', action='store_true', help='Split audio and encode with WORLD vocoder.')
-    parser.add_argument('--eval', action='store_true', help='Split audio and encode with WORLD vocoder.')
-    parser.add_argument('--predict', action='store_true', help='Split audio and encode with WORLD vocoder.')
-    parser.add_argument('--export', action='store_true', help='Export to ONNX')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
-    parser.add_argument('--dataset', default='css10ja', help='Analyze F0 of sampled data.')
-    parser.add_argument('--model-dir', help='Directory to save checkpoints.')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
-    args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        return parser
 
-    torch.manual_seed(args.seed)
+if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser = pl.Trainer.add_argparse_args(parser)
+    parser = Voice100AutoEncoder.add_model_specific_args(parser)
+    parser.add_argument('--dataset', default='kokoro_tiny', help='Analyze F0 of sampled data.')
+    args = parser.parse_args()
+    if False:
+        parser.add_argument('--train', action='store_true', help='Split audio and encode with WORLD vocoder.')
+        parser.add_argument('--eval', action='store_true', help='Split audio and encode with WORLD vocoder.')
+        parser.add_argument('--predict', action='store_true', help='Split audio and encode with WORLD vocoder.')
+        parser.add_argument('--export', action='store_true', help='Export to ONNX')
+        parser.add_argument('--no-cuda', action='store_true', default=False,
+                            help='disables CUDA training')
+        parser.add_argument('--seed', type=int, default=1, metavar='S',
+                            help='random seed (default: 1)')
+        parser.add_argument('--model-dir', help='Directory to save checkpoints.')
+        parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
+        parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+        use_cuda = not args.no_cuda and torch.cuda.is_available()
+
+        torch.manual_seed(args.seed)
     
-    device = torch.device("cuda" if use_cuda else "cpu")
+        device = torch.device("cuda" if use_cuda else "cpu")
     autoencoder = Voice100AutoEncoder()
-    trainer = pl.Trainer(gpus=1)
-    autoencoder.load_from_checkpoint('./lightning_logs/version_5/checkpoints/epoch=30-step=42119.ckpt')
+    trainer = pl.Trainer.from_argparse_args(args)
+    autoencoder.load_from_checkpoint('./lightning_logs/version_6/checkpoints/epoch=67-step=93635.ckpt')
     train_loader = get_vc_input_fn(args, 16000, 64, 27)
     trainer.fit(autoencoder, train_loader)
