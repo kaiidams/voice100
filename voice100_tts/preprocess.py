@@ -274,7 +274,12 @@ def preprocess_vc_ljcorpus(name):
                         melspec = melspec_vocoder.encode(waveform2)
                         np.savez(cache_file, melspec=melspec)
 
-                    assert melspec.shape[0] == audio_len, f'{audio.shape} {melspec.shape}'
+                    if melspec.shape[0] > audio_len:
+                        melspec = melspec[:audio_len, :]
+                    elif melspec.shape[0] < audio_len:
+                        diff = audio_len - melspec.shape[0]
+                        melspec = np.concatenate([melspec, melspec[-diff:, :]], axis=0)
+                    #assert melspec.shape[0] == audio_len, f'{audio.shape} {melspec.shape}'
                     melspec_f.write(bytes(memoryview(melspec)))
 
 def preprocess_jvs(args):
