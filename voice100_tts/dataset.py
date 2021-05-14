@@ -42,7 +42,7 @@ class MelSpecAudioDataset(Dataset):
             [melspec_file, audio_file],
             [(-1, melspec_dim), (-1, audio_dim)],
             [np.float32, np.float32],
-            dups=[1, 5])
+            dups=[1, 3])
 
     def __len__(self):
         return len(self.dataset)
