@@ -259,6 +259,7 @@ def preprocess_vc_ljcorpus(name):
                     np.savez(cache_file, audio=audio)
 
                 audio_len = audio.shape[0]
+                assert audio.dtype == np.float32
                 audio_f.write(bytes(memoryview(audio)))
 
                 for i in range(melspec_per_audio):
@@ -279,7 +280,9 @@ def preprocess_vc_ljcorpus(name):
                     elif melspec.shape[0] < audio_len:
                         diff = audio_len - melspec.shape[0]
                         melspec = np.concatenate([melspec, melspec[-diff:, :]], axis=0)
+                    melspec = melspec.astype(np.float32)
                     #assert melspec.shape[0] == audio_len, f'{audio.shape} {melspec.shape}'
+                    assert melspec.dtype == np.float32
                     melspec_f.write(bytes(memoryview(melspec)))
 
 def preprocess_jvs(args):
