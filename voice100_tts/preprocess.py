@@ -214,7 +214,7 @@ def preprocess_ljcorpus(name):
                 wav_file = os.path.join(wavs_dir, f'{id_}.wav')
                 cache_file = os.path.join(cache_dir, f'{id_}.npz')
                 if os.path.exists(cache_file):
-                    audio = np.load(cache_file, allow_pickle=False)['audio']
+                    audio = np.load(cache_file, allow_pickle=False)['arr_0']
                     assert audio.shape[0] > 0
                 else:
                     x = readwav(wav_file)
