@@ -14,8 +14,8 @@ CORPUSDATA_PATH = {
     'jvs': 'data/balance_sentences.txt',
     'css10ja': 'data/japanese-single-speaker-speech-dataset/transcript.txt',
     'kokoro_large': 'data/kokoro-speech-v1_1-large/metadata.csv',
-    'kokoro_small': 'data/kokoro-speech-v1_0-small/metadata.csv',
-    'kokoro_tiny': 'data/kokoro-speech-v1_0-tiny/metadata.csv',
+    'kokoro_small': 'data/kokoro-speech-v1_1-small/metadata.csv',
+    'kokoro_tiny': 'data/kokoro-speech-v1_1-tiny/metadata.csv',
     'cv_ja': 'data/cv-corpus-6.1-2020-12-11/ja/validated.tsv',
 }
 

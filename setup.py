@@ -17,6 +17,7 @@ setup(
     ],
     extras_require={
         "audio": [
+            'torchaudio',
             'librosa',
             'soundfile',
             'pyworld>=0.2.12',

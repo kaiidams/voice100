@@ -36,12 +36,15 @@ class RNNAudioEncoder(nn.Module):
         out = self.dense(lstm_out)
         return out, lstm_out_len
 
-class AudioToChar(pl.LightningModule):
+class AudioToLetter(pl.LightningModule):
     def __init__(self, learning_rate=0.001):
         super().__init__()
         self.save_hyperparameters()
         self.encoder = RNNAudioEncoder(**DEFAULT_PARAMS)
         self.loss_fn = nn.CTCLoss()
+
+    def forward(self, audio):
+        return self.encoder(audio)
 
     def training_step(self, batch, batch_idx):
         text, audio, text_len = batch
@@ -66,12 +69,58 @@ class AudioToChar(pl.LightningModule):
         parser.add_argument('--learning_rate', type=float, default=0.0001)
         return parser
 
+def predict(args):
+
+    from torch.nn.utils.rnn import pack_sequence
+    from .data import IndexDataDataset
+    from .dataset import normalize
+
+    def generate_batch_audio(data_batch):
+        audio_batch = [torch.from_numpy(normalize(audio)) for audio, in data_batch]
+
+        audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
+        return audio_batch
+
+    model = AudioToLetter.load_from_checkpoint(args.checkpoint)
+
+    audio_dim = AUDIO_DIM
+    sample_rate = 16000
+    args.text = 'test.txt'
+    args.output = 'aaa'
+    audio_file=f'data/{args.dataset}-audio-{sample_rate}'
+    ds = IndexDataDataset([audio_file],
+    [(-1, audio_dim)], [np.float32]
+    )
+    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch_audio)
+
+    from .preprocess import open_index_data_for_write
+
+    model.eval()
+    with torch.no_grad():
+        with open_index_data_for_write(args.output) as file:
+            with open(args.text, 'wt') as txtfile:
+                audio_index = 0
+                for i, audio in enumerate(tqdm(dataloader)):
+                    #audio = pack_sequence([audio], enforce_sorted=False)
+                    logits, logits_len = model(audio)
+                    # logits: [audio_len, batch_size, vocab_size]
+                    preds = torch.argmax(logits, axis=-1).T
+                    # preds: [batch_size, audio_len]
+                    preds_len = logits_len
+                    for j in range(preds.shape[0]):
+                        pred_decoded = decode_text(preds[j, :preds_len[j]])
+                        #pred_decoded = merge_repeated(pred_decoded)
+                        x = logits[:preds_len[j], j, :].numpy().astype(np.float32)
+                        file.write(x)
+                        txtfile.write(f'{audio_index+1}|{pred_decoded}\n')
+                        audio_index += 1
+
 def export(args, device):
 
-    class AudioToChar(nn.Module):
+    class AudioToLetter(nn.Module):
 
         def __init__(self, n_mfcc, hidden_dim, vocab_size):
-            super(AudioToChar, self).__init__()
+            super(AudioToLetter, self).__init__()
             self.hidden_dim = hidden_dim
             self.lstm = nn.LSTM(n_mfcc, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
             self.dense = nn.Linear(hidden_dim * 2, vocab_size)
@@ -80,7 +129,7 @@ def export(args, device):
             lstm_out, _ = self.lstm(audio)
             return self.dense(lstm_out)
 
-    model = AudioToChar(**DEFAULT_PARAMS).to(device)
+    model = AudioToLetter(**DEFAULT_PARAMS).to(device)
     ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
     state = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(state['model'])
@@ -114,14 +163,18 @@ def cli_main():
     parser = ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--dataset', default='kokoro_tiny', help='Dataset to use')
+    parser.add_argument('--checkpoint', help='Dataset to use')
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioToChar.add_model_specific_args(parser)    
+    parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
 
-    train_loader, val_loader = get_input_fn(args, SAMPLE_RATE, AUDIO_DIM)
-    model = AudioToChar()
-    trainer = pl.Trainer.from_argparse_args(args)
-    trainer.fit(model, train_loader, val_loader)
+    if False:
+        train_loader, val_loader = get_input_fn(args, SAMPLE_RATE, AUDIO_DIM)
+        model = AudioToLetter()
+        trainer = pl.Trainer.from_argparse_args(args)
+        trainer.fit(model, train_loader, val_loader)
+
+    predict(args)
 
 if __name__ == '__main__':
     cli_main()
