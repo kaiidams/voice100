@@ -8,6 +8,7 @@ import argparse
 
 from .vocoder import *
 from .encoder import encode_text
+from .encoder import PhoneEncoder
 from .data import open_index_data_for_write
 
 CORPUSDATA_PATH = {
@@ -323,6 +324,17 @@ def preprocess_jvs(args):
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))
 
+def readmp3(file, sr):
+    # Use torchaudio to avoid warning
+    import torchaudio
+    waveform, waveform_sr = torchaudio.load(file)
+    assert len(waveform.shape) == 2 and waveform.shape[0] == 1
+    waveform = torch.mean(waveform, axis=0)
+    waveform = waveform.numpy()
+    if waveform_sr != sr:
+        waveform = librosa.resample(waveform, waveform_sr, sr)
+    return waveform
+
 def preprocess_ctc_commonvoice(args):
 
     dataset = args.dataset
@@ -346,7 +358,7 @@ def preprocess_ctc_commonvoice(args):
                 phone = encoder.encode(monophone)
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 mp3_file = os.path.join(wavs_dir, id_)
-                waveform = readmp3(mp3_file)
+                waveform = readmp3(mp3_file, sr)
                 for i in range(args.augment_count):
                     if i == 0:
                         augmented_waveform = waveform
@@ -359,8 +371,8 @@ def preprocess_ctc_commonvoice(args):
                             augmented_waveform = augmentation.augment(waveform, change_pace=True)
                             np.savez(cache_file, waveform=augmented_waveform)
                     melspec = vocoder.encode(augmented_waveform)
-                    phone_f.write(bytes(memoryview(melspec)))
-                    melspec_f.write(bytes(memoryview(audio)))
+                    phone_f.write(bytes(memoryview(phone)))
+                    melspec_f.write(bytes(memoryview(melspec)))
 
 def compute_normalization(args, sample_rate=SAMPLE_RATE):
     from .data import IndexDataFileReader

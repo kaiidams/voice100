@@ -30,13 +30,13 @@ class PhoneEncoder:
         self.v2i = {v: i for i, v in enumerate(self.vocab)}
         self.VOCAB_SIZE = len(self.vocab)
 
-    def encode(text):
+    def encode(self, text):
         return np.array([self.v2i[token] for token in text.split(' ') if token in self.v2i], dtype=np.int8)
 
-    def decode(encoded):
+    def decode(self, encoded):
         return ' '.join(self.vocab[id_] for id_ in encoded)
 
-    def merge_repeated(text):
+    def merge_repeated(self, text):
         import re
         r = re.sub(r'(.+)( \1)+', r'\1', text).replace(' _', '').replace('_ ', '')
         if r == '_': r = ''
