@@ -64,7 +64,7 @@ class MelSpectrogramVocoder:
             norm='slaney',
             htk=True,
         )
-        return np.log(melspec.T + self.log_offset)
+        return np.log(melspec.T + self.log_offset).astype(np.float32)
 
     def decode(self, x):
         raise NotImplementedError("Decoding from Mel-spectrogram is not supported")

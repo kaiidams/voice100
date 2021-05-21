@@ -196,40 +196,44 @@ def preprocess_css10ja(name):
 
 def preprocess_ctc_ljcorpus(args):
 
-    from .encoder import PhoneEncoder
-
     dataset = args.dataset
     sr = args.sample_rate
-    f0_floor, f0_ceil = F0_RANGE[dataset]
 
     corpus = readcorpus_ljcorpus(CORPUSDATA_PATH[dataset])
     wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), 'wavs')
-    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), f'cache-{sr}')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), f'cache-ctc-{sr}')
 
     phone_file = os.path.join('data', f'{dataset}-ctc-phone-{sr}')
     melspec_file = os.path.join('data', f'{dataset}-ctc-melspec-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 
     encoder = PhoneEncoder()
-    vocoder = MelSpectrogramVocoder
+    vocoder = MelSpectrogramVocoder()
+    augmentation = AudioAugmentation()
 
     with open_index_data_for_write(phone_file) as phone_f:
-        with open_index_data_for_write(melspec_file) as audio_f:
+        with open_index_data_for_write(melspec_file) as melspec_f:
             for id_, monophone in tqdm(corpus):
                 phone = encoder.encode(monophone)
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 wav_file = os.path.join(wavs_dir, f'{id_}.wav')
-                cache_file = os.path.join(cache_dir, f'{id_}.npz')
-                if os.path.exists(cache_file):
-                    audio = np.load(cache_file, allow_pickle=False)['arr_0']
-                    assert audio.shape[0] > 0
-                else:
-                    x = readwav(wav_file)
-                    audio = vocoder.encode(x)
-                    np.savez(cache_file, audio=audio)
-
-                phone_f.write(bytes(memoryview(phone)))
-                audio_f.write(bytes(memoryview(audio)))
+                waveform, _ = librosa.load(wav_file, sr)
+                for i in range(args.augment_count):
+                    if i == 0:
+                        augmented_waveform = waveform
+                    else:
+                        cache_file = os.path.join(cache_dir, f'{id_}.npz')
+                        if os.path.exists(cache_file):
+                            augmented_waveform = np.load(cache_file, allow_pickle=False)['waveform']
+                        else:
+                            augmented_waveform = augmentation.augment(waveform, change_pace=True)
+                            augmented_waveform = augmented_waveform.astype(np.float32)
+                            np.savez(cache_file, waveform=augmented_waveform)
+                        assert augmented_waveform.shape[0] > 0
+                    melspec = vocoder.encode(augmented_waveform)
+                    assert melspec.dtype == np.float32
+                    phone_f.write(bytes(memoryview(phone)))
+                    melspec_f.write(bytes(memoryview(melspec)))
 
 def preprocess_vc_ljcorpus(name):
 
@@ -366,11 +370,12 @@ def preprocess_ctc_commonvoice(args):
                         cache_file = os.path.join(cache_dir, f'{id_}_{i}.npz')
                         if os.path.exists(cache_file):
                             augmented_waveform = np.load(cache_file, allow_pickle=False)['waveform']
-                            assert augmented_waveform.shape[0] > 0
                         else:
                             augmented_waveform = augmentation.augment(waveform, change_pace=True)
                             np.savez(cache_file, waveform=augmented_waveform)
+                        assert augmented_waveform.shape[0] > 0
                     melspec = vocoder.encode(augmented_waveform)
+                    assert melspec.dtype == np.float32
                     phone_f.write(bytes(memoryview(phone)))
                     melspec_f.write(bytes(memoryview(melspec)))
 
