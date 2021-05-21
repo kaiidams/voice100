@@ -85,16 +85,11 @@ class AudioAugmentation:
         else:
             speech_rate = 1.0
 
-        # Shift pitch
-        speech_rate = 1 / pitch_shift
-        wsola = WSOLA(self.sample_rate, speech_rate)
-        waveform = wsola.duration_modification(waveform)
-        waveform = librosa.resample(waveform, pitch_shift * self.sample_rate, self.sample_rate)
-
         # Shift F0
         f0, time_axis = pyworld.dio(
-            waveform, self.sample_rate,
-            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil)
+            waveform, self.sample_rate * pitch_shift,
+            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil,
+            frame_period=frame_period / pitch_shift)
         spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         f0 = f0 * f0_shift / pitch_shift
