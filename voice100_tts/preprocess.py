@@ -193,23 +193,29 @@ def preprocess_css10ja(name):
     finish_data(data[0], OUTPUT_PATH % (name, "train"))
     finish_data(data[1], OUTPUT_PATH % (name, "val"))
 
-def preprocess_ljcorpus(name):
+def preprocess_ctc_ljcorpus(args):
 
-    sr = SAMPLE_RATE
-    f0_floor, f0_ceil = F0_RANGE[name]
+    from .encoder import PhoneEncoder
 
-    corpus = readcorpus_ljcorpus(CORPUSDATA_PATH[name])
-    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'wavs')
-    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
+    dataset = args.dataset
+    sr = args.sample_rate
+    f0_floor, f0_ceil = F0_RANGE[dataset]
 
-    text_file = os.path.join('data', f'{name}-text-{sr}')
-    audio_file = os.path.join('data', f'{name}-audio-{sr}')
+    corpus = readcorpus_ljcorpus(CORPUSDATA_PATH[dataset])
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), 'wavs')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), f'cache-{sr}')
+
+    phone_file = os.path.join('data', f'{dataset}-ctc-phone-{sr}')
+    melspec_file = os.path.join('data', f'{dataset}-ctc-melspec-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 
-    with open_index_data_for_write(text_file) as text_f:
-        with open_index_data_for_write(audio_file) as audio_f:
+    encoder = PhoneEncoder()
+    vocoder = MelSpectrogramVocoder
+
+    with open_index_data_for_write(phone_file) as phone_f:
+        with open_index_data_for_write(melspec_file) as audio_f:
             for id_, monophone in tqdm(corpus):
-                text = encode_text(monophone)
+                phone = encoder.encode(monophone)
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 wav_file = os.path.join(wavs_dir, f'{id_}.wav')
                 cache_file = os.path.join(cache_dir, f'{id_}.npz')
@@ -218,10 +224,10 @@ def preprocess_ljcorpus(name):
                     assert audio.shape[0] > 0
                 else:
                     x = readwav(wav_file)
-                    audio = encode_audio(x, f0_floor, f0_ceil)
+                    audio = vocoder.encode(x)
                     np.savez(cache_file, audio=audio)
 
-                text_f.write(bytes(memoryview(text)))
+                phone_f.write(bytes(memoryview(phone)))
                 audio_f.write(bytes(memoryview(audio)))
 
 def preprocess_vc_ljcorpus(name):
@@ -317,36 +323,44 @@ def preprocess_jvs(args):
                 text_f.write(bytes(memoryview(text)))
                 audio_f.write(bytes(memoryview(audio)))
 
-def preprocess_commonvoice(name):
+def preprocess_ctc_commonvoice(args):
 
-    sr = SAMPLE_RATE
-    f0_floor, f0_ceil = F0_RANGE[name]
+    dataset = args.dataset
+    sr = args.sample_rate
 
-    corpus = readcorpus_commonvoice(CORPUSDATA_PATH[name])
-    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), 'clips')
-    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[name]), f'cache-{sr}')
+    corpus = readcorpus_commonvoice(CORPUSDATA_PATH[dataset])
+    wavs_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), 'clips')
+    cache_dir = os.path.join(os.path.dirname(CORPUSDATA_PATH[dataset]), f'cache-ctc-{sr}')
 
-    text_file = os.path.join('data', f'{name}-text-{sr}')
-    audio_file = os.path.join('data', f'{name}-audio-{sr}')
+    phone_file = os.path.join('data', f'{dataset}-ctc-phone-{sr}')
+    melspec_file = os.path.join('data', f'{dataset}-ctc-melspec-{sr}')
     os.makedirs(cache_dir, exist_ok=True)
 
-    with open_index_data_for_write(text_file) as text_f:
-        with open_index_data_for_write(audio_file) as audio_f:
+    encoder = PhoneEncoder()
+    vocoder = MelSpectrogramVocoder()
+    augmentation = AudioAugmentation()
+
+    with open_index_data_for_write(phone_file) as phone_f:
+        with open_index_data_for_write(melspec_file) as melspec_f:
             for id_, monophone in tqdm(corpus):
-                text = encode_text(monophone)
+                phone = encoder.encode(monophone)
                 assert '..' not in id_ # Just make sure the file name is under the directory.
                 mp3_file = os.path.join(wavs_dir, id_)
-                cache_file = os.path.join(cache_dir, f'{id_}.npz')
-                if os.path.exists(cache_file):
-                    audio = np.load(cache_file, allow_pickle=False)['audio']
-                    assert audio.shape[0] > 0
-                else:
-                    x = readmp3(mp3_file)
-                    audio = encode_audio(x, f0_floor, f0_ceil)
-                    np.savez(cache_file, audio=audio)
-
-                text_f.write(bytes(memoryview(text)))
-                audio_f.write(bytes(memoryview(audio)))
+                waveform = readmp3(mp3_file)
+                for i in range(args.augment_count):
+                    if i == 0:
+                        augmented_waveform = waveform
+                    else:
+                        cache_file = os.path.join(cache_dir, f'{id_}_{i}.npz')
+                        if os.path.exists(cache_file):
+                            augmented_waveform = np.load(cache_file, allow_pickle=False)['waveform']
+                            assert augmented_waveform.shape[0] > 0
+                        else:
+                            augmented_waveform = augmentation.augment(waveform, change_pace=True)
+                            np.savez(cache_file, waveform=augmented_waveform)
+                    melspec = vocoder.encode(augmented_waveform)
+                    phone_f.write(bytes(memoryview(melspec)))
+                    melspec_f.write(bytes(memoryview(audio)))
 
 def compute_normalization(args, sample_rate=SAMPLE_RATE):
     from .data import IndexDataFileReader
@@ -373,10 +387,16 @@ def compute_normalization(args, sample_rate=SAMPLE_RATE):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--analyze', action='store_true', help='Analyze F0 of sampled data.')
+    parser.add_argument('--ctc', action='store_true', help='Preprocess data for speech recognition task')
     parser.add_argument('--vc', action='store_true', help='Preprocess data for voice convertion task')
     parser.add_argument('--normalize', action='store_true', help='Compute normalization parameters.')
     parser.add_argument('--dataset', required=True, help='Dataset to process, css10ja, tsukuyomi_normal')
+    parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+    parser.add_argument('--augment_count', default=5, type=int, help='Number of augmented data for one clip.')
     args = parser.parse_args()
+
+    if not (args.ctc or args.vc):
+        raise ValueError('One of --ctc or --vc must be given.')
 
     if args.analyze:
         if args.dataset == 'css10ja':
@@ -391,8 +411,8 @@ if __name__ == '__main__':
         if args.dataset == 'css10ja' or args.dataset == 'css10ja_highpitch':
             preprocess_css10ja(args.dataset)
         elif args.dataset.startswith('kokoro_'):
-            preprocess_ljcorpus(args.dataset)
+            preprocess_ctc_ljcorpus(args)
         elif args.dataset.startswith('cv_'):
-            preprocess_commonvoice(args.dataset)
+            preprocess_ctc_commonvoice(args)
         else:
             preprocess_jvs(args)
