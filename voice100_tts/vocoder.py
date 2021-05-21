@@ -85,6 +85,8 @@ class AudioAugmentation:
         else:
             speech_rate = 1.0
 
+        waveform = waveform.astype(np.double)
+
         # Shift F0
         f0, time_axis = pyworld.dio(
             waveform, self.sample_rate * pitch_shift,
@@ -103,4 +105,4 @@ class AudioAugmentation:
         tone = np.sin(2 * math.pi * tone_freq * np.arange(len(waveform)) / self.sample_rate)
         waveform = (waveform * tone_rate + tone) / (1 + tone_rate)
 
-        return waveform
+        return waveform.astype(np.float32)
