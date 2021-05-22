@@ -40,17 +40,27 @@ class AudioToLetter(pl.LightningModule):
     def __init__(self, learning_rate=0.001):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = RNNAudioEncoder(**DEFAULT_PARAMS)
+        #self.encoder = RNNAudioEncoder(**DEFAULT_PARAMS)
+        from .jasper import QuartzNet
+        self.encoder = QuartzNet(input_dim=AUDIO_DIM, num_classes=VOCAB_SIZE)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
         return self.encoder(audio)
 
     def training_step(self, batch, batch_idx):
+        #print('hoge')
         text, audio, text_len = batch
+        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
+        #print(audio.shape)
         # text: [text_len, batch_size]
         # audio: PackedSequence
-        logits, logits_len = self.encoder(audio)
+        audio = torch.transpose(audio, 1, 2)
+        logits = self.encoder(audio)
+        logits = torch.transpose(logits, 0, 1)
+        #print(logits.shape)
+        logits_len = audio_len // 2
+        #print(logits_len)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
@@ -168,13 +178,13 @@ def cli_main():
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
 
-    if False:
+    if True:
         train_loader, val_loader = get_input_fn(args, SAMPLE_RATE, AUDIO_DIM)
         model = AudioToLetter()
         trainer = pl.Trainer.from_argparse_args(args)
         trainer.fit(model, train_loader, val_loader)
-
-    predict(args)
+    else:
+        predict(args)
 
 if __name__ == '__main__':
     cli_main()

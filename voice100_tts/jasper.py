@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 class JasperBlock(nn.Module):
@@ -7,7 +8,7 @@ class JasperBlock(nn.Module):
         c = in_channels
         for i in range(repeat):
             padding = kernel_size // 2
-            layer = nn.Conv1d(c, c, kernel_size=kernel_size, stride=stride, padding=padding, groups=in_channels, bias=False)
+            layer = nn.Conv1d(c, c, kernel_size=kernel_size, stride=stride, padding=padding, groups=c, bias=False)
             layers.append(layer)
             layer = nn.Conv1d(c, out_channels, kernel_size=1, bias=False)
             c = out_channels
@@ -42,10 +43,11 @@ class JasperBlock(nn.Module):
         return y
 
 class QuartzNet(nn.Module):
-    def __init__(self):
+
+    def __init__(self, input_dim, num_classes):
         super(QuartzNet, self).__init__()
         self.layer = nn.Sequential(
-            JasperBlock(64, 256, kernel_size=33, stride=2, repeat=1, residual=False),
+            JasperBlock(input_dim, 256, kernel_size=33, stride=2, repeat=1, residual=False),
 
             JasperBlock(256, 512, kernel_size=63, stride=1, repeat=3, residual=True),
             JasperBlock(512, 512, kernel_size=63, stride=1, repeat=3, residual=True),
@@ -56,8 +58,13 @@ class QuartzNet(nn.Module):
             JasperBlock(512, 512, kernel_size=87, stride=1, repeat=1, residual=False),
             JasperBlock(512, 1024, kernel_size=1, stride=1, repeat=1, residual=False),
         )
+        self.dense = nn.Linear(1024, num_classes)
+
     def forward(self, spec):
-        return self.layer(spec)
+        x = self.layer(spec)
+        x = torch.transpose(x, 1, 2)
+        x = self.dense(x)
+        return x
 
 if False:
     import pytorch_lightning as pl
