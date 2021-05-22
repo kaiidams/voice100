@@ -9,15 +9,17 @@ from tqdm import tqdm
 import pytorch_lightning as pl
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_packed_sequence
-from .encoder import decode_text, merge_repeated, VOCAB_SIZE
-from .dataset import get_input_fn
+from .encoder import decode_text, merge_repeated, PhoneEncoder
+from .dataset import get_ctc_input_fn
 
 SAMPLE_RATE = 16000
 AUDIO_DIM = 27
-assert VOCAB_SIZE == 47, VOCAB_SIZE
+MELSPEC_DIM = 64
+VOCAB_SIZE = PhoneEncoder().vocab_size
+assert VOCAB_SIZE == 37, VOCAB_SIZE
 
 DEFAULT_PARAMS = dict(
-    audio_dim=AUDIO_DIM,
+    audio_dim=MELSPEC_DIM,
     hidden_dim=128,
     vocab_size=VOCAB_SIZE
 )
@@ -58,6 +60,34 @@ class AudioToLetter(pl.LightningModule):
 
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
+
+    def validation_step(self, batch, batch_idx):
+        text, audio, text_len = batch
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
+        logits, logits_len = self.encoder(audio)
+        # logits: [audio_len, batch_size, vocab_size]
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        log_probs_len = logits_len
+        text = text.transpose(0, 1)
+
+        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
+        loss = self.loss_fn(log_probs, text, log_probs_len, text_len)
+        self.log('valid_loss', loss)
+
+    def test_step(self, batch, batch_idx):
+        text, audio, text_len = batch
+        # text: [text_len, batch_size]
+        # audio: PackedSequence
+        logits, logits_len = self.encoder(audio)
+        # logits: [audio_len, batch_size, vocab_size]
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        log_probs_len = logits_len
+        text = text.transpose(0, 1)
+
+        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
+        loss = self.loss_fn(log_probs, text, log_probs_len, text_len)
+        self.log('test_loss', loss)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
@@ -163,16 +193,16 @@ def cli_main():
     parser = ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--dataset', default='kokoro_tiny', help='Dataset to use')
+    parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
     parser.add_argument('--checkpoint', help='Dataset to use')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
 
-    if False:
-        train_loader, val_loader = get_input_fn(args, SAMPLE_RATE, AUDIO_DIM)
-        model = AudioToLetter()
-        trainer = pl.Trainer.from_argparse_args(args)
-        trainer.fit(model, train_loader, val_loader)
+    train_loader, val_loader = get_ctc_input_fn(args)
+    model = AudioToLetter()
+    trainer = pl.Trainer.from_argparse_args(args)
+    trainer.fit(model, train_loader, val_loader)
 
     predict(args)
 

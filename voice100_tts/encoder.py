@@ -28,7 +28,7 @@ class PhoneEncoder:
             '_ N a b by ch d dy e f g gy h hy i j k ky m my'
             ' n ny o p py r ry s sh t ts ty u w y z zy').split(' ')
         self.v2i = {v: i for i, v in enumerate(self.vocab)}
-        self.VOCAB_SIZE = len(self.vocab)
+        self.vocab_size = len(self.vocab)
 
     def encode(self, text):
         return np.array([self.v2i[token] for token in text.split(' ') if token in self.v2i], dtype=np.int8)

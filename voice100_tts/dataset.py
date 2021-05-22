@@ -77,14 +77,20 @@ def generate_batch_audio(data_batch):
     audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
     return audio_batch
 
-def get_ctc_input_fn(args):    
-    phone_file = f'data/{args.dataset}-ctc-phone-{args.sample_rate}'
-    melspec_file = f'data/{args.dataset}-ctc-melspec-{args.sample_rate}'
-    ds = IndexDataDataset(
-        [phone_file, melspec_file],
-        [(-1,), (-1, MELSPEC_DIM)],
-        [np.uint8, np.float32])
-    ds = TorchIndexDataDataset.from_numpy(ds)
+def get_ctc_input_fn(args):
+    ds = None
+    for dataset in args.dataset.split(','):
+        phone_file = f'data/{dataset}-ctc-phone-{args.sample_rate}'
+        melspec_file = f'data/{dataset}-ctc-melspec-{args.sample_rate}'
+        numpy_ds = IndexDataDataset(
+            [phone_file, melspec_file],
+            [(-1,), (-1, MELSPEC_DIM)],
+            [np.uint8, np.float32])
+        if ds is None:
+            ds = TorchIndexDataDataset.from_numpy(numpy_ds)
+        else:
+            ds += TorchIndexDataDataset.from_numpy(numpy_ds)
+
     train_ds, test_ds = torch.utils.data.random_split(ds, [len(ds) - len(ds) // 9, len(ds) // 9])
     train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_ctc_batch)
     test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_ctc_batch)
