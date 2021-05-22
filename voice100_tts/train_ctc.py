@@ -73,9 +73,13 @@ class AudioToLetter(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         text, audio, text_len = batch
+        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
         # text: [text_len, batch_size]
         # audio: PackedSequence
-        logits, logits_len = self.encoder(audio)
+        audio = torch.transpose(audio, 1, 2)
+        logits = self.encoder(audio)
+        logits = torch.transpose(logits, 0, 1)
+        logits_len = audio_len // 2
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
@@ -91,9 +95,13 @@ class AudioToLetter(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         text, audio, text_len = batch
+        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
         # text: [text_len, batch_size]
         # audio: PackedSequence
-        logits, logits_len = self.encoder(audio)
+        audio = torch.transpose(audio, 1, 2)
+        logits = self.encoder(audio)
+        logits = torch.transpose(logits, 0, 1)
+        logits_len = audio_len // 2
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
