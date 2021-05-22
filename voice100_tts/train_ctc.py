@@ -91,7 +91,8 @@ class AudioToLetter(pl.LightningModule):
         return loss
 
     def validation_epoch_end(self, losses):
-        self.log('loss', torch.mean(losses))
+        loss = sum(losses) / len(losses)
+        self.log('loss', loss)
 
     def test_step(self, batch, batch_idx):
         text, audio, text_len = batch
