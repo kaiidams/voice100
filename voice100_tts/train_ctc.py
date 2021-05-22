@@ -44,7 +44,7 @@ class AudioToLetter(pl.LightningModule):
         self.save_hyperparameters()
         #self.encoder = RNNAudioEncoder(**DEFAULT_PARAMS)
         from .jasper import QuartzNet
-        self.encoder = QuartzNet(input_dim=AUDIO_DIM, num_classes=VOCAB_SIZE)
+        self.encoder = QuartzNet(input_dim=MELSPEC_DIM, num_classes=VOCAB_SIZE)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
