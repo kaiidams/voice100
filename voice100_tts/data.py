@@ -66,22 +66,10 @@ class IndexDataDataset:
         ]
         self.shapes = shapes
         self.dtypes = dtypes
-        self.indices = None
         if dups:
             self.dups = dups
         else:
             self.dups = [1] * len(readers_or_files)
-
-    def split(self, weights):
-        slots = []
-        for i, weight in enumerate(weights):
-            slots.extend([i] * weight)
-        res = []
-        for i in range(len(weights)):
-            ds = IndexDataDataset(self.readers, self.shapes, self.dtypes, dups=self.dups)
-            ds.indices = list(filter(lambda j: slots[j % len(slots)] == i, range(len(self))))
-            res.append(ds)
-        return res
 
     @staticmethod
     def _getreader(reader_or_file):
@@ -90,11 +78,9 @@ class IndexDataDataset:
         return reader_or_file
 
     def __len__(self):
-        return len(self.indices) if self.indices else len(self.readers[0])
+        return len(self.readers[0])
 
     def __getitem__(self, index):
-        if self.indices:
-            index = self.indices[index]
         return [
             np.frombuffer(reader[index // dup], dtype=dtype).reshape(shape)
             for reader, shape, dtype, dup in zip(self.readers, self.shapes, self.dtypes, self.dups)

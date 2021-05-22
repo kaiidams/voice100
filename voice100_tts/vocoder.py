@@ -64,7 +64,7 @@ class MelSpectrogramVocoder:
             norm='slaney',
             htk=True,
         )
-        return np.log(melspec.T + self.log_offset)
+        return np.log(melspec.T + self.log_offset).astype(np.float32)
 
     def decode(self, x):
         raise NotImplementedError("Decoding from Mel-spectrogram is not supported")
@@ -74,27 +74,28 @@ class AudioAugmentation:
         self.sample_rate = sample_rate
         self.n_fft = 1024
 
-    def augment(self, waveform, f0_floor=40, f0_ceil=400):
+    def augment(self, waveform, change_pace=False, f0_floor=40, f0_ceil=400, frame_period=5.0):
         pitch_shift = np.random.uniform(low=0.95, high=1.2)
         f0_shift = np.random.uniform(low=0.95, high=1.2)
         sn_rate = np.random.uniform(low=5.0, high=100.0)
         tone_freq = np.random.uniform(low=10.0, high=2000.0)
         tone_rate = np.random.uniform(low=5.0, high=100.0)
+        if change_pace:
+            speech_rate = np.random.uniform(low=0.9, high=1.1)
+        else:
+            speech_rate = 1.0
 
-        # Shift pitch
-        speech_rate = 1 / pitch_shift
-        wsola = WSOLA(self.sample_rate, speech_rate)
-        waveform = wsola.duration_modification(waveform)
-        waveform = librosa.resample(waveform, pitch_shift * self.sample_rate, self.sample_rate)
+        waveform = waveform.astype(np.double)
 
         # Shift F0
-        f0, time_axis = pyworld.harvest(
-            waveform, self.sample_rate,
-            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil)
+        f0, time_axis = pyworld.dio(
+            waveform, self.sample_rate * pitch_shift,
+            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil,
+            frame_period=frame_period / pitch_shift)
         spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         f0 = f0 * f0_shift / pitch_shift
-        waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate)
+        waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=frame_period / speech_rate)
 
         # Noise
         noise = np.random.random(waveform.shape)
@@ -104,4 +105,4 @@ class AudioAugmentation:
         tone = np.sin(2 * math.pi * tone_freq * np.arange(len(waveform)) / self.sample_rate)
         waveform = (waveform * tone_rate + tone) / (1 + tone_rate)
 
-        return waveform
+        return waveform.astype(np.float32)
