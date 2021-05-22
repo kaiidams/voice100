@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 import pytorch_lightning as pl
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_packed_sequence
 from .encoder import decode_text, merge_repeated, PhoneEncoder
 from .dataset import get_ctc_input_fn
@@ -73,7 +73,11 @@ class AudioToLetter(pl.LightningModule):
 
         #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         loss = self.loss_fn(log_probs, text, log_probs_len, text_len)
-        self.log('valid_loss', loss)
+        self.log('batch_idx', batch_idx, prog_bar=True)
+        return loss
+
+    def validation_epoch_end(self, losses):
+        self.log('loss', torch.mean(losses))
 
     def test_step(self, batch, batch_idx):
         text, audio, text_len = batch
