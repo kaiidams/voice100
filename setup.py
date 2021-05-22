@@ -13,7 +13,8 @@ setup(
     entry_points={
     },
     install_requires=[
-        'torch'
+        'torch',
+        'pytorch_lightning'
     ],
     extras_require={
         "audio": [
