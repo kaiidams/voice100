@@ -40,7 +40,7 @@ class Voice100Decoder(nn.Module):
         x = self.batchnorm1(x)
         x = torch.relu(x)
         x = self.convtrans2(x)
-        x = self.batchnorm3(x)
+        x = self.batchnorm2(x)
         x = torch.relu(x)
         x = self.convtrans3(x)
         x = self.batchnorm3(x)
