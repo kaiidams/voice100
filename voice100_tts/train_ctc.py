@@ -35,7 +35,7 @@ class AudioToLetter(pl.LightningModule):
         # text: [text_len, batch_size]
         # audio: PackedSequence
         audio, audio_len = pad_packed_sequence(audio, batch_first=True)
-        print(audio.shape)
+        #print(audio.shape)
         # audio: [batch_size, audio_len, audio_dim]
         embeddings = self.encoder(audio)
         logits = self.dense(embeddings)
@@ -45,7 +45,7 @@ class AudioToLetter(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        print(log_probs.shape)
+        #print(log_probs.shape)
         text = text.transpose(0, 1)
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
