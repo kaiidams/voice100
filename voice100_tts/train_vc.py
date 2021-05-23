@@ -81,7 +81,7 @@ class VoiceConvert(pl.LightningModule):
             audio_hat = audio_hat[:, :audio.shape[1], :]
         loss = self.loss(audio_hat, audio)
         loss_weights = (torch.arange(audio.shape[1]).to(audio.device)[None, :] < audio_len[:, None]).float()
-        loss = torch.sum(loss * loss_weights[:, :, None]) / torch.sum(loss_weights)
+        loss = torch.sum(loss * loss_weights[:, :, None]) / torch.sum(loss_weights) / self.audio_dim
         return loss
 
     def training_step(self, batch, batch_idx):
