@@ -50,7 +50,7 @@ class MelSpecAudioDataset(Dataset):
             [melspec_file, audio_file],
             [(-1, melspec_dim), (-1, audio_dim)],
             [np.float32, np.float32],
-            dups=[1, 3])
+            dups=[1, 5])
 
     def __len__(self):
         return len(self.dataset)
@@ -107,11 +107,11 @@ def generate_vc_batch(data_batch):
     audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=BLANK_IDX)
     return melspec_batch, melspec_len, audio_batch, audio_len
 
-def get_vc_input_fn(args, sample_rate, melspec_dim, audio_dim):
+def get_vc_input_fn(args, melspec_dim, audio_dim):
     ds = MelSpecAudioDataset(
-        melspec_file=f'data/{args.dataset}-vc-melspec-{sample_rate}',
+        melspec_file=f'data/{args.dataset}-vc-melspec-{args.sample_rate}',
         melspec_dim=melspec_dim,
-        audio_file=f'data/{args.dataset}-vc-audio-{sample_rate}',
+        audio_file=f'data/{args.dataset}-vc-audio-{args.sample_rate}',
         audio_dim=audio_dim)
     train_dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_vc_batch)
     return train_dataloader

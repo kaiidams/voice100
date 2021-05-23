@@ -1,3 +1,5 @@
+# Copyright (C) 2021 Katsuya Iida. All rights reserved.
+
 import torch
 from torch import nn
 
