@@ -98,16 +98,17 @@ class Voice100Encoder(nn.Module):
         prev_channels = 1
         for layer_function, channels, kernel_size, stride, dilation in _LAYER_DEFS:
             layer = layer_function(prev_channels, channels, kernel_size, stride, dilation)
-            prev_channels = channels
             layers.append(layer)
+            prev_channels = channels
         self.layers = nn.Sequential(*layers)
+        self.embedding_dim = prev_channels
 
     def forward(self, x):
-        # x: [batch, audio_len, n_mels]
+        # x: [batch_size, audio_len, audio_dim]
         x = x[:, None, :, :] # Add 1-dim channel
         x = self.layers(x)
-        # x: [batch, emb, audio_len, n_mels]
+        # x: [batch_size, emb, audio_len, audio_dim]
         x = torch.mean(x, dim=3)
-        # x: [batch, emb, audio_len]
+        # x: [batch_size, emb, audio_len]
         embeddings = torch.transpose(x, 1, 2)
         return embeddings
