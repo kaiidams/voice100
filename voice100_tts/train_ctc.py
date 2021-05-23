@@ -19,12 +19,11 @@ VOCAB_SIZE = PhoneEncoder().vocab_size
 assert VOCAB_SIZE == 37, VOCAB_SIZE
 
 class AudioToLetter(pl.LightningModule):
-    def __init__(self, vocab_size, learning_rate):
+    def __init__(self, audio_dim, vocab_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        from .models import Voice100Encoder
-        self.encoder = Voice100Encoder()
-        self.dense = nn.Linear(self.encoder.embedding_dim, vocab_size)
+        from .jasper import QuartzNet
+        self.encoder = QuartzNet(audio_dim, vocab_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
@@ -37,9 +36,9 @@ class AudioToLetter(pl.LightningModule):
         audio, audio_len = pad_packed_sequence(audio, batch_first=True)
         #print(audio.shape)
         # audio: [batch_size, audio_len, audio_dim]
-        embeddings = self.encoder(audio)
-        logits = self.dense(embeddings)
-        logits_len = audio_len
+        audio = torch.transpose(audio, 1, 2)
+        logits = self.encoder(audio)
+        logits_len = audio_len // 2
         # logits: [batch_size, audio_len, vocab_size]
         logits = torch.transpose(logits, 0, 1)
         # logits: [audio_len, batch_size, vocab_size]
@@ -54,14 +53,7 @@ class AudioToLetter(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('batch_idx', batch_idx, prog_bar=True)
-        print()
-        return loss
-
-    def validation_epoch_end(self, losses):
-        loss = sum(losses) / len(losses)
-        self.log('loss', loss)
-        print()
+        self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
@@ -73,7 +65,6 @@ class AudioToLetter(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_dim', type=int, default=128)
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
@@ -178,7 +169,7 @@ def cli_main():
     args = parser.parse_args()
 
     train_loader, val_loader = get_ctc_input_fn(args)
-    model = AudioToLetter(vocab_size=VOCAB_SIZE, learning_rate=args.learning_rate)
+    model = AudioToLetter(MELSPEC_DIM, vocab_size=VOCAB_SIZE, learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_loader, val_loader)
 

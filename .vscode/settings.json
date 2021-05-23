@@ -4,5 +4,5 @@
         "**/model/**": true,
         "**/output/**": true
     },
-    "python.pythonPath": "/home/kaiida/anaconda3/envs/py38/bin/python"
+    "python.pythonPath": "/opt/conda/bin/python"
 }

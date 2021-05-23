@@ -60,20 +60,11 @@ class QuartzNet(nn.Module):
         )
         self.dense = nn.Linear(1024, num_classes)
 
-    def forward(self, spec):
-        x = self.layer(spec)
-        x = torch.transpose(x, 1, 2)
-        x = self.dense(x)
-        return x
-
-if False:
-    import pytorch_lightning as pl
-    class EncoderCTC(pl.LightningModule):
-        def __init__(self):
-            super(EncoderCTC, self).__init__()
-            self.encoder = QuartzNet()
-        def forward(self, spec):
-            return self.encoder(spec)
-        
-    module = EncoderCTC()
-    module.summarize()
+    def forward(self, melspec):
+        # melspec: [batch_size, n_mels, melspec_len]
+        embeddings = self.layer(melspec)
+        embeddings = torch.transpose(embeddings, 1, 2)
+        # embeddings: [batch_size, melspec_len, embedding_dim]
+        logits = self.dense(embeddings)
+        # logits: [batch_size, melspec_len, num_classes] 
+        return logits
