@@ -18,98 +18,53 @@ MELSPEC_DIM = 64
 VOCAB_SIZE = PhoneEncoder().vocab_size
 assert VOCAB_SIZE == 37, VOCAB_SIZE
 
-DEFAULT_PARAMS = dict(
-    audio_dim=MELSPEC_DIM,
-    hidden_dim=128,
-    vocab_size=VOCAB_SIZE
-)
-
-class RNNAudioEncoder(nn.Module):
-
-    def __init__(self, audio_dim, hidden_dim, vocab_size):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.lstm = nn.LSTM(audio_dim, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(hidden_dim * 2, vocab_size)
-
-    def forward(self, audio):
-        lstm_out, _ = self.lstm(audio)
-        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out)
-        out = self.dense(lstm_out)
-        return out, lstm_out_len
-
 class AudioToLetter(pl.LightningModule):
-    def __init__(self, learning_rate=0.001):
+    def __init__(self, vocab_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        #self.encoder = RNNAudioEncoder(**DEFAULT_PARAMS)
-        from .jasper import QuartzNet
-        self.encoder = QuartzNet(input_dim=MELSPEC_DIM, num_classes=VOCAB_SIZE)
+        from .models import Voice100Encoder
+        self.encoder = Voice100Encoder()
+        self.dense = nn.Linear(self.encoder.embedding_dim, vocab_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
         return self.encoder(audio)
 
-    def training_step(self, batch, batch_idx):
-        #print('hoge')
+    def _calc_batch_loss(self, batch):
         text, audio, text_len = batch
-        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
-        #print(audio.shape)
         # text: [text_len, batch_size]
         # audio: PackedSequence
-        audio = torch.transpose(audio, 1, 2)
-        logits = self.encoder(audio)
+        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
+        print(audio.shape)
+        # audio: [batch_size, audio_len, audio_dim]
+        embeddings = self.encoder(audio)
+        logits = self.dense(embeddings)
+        logits_len = audio_len
+        # logits: [batch_size, audio_len, vocab_size]
         logits = torch.transpose(logits, 0, 1)
-        #print(logits.shape)
-        logits_len = audio_len // 2
-        #print(logits_len)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
+        print(log_probs.shape)
         text = text.transpose(0, 1)
-
-        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
-    def validation_step(self, batch, batch_idx):
-        text, audio, text_len = batch
-        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
-        # text: [text_len, batch_size]
-        # audio: PackedSequence
-        audio = torch.transpose(audio, 1, 2)
-        logits = self.encoder(audio)
-        logits = torch.transpose(logits, 0, 1)
-        logits_len = audio_len // 2
-        # logits: [audio_len, batch_size, vocab_size]
-        log_probs = nn.functional.log_softmax(logits, dim=-1)
-        log_probs_len = logits_len
-        text = text.transpose(0, 1)
+    def training_step(self, batch, batch_idx):
+        return self._calc_batch_loss(batch)
 
-        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = self.loss_fn(log_probs, text, log_probs_len, text_len)
+    def validation_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
         self.log('batch_idx', batch_idx, prog_bar=True)
+        print()
         return loss
 
     def validation_epoch_end(self, losses):
         loss = sum(losses) / len(losses)
         self.log('loss', loss)
+        print()
 
     def test_step(self, batch, batch_idx):
-        text, audio, text_len = batch
-        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
-        # text: [text_len, batch_size]
-        # audio: PackedSequence
-        audio = torch.transpose(audio, 1, 2)
-        logits = self.encoder(audio)
-        logits = torch.transpose(logits, 0, 1)
-        logits_len = audio_len // 2
-        # logits: [audio_len, batch_size, vocab_size]
-        log_probs = nn.functional.log_softmax(logits, dim=-1)
-        log_probs_len = logits_len
-        text = text.transpose(0, 1)
-
-        #print(logits.shape, text.shape, audio_lengths.shape, text_lengths.shape)
-        loss = self.loss_fn(log_probs, text, log_probs_len, text_len)
+        loss = self._calc_batch_loss(batch)
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
@@ -119,7 +74,7 @@ class AudioToLetter(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_dim', type=int, default=128)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
 def predict(args):
@@ -214,7 +169,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--dataset', default='kokoro_tiny', help='Dataset to use')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
     parser.add_argument('--checkpoint', help='Dataset to use')
@@ -223,7 +178,7 @@ def cli_main():
     args = parser.parse_args()
 
     train_loader, val_loader = get_ctc_input_fn(args)
-    model = AudioToLetter()
+    model = AudioToLetter(vocab_size=VOCAB_SIZE, learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_loader, val_loader)
 
