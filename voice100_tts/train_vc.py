@@ -60,7 +60,7 @@ class VoiceConvert(pl.LightningModule):
 
         self.encoder = QuartzNet(melspec_dim, hidden_dim)
         self.decoder = Voice100Decoder(hidden_dim, audio_dim)
-        self.loss = torch.nn.MSELoss(reduce='none')
+        self.loss = torch.nn.MSELoss(reduction='none')
 
     def forward(self, melspec):
         melspec = torch.transpose(melspec, 1, 2)
