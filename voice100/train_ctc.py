@@ -12,7 +12,6 @@ from torch.nn.utils.rnn import pad_packed_sequence
 from .encoder import decode_text, merge_repeated, PhoneEncoder
 from .dataset import get_ctc_input_fn
 
-SAMPLE_RATE = 16000
 AUDIO_DIM = 27
 MELSPEC_DIM = 64
 VOCAB_SIZE = PhoneEncoder().vocab_size
@@ -113,48 +112,6 @@ def predict(args):
                         file.write(x)
                         txtfile.write(f'{audio_index+1}|{pred_decoded}\n')
                         audio_index += 1
-
-def export(args, device):
-
-    class AudioToLetter(nn.Module):
-
-        def __init__(self, n_mfcc, hidden_dim, vocab_size):
-            super(AudioToLetter, self).__init__()
-            self.hidden_dim = hidden_dim
-            self.lstm = nn.LSTM(n_mfcc, hidden_dim, num_layers=2, dropout=0.2, bidirectional=True)
-            self.dense = nn.Linear(hidden_dim * 2, vocab_size)
-
-        def forward(self, audio):
-            lstm_out, _ = self.lstm(audio)
-            return self.dense(lstm_out)
-
-    model = AudioToLetter(**DEFAULT_PARAMS).to(device)
-    ckpt_path = os.path.join(args.model_dir, 'ctc-last.pth')
-    state = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(state['model'])
-    model.eval()
-    batch_size = 1
-    audio_len = 17
-    audio_dim = DEFAULT_PARAMS['n_mfcc']
-    audio_batch = torch.rand([audio_len, batch_size, audio_dim], dtype=torch.float32)
-    #audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-    with torch.no_grad():
-        outputs = model(audio_batch)
-        print(outputs.shape)
-        assert outputs.shape[2] == VOCAB_SIZE
-        print(type(audio_batch))
-        output_file = 'voice100.onnx'
-        torch.onnx.export(
-            model,
-            (audio_batch,),
-            output_file,
-            export_params=True,
-            opset_version=13,
-            do_constant_folding=True,
-            input_names = ['input'],
-            output_names = ['output'],
-            dynamic_axes={'input' : {0: 'input_length'},
-                        'output' : {0: 'input_length'}})
 
 def cli_main():
     pl.seed_everything(1234)
