@@ -1,14 +1,14 @@
 from setuptools import setup
 
 setup(
-    name="voice100-tts",
+    name="voice100",
     version="0.0.1",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
-    description="Voice100 TTS",
+    description="Voice100",
     license="MIT",
-    url="https://github.com/kaiidams/voice100-tts",
-    packages=['voice100_tts'],
+    url="https://github.com/kaiidams/voice100",
+    packages=['voice100'],
     long_description="Voice100 is a small TTS for Japanese.",
     entry_points={
     },

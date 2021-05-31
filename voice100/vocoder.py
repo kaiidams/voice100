@@ -1,127 +1,108 @@
-# Copyright (C) 2021 Katsuya Iida. All rights reserved.
-
+import torch
+import torchaudio
 import numpy as np
 import pyworld
-import torch
-from torch import nn
-from typing import Tuple
+import pysptk
+import librosa
+import math
 
-__all__ = [
-    "WORLDVocoder",
-    ]
-    
-class WORLDVocoder(nn.Module):
+from .wsola import WSOLA
 
-    def __init__(
-        self,
-        sample_rate: int = 16000,
-        frame_period: int = 10.0,
-        n_fft: int = None,
-        use_mc: bool = False,
-        log_offset: float = 1e-15
-        ) -> None:
-        super().__init__()
+SAMPLE_RATE = 16000
+
+class WORLDVocoder:
+    def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=512, mcep_dim=24, mcep_alpha=0.410):
         self.sample_rate = sample_rate
         self.frame_period = frame_period
         self.n_fft = n_fft
-        if sample_rate == 16000:
-            self.mcep_dim = 24
-            self.mcep_alpha = 0.410
-            self.codeap_dim = 1
-            if self.n_fft is None: self.n_fft = 512
-        elif sample_rate == 22050:
-            self.mcep_dim = 34
-            self.mcep_alpha = 0.455
-            self.codeap_dim = 2
-            if self.n_fft is None: self.n_fft = 1024
-        else:
-            raise ValueError("Unsupported sample rate")
-        self.use_mc = use_mc
-        if use_mc:
-            self.sp2mc_matrix = create_sp2mc_matrix(self.n_fft, self.mcep_dim, alpha=self.mcep_alpha)
-            self.mc2sp_matrix = create_mc2sp_matrix(self.n_fft, self.mcep_dim, alpha=self.mcep_alpha)
-        else:
-            self.sp2mc_matrix = None
-            self.mc2sp_matrix = None
-        self.log_offset = log_offset
+        self.mcep_dim = mcep_dim
+        self.mcep_alpha = mcep_alpha
 
-    def forward(self, waveform: torch.Tensor):
-        return self.encode(waveform)
-
-    def encode(
-        self,
-        waveform: torch.Tensor,
-        f0_floor: float = 80.0, f0_ceil: float = 400.0
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        waveform = waveform.cpu().numpy().astype(np.double)
-        f0, time_axis = pyworld.dio(waveform, self.sample_rate, f0_floor=f0_floor,
-            f0_ceil=f0_ceil, frame_period=self.frame_period)
+    def encode(self, waveform, f0_floor=40, f0_ceil=400):
+        waveform = waveform.astype(np.double)
+        f0, time_axis = pyworld.harvest(waveform, self.sample_rate, f0_floor=f0_floor, f0_ceil=f0_ceil, frame_period=self.frame_period)
         spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
-        logspc = np.log(spc + self.log_offset)
         ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+
+        mcep = pysptk.sp2mc(spc, self.mcep_dim, self.mcep_alpha)
         codeap = pyworld.code_aperiodicity(ap, self.sample_rate)
 
-        if self.use_mc:
-            mc = logspc @ self.sp2mc_matrix
-            return (
-                torch.from_numpy(f0.astype(np.float32)),
-                torch.from_numpy(mc.astype(np.float32)),
-                torch.from_numpy(codeap.astype(np.float32))
-            )
-        else:
-            return (
-                torch.from_numpy(f0.astype(np.float32)),
-                torch.from_numpy(logspc.astype(np.float32)),
-                torch.from_numpy(codeap.astype(np.float32))
-            )
+        return np.concatenate([
+            f0[:, None], mcep, codeap
+        ], axis=1).astype(np.float32)
 
-    def decode(
-        self, f0: torch.Tensor, logspc_or_mc: torch.Tensor, codeap: torch.Tensor
-        ) -> torch.Tensor:
-        f0 = f0.cpu().numpy().astype(np.double, order='C')
-        if self.use_mc:
-            mc = logspc_or_mc.cpu().numpy().astype(np.double)
-            logspc = mc @ self.mc2sp_matrix
-        else:
-            logspc = logspc_or_mc.cpu().numpy().astype(np.double)
-        codeap = codeap.cpu().numpy().astype(np.double, order='C')
-        spc = np.maximum(np.exp(logspc) - self.log_offset, 0).copy(order='C')
+    def decode(self, encoded):
+        f0 = encoded[:, 0].copy().astype(np.double)
+        mcep = encoded[:, 1:2 + self.mcep_dim].copy().astype(np.double)
+        codeap = encoded[:, 2 + self.mcep_dim:].copy().astype(np.double)
+
         ap = pyworld.decode_aperiodicity(codeap, self.sample_rate, self.n_fft)
+        spc = pysptk.mc2sp(mcep, self.mcep_alpha, self.n_fft)
         waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
         return waveform
 
-def create_sp2mc_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
-    """PySPTK compatible mel-cepstrum transform matrix
-    https://pysptk.readthedocs.io/en/latest/_modules/pysptk/conversion.html#sp2mc"""
-    logsp = np.eye(fftlen // 2 + 1, dtype=np.float32)
-    c = np.fft.irfft(logsp)
-    c[:, 0] /= 2.0
-    mc = freqt(c, order, alpha)
-    return mc
+class MelSpectrogramVocoder:
+    def __init__(self, sample_rate=16000, n_fft=512, win_length=400, hop_length=160, n_mels=64, log_offset=1e-6):
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
+        self.n_mels = n_mels
+        self.log_offset = log_offset
 
-def create_mc2sp_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
-    """PySPTK compatible mel-cepstrum invert transform matrix
-    https://pysptk.readthedocs.io/en/latest/_modules/pysptk/conversion.html#mc2sp"""
-    c = np.eye(order + 1, dtype=np.float32)
-    c = freqt(c, fftlen // 2, -alpha)
-    c[:, 0] *= 2.0
-    c = np.concatenate([c[:, :], c[:, :0:-1]], axis=1)
-    logsp = np.fft.rfft(c).real
-    return logsp
+    def encode(self, waveform):
+        melspec = librosa.feature.melspectrogram(
+            waveform,
+            sr=self.sample_rate,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+            center=True,
+            pad_mode="reflect",
+            power=2.0,
+            n_mels=self.n_mels,
+            norm='slaney',
+            htk=True,
+        )
+        return np.log(melspec.T + self.log_offset).astype(np.float32)
 
-def freqt(ceps: np.ndarray, order=25, alpha=0.0) -> np.ndarray:
-    """PySPTK compatible frequency transform
-    https://pysptk.readthedocs.io/en/latest/generated/pysptk.sptk.freqt.html#pysptk.sptk.freqt
-    """
-    c = np.zeros([ceps.shape[0], order + 1])
-    for i in range(ceps.shape[1]):
-        d = alpha * c
-        for j in range(c.shape[1]):
-            if j == 0:
-                d[:, j] += ceps[:, ceps.shape[1] - 1 - i]
-            elif j == 1:
-                d[:, j] += (1 - alpha ** 2) * c[:, j - 1]
-            else:
-                d[:, j] += c[:, j - 1] - alpha * d[:, j - 1]
-        c = d
-    return c
+    def decode(self, x):
+        raise NotImplementedError("Decoding from Mel-spectrogram is not supported")
+
+class AudioAugmentation:
+    def __init__(self, sample_rate=16000):
+        self.sample_rate = sample_rate
+        self.n_fft = 1024
+
+    def augment(self, waveform, change_pace=False, f0_floor=40, f0_ceil=400, frame_period=5.0):
+        pitch_shift = np.random.uniform(low=0.95, high=1.2)
+        f0_shift = np.random.uniform(low=0.95, high=1.2)
+        sn_rate = np.random.uniform(low=5.0, high=100.0)
+        tone_freq = np.random.uniform(low=10.0, high=2000.0)
+        tone_rate = np.random.uniform(low=5.0, high=100.0)
+        if change_pace:
+            speech_rate = np.random.uniform(low=0.9, high=1.1)
+        else:
+            speech_rate = 1.0
+
+        waveform = waveform.astype(np.double)
+
+        # Shift F0
+        f0, time_axis = pyworld.dio(
+            waveform, self.sample_rate * pitch_shift,
+            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil,
+            frame_period=frame_period / pitch_shift)
+        spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+        ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+        f0 = f0 * f0_shift / pitch_shift
+        waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=frame_period / speech_rate)
+
+        # Noise
+        noise = np.random.random(waveform.shape)
+        waveform = (waveform * sn_rate + noise) / (1 + sn_rate)
+
+        # Tone
+        tone = np.sin(2 * math.pi * tone_freq * np.arange(len(waveform)) / self.sample_rate)
+        waveform = (waveform * tone_rate + tone) / (1 + tone_rate)
+
+        return waveform.astype(np.float32)

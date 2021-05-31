@@ -1,9 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 import numpy as np
-import torch
-from torch import nn
-import re
 
 vocab = (
     '_ , . ! ?'
@@ -20,6 +17,7 @@ def decode_text(encoded):
     return ' '.join(vocab[id_] for id_ in encoded)
 
 def merge_repeated(text):
+    import re
     r = re.sub(r'(.+)( \1)+', r'\1', text).replace(' _', '').replace('_ ', '')
     if r == '_': r = ''
     return r
@@ -39,8 +37,7 @@ class PhoneEncoder:
         return ' '.join(self.vocab[id_] for id_ in encoded)
 
     def merge_repeated(self, text):
+        import re
         r = re.sub(r'(.+)( \1)+', r'\1', text).replace(' _', '').replace('_ ', '')
         if r == '_': r = ''
         return r
-
-#IPA_VOCAB = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
