@@ -1,73 +1,108 @@
-# Copyright (C) 2021 Katsuya Iida. All rights reserved.
-
-import soundfile as sf
-import librosa
+import torch
+import torchaudio
+import numpy as np
 import pyworld
 import pysptk
-import numpy as np
+import librosa
+import math
 
-if False:
-    SAMPLE_RATE = 16000
-    FFT_SIZE = 1024
-    FRAME_PERIOD = 20.0
-    MCEP_DIM = 24
-    MCEP_ALPHA = 0.410
-    AUDIO_DIM = MCEP_DIM + 3
-else:
-    SAMPLE_RATE = 22050
-    FFT_SIZE = 1024
-    FRAME_PERIOD = 2 * 4.988662131519274
-    MCEP_DIM = 34
-    MCEP_ALPHA = 0.455
-    CODEAP_DIM = 2
-    AUDIO_DIM = 1 + (MCEP_DIM + 1) + CODEAP_DIM
+from .wsola import WSOLA
 
-def readwav(file, fs=SAMPLE_RATE):
-    x, origfs = sf.read(file)
-    if fs is not None:
-        x = librosa.resample(x, origfs, fs)
-    x = x / x.max()
-    return x
+SAMPLE_RATE = 16000
 
-def writewav(file, x, fs=SAMPLE_RATE):
-    sf.write(file, x, fs, 'PCM_16')
+class WORLDVocoder:
+    def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=512, mcep_dim=24, mcep_alpha=0.410):
+        self.sample_rate = sample_rate
+        self.frame_period = frame_period
+        self.n_fft = n_fft
+        self.mcep_dim = mcep_dim
+        self.mcep_alpha = mcep_alpha
 
-def estimatef0(x, fs=SAMPLE_RATE, frame_period=FRAME_PERIOD):
-    f0, _ = pyworld.harvest(x, fs, f0_floor=40, f0_ceil=700, frame_period=frame_period)
-    return f0
+    def encode(self, waveform, f0_floor=40, f0_ceil=400):
+        waveform = waveform.astype(np.double)
+        f0, time_axis = pyworld.harvest(waveform, self.sample_rate, f0_floor=f0_floor, f0_ceil=f0_ceil, frame_period=self.frame_period)
+        spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+        ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
 
-def analyze_world(x, fs, f0_floor, f0_ceil, frame_period):
-    f0, time_axis = pyworld.harvest(x, fs, f0_floor=f0_floor, f0_ceil=f0_ceil, frame_period=frame_period)
-    spc = pyworld.cheaptrick(x, f0, time_axis, fs, fft_size=FFT_SIZE)
-    ap = pyworld.d4c(x, f0, time_axis, fs, fft_size=FFT_SIZE)
-    return f0, spc, ap
+        mcep = pysptk.sp2mc(spc, self.mcep_dim, self.mcep_alpha)
+        codeap = pyworld.code_aperiodicity(ap, self.sample_rate)
 
-def analyze(x, fs, f0_floor, f0_ceil, frame_period=FRAME_PERIOD, pitchshift=None):
-    if pitchshift is not None:
-        f0, spc, ap = analyze_world(x, fs * pitchshift, f0_floor, f0_ceil, frame_period / pitchshift)
-    else:
-        f0, spc, ap = analyze_world(x, fs, f0_floor, f0_ceil, frame_period)
-    mcep = pysptk.sp2mc(spc, MCEP_DIM, MCEP_ALPHA)
-    codeap = pyworld.code_aperiodicity(ap, fs)
-    
-    #return x, fs, f0, time_axis, spc, ap, mcep, codeap
-    return f0, mcep, codeap
+        return np.concatenate([
+            f0[:, None], mcep, codeap
+        ], axis=1).astype(np.float32)
 
-def synthesize(f0, mcep, codeap, fs, frame_period=FRAME_PERIOD):
-    ap = pyworld.decode_aperiodicity(codeap, fs, FFT_SIZE)
-    spc = pysptk.mc2sp(mcep, MCEP_ALPHA, FFT_SIZE)
-    y = pyworld.synthesize(f0, spc, ap, fs, frame_period=frame_period)
-    return y
+    def decode(self, encoded):
+        f0 = encoded[:, 0].copy().astype(np.double)
+        mcep = encoded[:, 1:2 + self.mcep_dim].copy().astype(np.double)
+        codeap = encoded[:, 2 + self.mcep_dim:].copy().astype(np.double)
 
-def encode_audio(x, f0_floor, f0_ceil, fs=SAMPLE_RATE, pitchshift=None):
-    f0, mcep, codeap = analyze(x, fs, f0_floor, f0_ceil, pitchshift=pitchshift)
-    encoded = np.hstack((f0.reshape((-1, 1)), mcep, codeap))
-    return encoded.astype(np.float32)
+        ap = pyworld.decode_aperiodicity(codeap, self.sample_rate, self.n_fft)
+        spc = pysptk.mc2sp(mcep, self.mcep_alpha, self.n_fft)
+        waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
+        return waveform
 
-def decode_audio(encoded, fs=SAMPLE_RATE):
-    encoded = encoded.astype(np.float)
-    f0 = encoded[:, 0].copy()
-    mcep = encoded[:, 1:2 + MCEP_DIM].copy()
-    codeap = encoded[:, 2 + MCEP_DIM:].copy()
-    y = synthesize(f0, mcep, codeap, fs)
-    return y
+class MelSpectrogramVocoder:
+    def __init__(self, sample_rate=16000, n_fft=512, win_length=400, hop_length=160, n_mels=64, log_offset=1e-6):
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
+        self.n_mels = n_mels
+        self.log_offset = log_offset
+
+    def encode(self, waveform):
+        melspec = librosa.feature.melspectrogram(
+            waveform,
+            sr=self.sample_rate,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+            center=True,
+            pad_mode="reflect",
+            power=2.0,
+            n_mels=self.n_mels,
+            norm='slaney',
+            htk=True,
+        )
+        return np.log(melspec.T + self.log_offset).astype(np.float32)
+
+    def decode(self, x):
+        raise NotImplementedError("Decoding from Mel-spectrogram is not supported")
+
+class AudioAugmentation:
+    def __init__(self, sample_rate=16000):
+        self.sample_rate = sample_rate
+        self.n_fft = 1024
+
+    def augment(self, waveform, change_pace=False, f0_floor=40, f0_ceil=400, frame_period=5.0):
+        pitch_shift = np.random.uniform(low=0.95, high=1.2)
+        f0_shift = np.random.uniform(low=0.95, high=1.2)
+        sn_rate = np.random.uniform(low=5.0, high=100.0)
+        tone_freq = np.random.uniform(low=10.0, high=2000.0)
+        tone_rate = np.random.uniform(low=5.0, high=100.0)
+        if change_pace:
+            speech_rate = np.random.uniform(low=0.9, high=1.1)
+        else:
+            speech_rate = 1.0
+
+        waveform = waveform.astype(np.double)
+
+        # Shift F0
+        f0, time_axis = pyworld.dio(
+            waveform, self.sample_rate * pitch_shift,
+            f0_floor=pitch_shift * f0_floor, f0_ceil=pitch_shift * f0_ceil,
+            frame_period=frame_period / pitch_shift)
+        spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+        ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
+        f0 = f0 * f0_shift / pitch_shift
+        waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=frame_period / speech_rate)
+
+        # Noise
+        noise = np.random.random(waveform.shape)
+        waveform = (waveform * sn_rate + noise) / (1 + sn_rate)
+
+        # Tone
+        tone = np.sin(2 * math.pi * tone_freq * np.arange(len(waveform)) / self.sample_rate)
+        waveform = (waveform * tone_rate + tone) / (1 + tone_rate)
+
+        return waveform.astype(np.float32)
