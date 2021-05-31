@@ -1,7 +1,0 @@
-{
-    "files.watcherExclude": {
-        "**/data/**": true,
-        "**/model/**": true,
-        "**/output/**": true
-    }
-}

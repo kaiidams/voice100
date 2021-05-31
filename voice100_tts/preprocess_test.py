@@ -24,6 +24,23 @@ class TestPreprocess(unittest.TestCase):
         reader.close()
         reader2.close()
 
+    def test_data2(self, name='cv_ja_kokoro_tiny', sample_rate=SAMPLE_RATE):
+        from .data import IndexDataDataset
+        text_file = 'data/%s-text-%d' % (name, sample_rate)
+        audio_file = 'data/%s-audio-%d' % (name, sample_rate)
+        ds = IndexDataDataset(
+            [text_file, audio_file], [(-1,), (-1, AUDIO_DIM)], [np.uint8, np.float32])
+
+        l = len(ds)
+        for index in tqdm(range(1, l, l // 10)):
+            text, audio = ds[index]
+            print(decode_text(text))
+            x = decode_audio(audio)
+            file = 'data/synthesized/%s_%04d.wav' % (name, index)
+            os.makedirs(os.path.dirname(file), exist_ok=True)
+            writewav(file, x)
+        ds.close()
+
 def test_data2(name='kokoro_tiny', sample_rate=SAMPLE_RATE):
     from .data import IndexDataFileReader
     reader = IndexDataFileReader('data/%s-text-%d' % (name, sample_rate))
