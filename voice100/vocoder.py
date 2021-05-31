@@ -1,17 +1,23 @@
-import torch
-import torchaudio
+# Copyright (C) 2021 Katsuya Iida. All rights reserved.
+
 import numpy as np
 import pyworld
 import pysptk
 import librosa
 import math
 
-from .wsola import WSOLA
+class Vocoder:
 
-SAMPLE_RATE = 16000
+    def encode(self, waveform: np.ndarray) -> np.ndarray:
+        raise NotImplementedError()
 
-class WORLDVocoder:
+    def decode(self, encoded: np.ndarray) -> np.ndarray:
+        raise NotImplementedError()
+
+class WORLDVocoder(Vocoder):
+
     def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=512, mcep_dim=24, mcep_alpha=0.410):
+        super().__init__()
         self.sample_rate = sample_rate
         self.frame_period = frame_period
         self.n_fft = n_fft
@@ -41,8 +47,10 @@ class WORLDVocoder:
         waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
         return waveform
 
-class MelSpectrogramVocoder:
+class MelSpectrogramVocoder(Vocoder):
+
     def __init__(self, sample_rate=16000, n_fft=512, win_length=400, hop_length=160, n_mels=64, log_offset=1e-6):
+        super().__init__()
         self.sample_rate = sample_rate
         self.n_fft = n_fft
         self.win_length = win_length
