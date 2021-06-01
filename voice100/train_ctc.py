@@ -1,50 +1,74 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-import os
 import numpy as np
 import torch
 from torch import nn
-from tqdm import tqdm
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from torch.nn.utils.rnn import pad_packed_sequence
-from .encoder import decode_text, merge_repeated, PhoneEncoder
-from .dataset import get_ctc_input_fn
+
+from .datasets import get_ctc_input_fn
 
 AUDIO_DIM = 27
 MELSPEC_DIM = 64
-VOCAB_SIZE = PhoneEncoder().vocab_size
-assert VOCAB_SIZE == 37, VOCAB_SIZE
+MFCC_DIM = 20
+#VOCAB_SIZE = PhoneEncoder().vocab_size
+VOCAB_SIZE = 29
+assert VOCAB_SIZE == 29, VOCAB_SIZE
+
+class Voice100Encoder(nn.Module):
+
+    def __init__(self, in_channels, hidden_dim=256, n_layers=5):
+        super().__init__()
+        layers = []
+        for i in range(n_layers):
+            if i == 0:
+                conv = nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=False)
+            else:
+                conv = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1, padding=0, bias=False)
+            layers.append(conv)
+            norm = nn.BatchNorm1d(hidden_dim, eps=0.001)
+            layers.append(norm)
+            act = nn.GELU()
+            layers.append(act)
+            dropout = nn.Dropout(0.1)
+            layers.append(dropout)
+        self.layer = nn.Sequential(*layers)
+
+    def forward(self, audio):
+        # audio: [batch_size, audio_len, audio_dim]
+        x = torch.transpose(audio, 1, 2)
+        x = self.layer(x)
+        # x: [batch_size, audio_len, hidden_dim]
+        x = torch.transpose(x, 1, 2)
+        return x
 
 class AudioToLetter(pl.LightningModule):
-    def __init__(self, audio_dim, vocab_size, learning_rate):
+    def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        from .jasper import QuartzNet
-        self.encoder = QuartzNet(audio_dim, vocab_size)
+        self.encoder = Voice100Encoder(audio_dim, hidden_dim=hidden_dim)
+        self.post_proj = nn.Linear(hidden_dim, vocab_size, bias=True)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
-        return self.encoder(audio)
+        x = self.encoder(audio)
+        logits = self.post_proj(x)
+        # logits: [batch_size, audio_len, vocab_size]
+        return logits
 
     def _calc_batch_loss(self, batch):
-        text, audio, text_len = batch
-        # text: [text_len, batch_size]
-        # audio: PackedSequence
-        audio, audio_len = pad_packed_sequence(audio, batch_first=True)
-        #print(audio.shape)
+        audio, audio_len, text, text_len = batch
         # audio: [batch_size, audio_len, audio_dim]
-        audio = torch.transpose(audio, 1, 2)
-        logits = self.encoder(audio)
-        logits_len = audio_len // 2
+        # text: [batch_size, text_len]
+        logits = self(audio)
+        logits_len = audio_len
         # logits: [batch_size, audio_len, vocab_size]
         logits = torch.transpose(logits, 0, 1)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
         #print(log_probs.shape)
-        text = text.transpose(0, 1)
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
@@ -67,52 +91,6 @@ class AudioToLetter(pl.LightningModule):
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
-def predict(args):
-
-    from torch.nn.utils.rnn import pack_sequence
-    from .data import IndexDataDataset
-    from .dataset import normalize
-
-    def generate_batch_audio(data_batch):
-        audio_batch = [torch.from_numpy(normalize(audio)) for audio, in data_batch]
-
-        audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-        return audio_batch
-
-    model = AudioToLetter.load_from_checkpoint(args.checkpoint)
-
-    audio_dim = AUDIO_DIM
-    sample_rate = 16000
-    args.text = 'test.txt'
-    args.output = 'aaa'
-    audio_file=f'data/{args.dataset}-audio-{sample_rate}'
-    ds = IndexDataDataset([audio_file],
-    [(-1, audio_dim)], [np.float32]
-    )
-    dataloader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_batch_audio)
-
-    from .preprocess import open_index_data_for_write
-
-    model.eval()
-    with torch.no_grad():
-        with open_index_data_for_write(args.output) as file:
-            with open(args.text, 'wt') as txtfile:
-                audio_index = 0
-                for i, audio in enumerate(tqdm(dataloader)):
-                    #audio = pack_sequence([audio], enforce_sorted=False)
-                    logits, logits_len = model(audio)
-                    # logits: [audio_len, batch_size, vocab_size]
-                    preds = torch.argmax(logits, axis=-1).T
-                    # preds: [batch_size, audio_len]
-                    preds_len = logits_len
-                    for j in range(preds.shape[0]):
-                        pred_decoded = decode_text(preds[j, :preds_len[j]])
-                        #pred_decoded = merge_repeated(pred_decoded)
-                        x = logits[:preds_len[j], j, :].numpy().astype(np.float32)
-                        file.write(x)
-                        txtfile.write(f'{audio_index+1}|{pred_decoded}\n')
-                        audio_index += 1
-
 def cli_main():
     pl.seed_everything(1234)
 
@@ -126,7 +104,11 @@ def cli_main():
     args = parser.parse_args()
 
     train_loader, val_loader = get_ctc_input_fn(args)
-    model = AudioToLetter(MELSPEC_DIM, vocab_size=VOCAB_SIZE, learning_rate=args.learning_rate)
+    model = AudioToLetter(
+        audio_dim=MFCC_DIM,
+        hidden_dim=256,
+        vocab_size=VOCAB_SIZE,
+        learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_loader, val_loader)
 
