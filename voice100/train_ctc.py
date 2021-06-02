@@ -66,7 +66,7 @@ class AudioToLetter(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_dim]
         # text: [batch_size, text_len]
         logits = self(audio)
-        logits_len = audio_len
+        logits_len = audio_len // 2
         # logits: [batch_size, audio_len, vocab_size]
         logits = torch.transpose(logits, 0, 1)
         # logits: [audio_len, batch_size, vocab_size]
