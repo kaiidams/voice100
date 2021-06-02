@@ -25,10 +25,10 @@ class AudioToChar(nn.Module):
         self.dense = nn.Linear(hidden_dim * 2, vocab_size)
 
     def forward(self, audio, audio_len):
-        audio = torch.nn.utils.rnn.pack_padded_sequence(audio, audio_len, batch_first=True, enforce_sorted=False)
+        audio = torch.nn.utils.rnn.pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
         lstm_out, _ = self.lstm(audio)
         lstm_out, lstm_out_len = torch.nn.utils.rnn.pad_packed_sequence(lstm_out, batch_first=True)
-        return self.dense(lstm_out), lstm_out_len
+        return self.dense(lstm_out), lstm_out_len.to(lstm_out.device)
 
 class Voice100Encoder(nn.Module):
 
