@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from genericpath import exists
 import os
 import random
 import numpy as np
@@ -36,16 +37,29 @@ class VoiceDataset(Dataset):
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, repeat=1, cachedir=None):
         self._dataset = dataset
+        self._cachedir = cachedir
+        self._repeat = repeat
         self._preprocess = AudioToLetterPreprocess()
 
     def __len__(self):
-        return len(self._dataset)
+        return len(self._dataset) * self._repeat
 
     def __getitem__(self, index):
-        data = self._dataset[index]
-        return self._preprocess(*data)
+        cachefile = os.path.join(self._cachedir, f"{index}.pt")
+        if os.path.exists(cachefile):
+            try:
+                return torch.load(cachefile)
+            except Exception as ex:
+                print(ex)
+        data = self._dataset[index // self._repeat]
+        encoded_data = self._preprocess(*data)
+        try:
+            torch.save(encoded_data, cachefile)
+        except Exception as ex:
+            print(ex)
+        return encoded_data
 
 vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
 v2i = {x: i for i, x in enumerate(vocab.split(' '))}
@@ -115,7 +129,8 @@ def get_ctc_input_fn(args):
             chained_ds = ds
         else:
             chained_ds += ds
-    encoded_ds = EncodedVoiceDataset(chained_ds)
+    os.makedirs(args.cache, exist_ok=True)
+    encoded_ds = EncodedVoiceDataset(chained_ds, cachedir=args.cache)
     valid_rate = 0.1
     total_len = len(encoded_ds)
     valid_len = int(total_len * valid_rate)
