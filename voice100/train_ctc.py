@@ -111,7 +111,7 @@ def cli_main():
     train_loader, val_loader = get_ctc_input_fn(args)
     model = AudioToLetter(
         audio_dim=MFCC_DIM,
-        hidden_dim=256,
+        hidden_dim=1024,
         vocab_size=VOCAB_SIZE,
         learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
