@@ -44,10 +44,10 @@ class JasperBlock(nn.Module):
         y = self.out(y)
         return y
 
-class QuartzNet(nn.Module):
+class QuartzNetEncoder(nn.Module):
 
-    def __init__(self, input_dim, num_classes):
-        super(QuartzNet, self).__init__()
+    def __init__(self, input_dim):
+        super().__init__()
         self.layer = nn.Sequential(
             JasperBlock(input_dim, 256, kernel_size=33, stride=2, repeat=1, residual=False),
 
@@ -60,13 +60,12 @@ class QuartzNet(nn.Module):
             JasperBlock(512, 512, kernel_size=87, stride=1, repeat=1, residual=False),
             JasperBlock(512, 1024, kernel_size=1, stride=1, repeat=1, residual=False),
         )
-        self.dense = nn.Linear(1024, num_classes)
 
-    def forward(self, melspec):
+    def forward(self, audio):
+        # audio: [batch_size, audio_len, audio_dim]
+        x = torch.transpose(audio, 1, 2)
         # melspec: [batch_size, n_mels, melspec_len]
-        embeddings = self.layer(melspec)
+        embeddings = self.layer(audio)
         embeddings = torch.transpose(embeddings, 1, 2)
         # embeddings: [batch_size, melspec_len, embedding_dim]
-        logits = self.dense(embeddings)
-        # logits: [batch_size, melspec_len, num_classes] 
-        return logits
+        return embeddings

@@ -49,7 +49,9 @@ class AudioToLetter(pl.LightningModule):
     def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = Voice100Encoder(audio_dim, hidden_dim=hidden_dim)
+        #self.encoder = Voice100Encoder(audio_dim, hidden_dim=hidden_dim)
+        from .jasper import QuartzNet
+        self.encoder = QuartzNet(audio_dim)
         self.post_proj = nn.Linear(hidden_dim, vocab_size, bias=True)
         self.loss_fn = nn.CTCLoss()
 
