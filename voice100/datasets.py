@@ -37,7 +37,7 @@ class VoiceDataset(Dataset):
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
-    def __init__(self, dataset, repeat=1, cachedir=None):
+    def __init__(self, dataset, repeat=5, cachedir=None):
         self._dataset = dataset
         self._cachedir = cachedir
         self._repeat = repeat
