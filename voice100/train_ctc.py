@@ -24,15 +24,11 @@ class Voice100Encoder(nn.Module):
         for i in range(n_layers):
             if i == 0:
                 conv = nn.Conv1d(in_channels, hidden_dim, kernel_size=1, padding=1, bias=False)
-                layers.append(conv)
             elif i == 1:
                 conv = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, groups=hidden_dim, padding=0, bias=False)
-                layers.append(conv)
-                conv = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1, padding=0, bias=False)
-                layers.append(conv)
             else:
                 conv = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=1, padding=0, bias=False)
-                layers.append(conv)
+            layers.append(conv)
             norm = nn.BatchNorm1d(hidden_dim, eps=0.001)
             layers.append(norm)
             act = nn.GELU()
