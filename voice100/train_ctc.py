@@ -70,7 +70,7 @@ class AudioToLetter(pl.LightningModule):
             from .jasper import QuartzNetEncoder
             self.encoder = QuartzNetEncoder(audio_dim)
         elif encoder_type == 'rnn':
-            self.encoder = AudioToChar(audio_dim, num_layers=4, hidden_dim=hidden_dim, vocab_size=vocab_size)
+            self.encoder = AudioToChar(audio_dim, num_layers=2, hidden_dim=hidden_dim, vocab_size=vocab_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
@@ -147,7 +147,7 @@ def cli_main():
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_rate = 0.1
-    hidden_dim = 512
+    hidden_dim = 256
 
     train_loader, val_loader = get_ctc_input_fn(args, pack_audio=True)
     model = AudioToLetter(
