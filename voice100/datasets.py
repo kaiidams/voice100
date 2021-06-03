@@ -1,12 +1,10 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from genericpath import exists
 import os
 import random
-import numpy as np
 import torch
 import torchaudio
-from torchaudio.transforms import MFCC
+from torchaudio.transforms import MFCC, MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence
 
@@ -37,24 +35,29 @@ class VoiceDataset(Dataset):
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
-    def __init__(self, dataset, repeat=10, cachedir=None):
+    def __init__(self, dataset, repeat=10, augment=False, cachedir=None):
         self._dataset = dataset
         self._cachedir = cachedir
         self._repeat = repeat
+        self._augment = augment
         self._preprocess = AudioToLetterPreprocess()
 
     def __len__(self):
         return len(self._dataset) * self._repeat
 
     def __getitem__(self, index):
-        cachefile = os.path.join(self._cachedir, f"{index}.pt")
+        orig_index = index // self._repeat
+        repeat_number = index % self._repeat
+        data = self._dataset[orig_index]
+        cacheid = 'encoded_%d_%d' % (hash(data), repeat_number)
+        cachefile = os.path.join(self._cachedir, cacheid + '.pt')
         if os.path.exists(cachefile):
             try:
                 return torch.load(cachefile)
             except Exception as ex:
                 print(ex)
-        data = self._dataset[index // self._repeat]
-        encoded_data = self._preprocess(*data)
+        augment = self._augment and repeat_number > 0
+        encoded_data = self._preprocess(*data, augment=augment)
         try:
             torch.save(encoded_data, cachefile)
         except Exception as ex:
@@ -73,27 +76,36 @@ class AudioToLetterPreprocess:
         self.n_mels = 64
         self.n_mfcc = 20
 
-        self.mfcc_transform = MFCC(
-            sample_rate=self.sample_rate,
-            n_mfcc=self.n_mfcc,
-            melkwargs={
-                'n_fft': self.n_fft,
-                'n_mels': self.n_mels,
-                'hop_length': self.hop_length,
-                'win_length': self.win_length,
-            })
+        if True:
+            self.mfcc_transform = MelSpectrogram(
+                sample_rate=self.sample_rate,
+                n_fft=self.n_fft,
+                win_length=self.win_length,
+                hop_length=self.hop_length,
+                n_mels=self.n_mels)
+        else:
+            self.mfcc_transform = MFCC(
+                sample_rate=self.sample_rate,
+                n_mfcc=self.n_mfcc,
+                melkwargs={
+                    'n_fft': self.n_fft,
+                    'n_mels': self.n_mels,
+                    'hop_length': self.hop_length,
+                    'win_length': self.win_length,
+                })
 
-    def __call__(self, audiopath, text):
+    def __call__(self, audiopath, text, augment=False):
         effects = [
             ["remix", "1"],
         ]
-        if random.random() < 0.3:
-            effects.append(["lowpass", "-1", "300"])
-        t = random.random()
-        if t < 0.2:
-            effects.append(["speed", "0.8"])
-        elif t < 0.4:
-            effects.append(["speed", "1.2"])
+        if augment:
+            if random.random() < 0.3:
+                effects.append(["lowpass", "-1", "300"])
+            t = random.random()
+            if t < 0.2:
+                effects.append(["speed", "0.8"])
+            elif t < 0.4:
+                effects.append(["speed", "1.2"])
         effects.append(["rate", f"{self.sample_rate}"])
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=effects)
         mfcc = self.mfcc_transform(waveform)
@@ -109,7 +121,17 @@ class AudioToLetterPreprocess:
 
 BLANK_IDX = 0
 
-def generate_audio_text_batch(data_batch):
+def generate_pack_audio_text_batch(data_batch):
+    audio_batch, text_batch = [], []       
+    for audio_item, text_item in data_batch:
+        audio_batch.append(audio_item)
+        text_batch.append(text_item)
+    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+    audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
+    return audio_batch, text_batch, text_len
+
+def generate_pad_audio_text_batch(data_batch):
     audio_batch, text_batch = [], []       
     for audio_item, text_item in data_batch:
         audio_batch.append(audio_item)
@@ -120,7 +142,7 @@ def generate_audio_text_batch(data_batch):
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
     return audio_batch, audio_len, text_batch, text_len
 
-def get_ctc_input_fn(args):
+def get_ctc_input_fn(args, pack_audio=True, num_workers=4):
     chained_ds = None
     for dataset in args.dataset.split(','):
         root = './data/cv-corpus-6.1-2020-12-11/ja'
@@ -129,14 +151,30 @@ def get_ctc_input_fn(args):
             chained_ds = ds
         else:
             chained_ds += ds
-    os.makedirs(args.cache, exist_ok=True)
-    encoded_ds = EncodedVoiceDataset(chained_ds, cachedir=args.cache)
-    valid_rate = 0.1
-    total_len = len(encoded_ds)
-    valid_len = int(total_len * valid_rate)
-    train_len = total_len - valid_len
 
-    train_ds, test_ds = torch.utils.data.random_split(encoded_ds, [train_len, valid_len])
-    train_dataloader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=generate_audio_text_batch)
-    test_dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=generate_audio_text_batch)
+    # Split the dataset
+    total_len = len(chained_ds)
+    valid_len = int(total_len * args.valid_rate)
+    train_len = total_len - valid_len
+    train_ds, valid_ds = torch.utils.data.random_split(chained_ds, [train_len, valid_len])
+
+    os.makedirs(args.cache, exist_ok=True)
+    train_ds = EncodedVoiceDataset(train_ds, repeat=10, augment=True, cachedir=args.cache)
+    valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, augment=False, cachedir=args.cache)
+
+    collate_fn = generate_pack_audio_text_batch if pack_audio else generate_pad_audio_text_batch
+
+    train_dataloader = DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        collate_fn=collate_fn)
+    test_dataloader = DataLoader(
+        valid_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=collate_fn)
+
     return train_dataloader, test_dataloader

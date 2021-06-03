@@ -19,11 +19,10 @@ setup(
     extras_require={
         "audio": [
             'torchaudio',
-            'librosa',
-            'soundfile',
-            'pyworld>=0.2.12',
-            'pysptk>=0.1.18',
-            'tqdm'
+            #'librosa',
+            #'soundfile',
+            #'pyworld>=0.2.12',
+            #'pysptk>=0.1.18',
         ],
         "text": [
             'mecab-python3',
