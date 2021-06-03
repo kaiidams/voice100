@@ -142,7 +142,7 @@ def generate_pad_audio_text_batch(data_batch):
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
     return audio_batch, audio_len, text_batch, text_len
 
-def get_ctc_input_fn(args, pack_audio=True, num_workers=4):
+def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     chained_ds = None
     for dataset in args.dataset.split(','):
         root = './data/cv-corpus-6.1-2020-12-11/ja'
