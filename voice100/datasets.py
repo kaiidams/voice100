@@ -3,6 +3,7 @@
 import os
 import random
 from glob import glob
+from voice100.encoder import CharEncoder
 import torch
 import torchaudio
 from torchaudio.transforms import MFCC, MelSpectrogram
@@ -80,17 +81,13 @@ class EncodedVoiceDataset(Dataset):
                 return torch.load(cachefile)
             except Exception as ex:
                 print(ex)
-        augment = self._augment and self._repeat > 1 and repeat_number > 0
+        augment = self._augment and (self._repeat == 1 or repeat_number > 0)
         encoded_data = self._preprocess(*data, augment=augment)
         try:
             torch.save(encoded_data, cachefile)
         except Exception as ex:
             print(ex)
         return encoded_data
-
-#vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
-vocab = "_ a b c d e f g h i j k l m n o p q r s t u v w x y z '".split(' ')
-v2i = {x: i for i, x in enumerate(vocab)}
 
 class AudioToLetterPreprocess:
     def __init__(self):
@@ -102,14 +99,14 @@ class AudioToLetterPreprocess:
         self.n_mfcc = 20
 
         if True:
-            self.mfcc_transform = MelSpectrogram(
+            self.transform = MelSpectrogram(
                 sample_rate=self.sample_rate,
                 n_fft=self.n_fft,
                 win_length=self.win_length,
                 hop_length=self.hop_length,
                 n_mels=self.n_mels)
         else:
-            self.mfcc_transform = MFCC(
+            self.transform = MFCC(
                 sample_rate=self.sample_rate,
                 n_mfcc=self.n_mfcc,
                 melkwargs={
@@ -118,6 +115,7 @@ class AudioToLetterPreprocess:
                     'hop_length': self.hop_length,
                     'win_length': self.win_length,
                 })
+        self._encoder = CharEncoder()
 
     def __call__(self, audiopath, text, augment=False):
         effects = [
@@ -133,21 +131,18 @@ class AudioToLetterPreprocess:
                 effects.append(["speed", "1.2"])
         effects.append(["rate", f"{self.sample_rate}"])
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=effects)
-        mfcc = self.mfcc_transform(waveform)
-        mfcc = mfcc[0, :, :]
-        mfcc = torch.transpose(mfcc, 0, 1)
+        audio = self.transform(waveform)
+        audio = torch.transpose(audio[0, :, :], 0, 1)
 
         if True:
-            t = text.lower().replace(' ', '')
-            phonemes = [v2i[x] for x in t if x in v2i]
-            phonemes = torch.tensor(phonemes, dtype=torch.int32)
+            encoded = self._encoder.encode(text)
         else:
             t = text2kata(text)
             t = kata2asciiipa(t)
             phonemes = [v2i[x] for x in t.split(' ') if x in v2i]
             phonemes = torch.tensor(phonemes, dtype=torch.int32)
 
-        return mfcc, phonemes
+        return audio, encoded
 
 BLANK_IDX = 0
 
@@ -204,11 +199,11 @@ def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
         shuffle=True,
         num_workers=num_workers,
         collate_fn=collate_fn)
-    test_dataloader = DataLoader(
+    valid_dataloader = DataLoader(
         valid_ds,
-        batch_size=args.batch_size,
+        batch_size=16, #args.batch_size,
         shuffle=False,
         num_workers=num_workers,
         collate_fn=collate_fn)
 
-    return train_dataloader, test_dataloader
+    return train_dataloader, valid_dataloader
