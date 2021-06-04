@@ -80,7 +80,7 @@ class EncodedVoiceDataset(Dataset):
                 return torch.load(cachefile)
             except Exception as ex:
                 print(ex)
-        augment = self._augment and repeat_number > 0
+        augment = self._augment and self._repeat > 1 and repeat_number > 0
         encoded_data = self._preprocess(*data, augment=augment)
         try:
             torch.save(encoded_data, cachefile)
