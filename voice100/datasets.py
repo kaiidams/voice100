@@ -75,7 +75,7 @@ class EncodedVoiceDataset(Dataset):
         cacheid = 'encoded_%d_%d' % (hash(data), repeat_number)
         cachefile = os.path.join(self._cachedir, cacheid + '.pt')
         r = random.random()
-        if r < 0.1 or os.path.exists(cachefile):
+        if r > 0.1 and os.path.exists(cachefile):
             try:
                 return torch.load(cachefile)
             except Exception as ex:
