@@ -89,8 +89,8 @@ class EncodedVoiceDataset(Dataset):
         return encoded_data
 
 #vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
-vocab = "_ a b c d e f g h i j k l m n o p q r s t u v w x y z '"
-v2i = {x: i for i, x in enumerate(vocab.split(' '))}
+vocab = "_ a b c d e f g h i j k l m n o p q r s t u v w x y z '".split(' ')
+v2i = {x: i for i, x in enumerate(vocab)}
 
 class AudioToLetterPreprocess:
     def __init__(self):
