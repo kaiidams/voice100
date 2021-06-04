@@ -170,12 +170,15 @@ def generate_pad_audio_text_batch(data_batch):
 def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     chained_ds = None
     for dataset in args.dataset.split(','):
-        if False:
+        if dataset == 'librispeech':
+            root = './data/LibriSpeech/train-clean-100'
+            ds = LibriSpeechVoiceDataset(root)
+        elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = CommonVoiceVoiceDataset(root)
         else:
-            root = './data/LibriSpeech/train-clean-100'
-            ds = LibriSpeechVoiceDataset(root)
+            raise ValueError("Unknown dataset")
+            
         if chained_ds is None:
             chained_ds = ds
         else:
