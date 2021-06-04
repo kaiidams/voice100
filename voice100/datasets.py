@@ -55,7 +55,6 @@ class LibriSpeechVoiceDataset(Dataset):
     def __getitem__(self, index):
         audioid, text = self._data[index]
         audiopath = os.path.join(self._root, audioid)
-        print(audiopath)
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
