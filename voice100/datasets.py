@@ -2,6 +2,7 @@
 
 import os
 import random
+from glob import glob
 import torch
 import torchaudio
 from torchaudio.transforms import MFCC, MelSpectrogram
@@ -10,7 +11,7 @@ from torch.nn.utils.rnn import pack_sequence, pad_sequence
 
 from .japanese import text2kata, kata2asciiipa
 
-class VoiceDataset(Dataset):
+class CommonVoiceVoiceDataset(Dataset):
     def __init__(self, root: str, metafile='validated.tsv', sep='\t', header=True, idcol=1, textcol=2):
         self._root = root
         self._data = []
@@ -22,16 +23,39 @@ class VoiceDataset(Dataset):
                 f.readline()
             for line in f:
                 parts = line.rstrip('\r\n').split(self._sep)
-                clipid = parts[self._idcol]
+                audioid = parts[self._idcol]
                 text = parts[self._textcol]
-                self._data.append((clipid, text))
+                self._data.append((audioid, text))
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, index):
-        clipid, text = self._data[index]
-        audiopath = os.path.join(self._root, 'clips', clipid)
+        audioid, text = self._data[index]
+        audiopath = os.path.join(self._root, 'clips', audioid)
+        return audiopath, text
+
+class LibriSpeechVoiceDataset(Dataset):
+    def __init__(self, root: str):
+        self._root = root
+        self._data = []
+        for file in glob(os.path.join(root, '**', '*.txt'), recursive=True):
+            dirpath = os.path.dirname(file)
+            assert dirpath.startswith(root)
+            dirpath = os.path.relpath(dirpath, start=self._root)
+            with open(file) as f:
+                for line in f:
+                    audioid, _, text = line.rstrip('\r\n').partition(' ')
+                    audioid = os.path.join(dirpath, audioid + '.flac')
+                    self._data.append((audioid, text))
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, index):
+        audioid, text = self._data[index]
+        audiopath = os.path.join(self._root, audioid)
+        print(audiopath)
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
@@ -51,7 +75,8 @@ class EncodedVoiceDataset(Dataset):
         data = self._dataset[orig_index]
         cacheid = 'encoded_%d_%d' % (hash(data), repeat_number)
         cachefile = os.path.join(self._cachedir, cacheid + '.pt')
-        if os.path.exists(cachefile):
+        r = random.random()
+        if r < 0.1 or os.path.exists(cachefile):
             try:
                 return torch.load(cachefile)
             except Exception as ex:
@@ -64,7 +89,8 @@ class EncodedVoiceDataset(Dataset):
             print(ex)
         return encoded_data
 
-vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
+#vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
+vocab = "_ a b c d e f g h i j k l m n o p q r s t u v w x y z '"
 v2i = {x: i for i, x in enumerate(vocab.split(' '))}
 
 class AudioToLetterPreprocess:
@@ -112,10 +138,15 @@ class AudioToLetterPreprocess:
         mfcc = mfcc[0, :, :]
         mfcc = torch.transpose(mfcc, 0, 1)
 
-        t = text2kata(text)
-        t = kata2asciiipa(t)
-        phonemes = [v2i[x] for x in t.split(' ') if x in v2i]
-        phonemes = torch.tensor(phonemes, dtype=torch.int32)
+        if True:
+            t = text.lower().replace(' ', '')
+            phonemes = [v2i[x] for x in t if x in v2i]
+            phonemes = torch.tensor(phonemes, dtype=torch.int32)
+        else:
+            t = text2kata(text)
+            t = kata2asciiipa(t)
+            phonemes = [v2i[x] for x in t.split(' ') if x in v2i]
+            phonemes = torch.tensor(phonemes, dtype=torch.int32)
 
         return mfcc, phonemes
 
@@ -145,8 +176,12 @@ def generate_pad_audio_text_batch(data_batch):
 def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     chained_ds = None
     for dataset in args.dataset.split(','):
-        root = './data/cv-corpus-6.1-2020-12-11/ja'
-        ds = VoiceDataset(root)
+        if False:
+            root = './data/cv-corpus-6.1-2020-12-11/ja'
+            ds = CommonVoiceVoiceDataset(root)
+        else:
+            root = './data/LibriSpeech/train-clean-100'
+            ds = LibriSpeechVoiceDataset(root)
         if chained_ds is None:
             chained_ds = ds
         else:
@@ -159,7 +194,7 @@ def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     train_ds, valid_ds = torch.utils.data.random_split(chained_ds, [train_len, valid_len])
 
     os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedVoiceDataset(train_ds, repeat=10, augment=True, cachedir=args.cache)
+    train_ds = EncodedVoiceDataset(train_ds, repeat=1, augment=True, cachedir=args.cache)
     valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, augment=False, cachedir=args.cache)
 
     collate_fn = generate_pack_audio_text_batch if pack_audio else generate_pad_audio_text_batch
