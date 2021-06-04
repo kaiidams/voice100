@@ -59,7 +59,7 @@ class ConvAudioToChar(nn.Module):
         return x
 
 class AudioToLetter(pl.LightningModule):
-    def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate):
+    def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate, num_layers=2):
         super().__init__()
         self.save_hyperparameters()
         encoder_type = 'rnn'
@@ -70,7 +70,7 @@ class AudioToLetter(pl.LightningModule):
             from .jasper import QuartzNetEncoder
             self.encoder = QuartzNetEncoder(audio_dim)
         elif encoder_type == 'rnn':
-            self.encoder = AudioToChar(audio_dim, num_layers=2, hidden_dim=hidden_dim, vocab_size=vocab_size)
+            self.encoder = AudioToChar(audio_dim, num_layers=num_layers, hidden_dim=hidden_dim, vocab_size=vocab_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio):
