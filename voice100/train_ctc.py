@@ -78,7 +78,7 @@ def cli_main():
     args = parser.parse_args()
     args.valid_rate = 0.1
 
-    train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
+    train_loader, val_loader = get_ctc_input_fn(args, pack_audio=True)
     model = LSTMAudioToLetter(
         audio_dim=MELSPEC_DIM,
         hidden_dim=HIDDEN_DIM,
