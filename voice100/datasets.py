@@ -10,6 +10,7 @@ from torchaudio.transforms import MFCC, MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence
 
+from .augment import SpectrogramAugumentation
 from .japanese import text2kata, kata2asciiipa
 
 class CommonVoiceVoiceDataset(Dataset):
@@ -65,28 +66,32 @@ class EncodedVoiceDataset(Dataset):
         self._repeat = repeat
         self._augment = augment
         self._preprocess = AudioToLetterPreprocess()
+        self._augment = SpectrogramAugumentation()
 
     def __len__(self):
         return len(self._dataset) * self._repeat
 
     def __getitem__(self, index):
         orig_index = index // self._repeat
-        repeat_number = index % self._repeat
         data = self._dataset[orig_index]
-        cacheid = 'encoded_%d_%d' % (hash(data), repeat_number)
-        cachefile = os.path.join(self._cachedir, cacheid + '.pt')
-        r = random.random()
-        if r > 0.1 and os.path.exists(cachefile):
+        cachefile = 'encoded_%016x.pt' % (abs(hash(data)))
+        cachefile = os.path.join(self._cachedir, cachefile)
+        encoded_data = None
+        if os.path.exists(cachefile):
             try:
-                return torch.load(cachefile)
+                encoded_data = torch.load(cachefile)
             except Exception as ex:
                 print(ex)
-        augment = self._augment and (self._repeat == 1 or repeat_number > 0)
-        encoded_data = self._preprocess(*data, augment=augment)
-        try:
-            torch.save(encoded_data, cachefile)
-        except Exception as ex:
-            print(ex)
+        if encoded_data is None:
+            encoded_data = self._preprocess(*data)
+            try:
+                torch.save(encoded_data, cachefile)
+            except Exception as ex:
+                print(ex)
+        if self._augment:
+            encoded_audio, encoded_text = encoded_data
+            encoded_audio = self._augment(encoded_audio)
+            return encoded_audio, encoded_text
         return encoded_data
 
 class AudioToLetterPreprocess:
@@ -97,6 +102,12 @@ class AudioToLetterPreprocess:
         self.hop_length = 160
         self.n_mels = 64
         self.n_mfcc = 20
+        self.log_offset=1e-6
+        self.effects = [
+            ["remix", "1"],
+            ["rate", f"{self.sample_rate}"],
+        ]
+
 
         if True:
             self.transform = MelSpectrogram(
@@ -117,22 +128,11 @@ class AudioToLetterPreprocess:
                 })
         self._encoder = CharEncoder()
 
-    def __call__(self, audiopath, text, augment=False):
-        effects = [
-            ["remix", "1"],
-        ]
-        if augment:
-            if random.random() < 0.3:
-                effects.append(["lowpass", "-1", "300"])
-            t = random.random()
-            if t < 0.2:
-                effects.append(["speed", "0.8"])
-            elif t < 0.4:
-                effects.append(["speed", "1.2"])
-        effects.append(["rate", f"{self.sample_rate}"])
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=effects)
+    def __call__(self, audiopath, text):
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
+        audio = torch.log(audio + self.log_offset)
 
         if True:
             encoded = self._encoder.encode(text)
@@ -191,7 +191,7 @@ def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     train_ds, valid_ds = torch.utils.data.random_split(chained_ds, [train_len, valid_len])
 
     os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedVoiceDataset(train_ds, repeat=1, augment=True, cachedir=args.cache)
+    train_ds = EncodedVoiceDataset(train_ds, repeat=args.repeat, augment=True, cachedir=args.cache)
     valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, augment=False, cachedir=args.cache)
 
     collate_fn = generate_pack_audio_text_batch if pack_audio else generate_pad_audio_text_batch
@@ -204,7 +204,7 @@ def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
         collate_fn=collate_fn)
     valid_dataloader = DataLoader(
         valid_ds,
-        batch_size=16, #args.batch_size,
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=num_workers,
         collate_fn=collate_fn)
