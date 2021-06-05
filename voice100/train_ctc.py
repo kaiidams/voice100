@@ -31,32 +31,36 @@ class LSTMAudioEncoder(nn.Module):
 
 class AudioToLetter(pl.LightningModule):
 
-    def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate, num_layers=2):
+    def __init__(self, audio_dim, hidden_dim, vocab_size, learning_rate, encoder_type='cnn', num_layers=2):
         super().__init__()
         self.save_hyperparameters()
-        encoder_type = 'rnn'
-        if encoder_type == 'quartznet':
+        if encoder_type == 'cnn':
             from .jasper import QuartzNetEncoder
             self.encoder = QuartzNetEncoder(audio_dim)
+            self.decoder = nn.Linear(1024, vocab_size, bias=True)
         elif encoder_type == 'rnn':
             self.encoder = LSTMAudioEncoder(
                 audio_dim, num_layers=num_layers,
                 hidden_dim=hidden_dim, vocab_size=vocab_size)
         self.loss_fn = nn.CTCLoss()
 
-    def forward(self, audio):
+    def forward(self, audio, audio_len):
+        return self.forward_cnn(audio, audio_len)
+
+    def forward_rnn(self, audio):
         logits = self.encoder(audio)
         # logits: [batch_size, audio_len, vocab_size]
         return logits
 
-    def forward_rnn(self, audio, audio_len):
-        x = self.encoder(audio, audio_len)
-        logits = x #self.post_proj(x)
+    def forward_cnn(self, audio, audio_len):
+        embeddings = self.encoder(audio)
+        logits = self.decoder(embeddings)
+        logits_len = audio_len // 2
         # logits: [batch_size, audio_len, vocab_size]
-        return logits
+        return logits, logits_len
 
     def _calc_batch_loss(self, batch):
-        return self._calc_batch_loss_rnn(batch)
+        return self._calc_batch_loss_cnn(batch)
 
     def _calc_batch_loss_rnn(self, batch):
         audio, text, text_len = batch
@@ -70,7 +74,7 @@ class AudioToLetter(pl.LightningModule):
         log_probs_len = logits_len
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
-    def _calc_batch_loss_conv(self, batch):
+    def _calc_batch_loss_cnn(self, batch):
         audio, audio_len, text, text_len = batch
         # audio: [batch_size, audio_len, audio_dim]
         # text: [batch_size, text_len]
@@ -119,7 +123,7 @@ def cli_main():
     args = parser.parse_args()
     args.valid_rate = 0.1
 
-    train_loader, val_loader = get_ctc_input_fn(args, pack_audio=True)
+    train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
     model = AudioToLetter(
         audio_dim=MELSPEC_DIM,
         hidden_dim=HIDDEN_DIM,

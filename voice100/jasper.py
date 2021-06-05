@@ -64,8 +64,8 @@ class QuartzNetEncoder(nn.Module):
     def forward(self, audio):
         # audio: [batch_size, audio_len, audio_dim]
         x = torch.transpose(audio, 1, 2)
-        # melspec: [batch_size, n_mels, melspec_len]
+        # melspec: [batch_size, n_mels, audio_len]
         embeddings = self.layer(x)
         embeddings = torch.transpose(embeddings, 1, 2)
-        # embeddings: [batch_size, melspec_len, embedding_dim]
+        # embeddings: [batch_size, audio_len, embedding_dim]
         return embeddings
