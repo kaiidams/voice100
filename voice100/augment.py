@@ -24,7 +24,7 @@ class SpectrogramAugumentation(nn.Module):
 
     def timestretch(self, audio):
         rate = 1.0 + random.random() * 0.3
-        i = (torch.arange(rate * audio.shape[0]) / rate).int()
+        i = (torch.arange(int(rate * audio.shape[0])) / rate).int()
         return torch.index_select(audio, 0, i)
 
     def pitchshift(self, audio):
