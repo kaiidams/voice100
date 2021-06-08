@@ -5,7 +5,7 @@ import torch
 from torch import nn
 import pytorch_lightning as pl
 
-from .datasets import get_ctc_input_fn
+from .datasets import get_asr_input_fn
 from .encoder import CharEncoder
 
 AUDIO_DIM = 27
@@ -86,7 +86,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
     parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
@@ -115,8 +115,8 @@ def cli_main():
             dynamic_axes={'audio': {0: 'batch_size', 1: 'audio_len'},
                           'logits': {0: 'batch_size', 1: 'logits_len'}})
     else:
-        train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
-        model = LSTMAudioToLetter(
+        train_loader, val_loader = get_asr_input_fn(args)
+        model = AudioToLetter(
             encoder_type='conv',
             audio_size=MELSPEC_DIM,
             embed_size=HIDDEN_DIM,

@@ -1,19 +1,27 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+r"""Definition of Dataset for reading data from speech datasets.
+"""
+
 import os
-import random
 from glob import glob
+from voice100.japanese import JapanesePhonemizer
 from voice100.encoder import CharEncoder
 import torch
 import torchaudio
-from torchaudio.transforms import MFCC, MelSpectrogram
+from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence
 
 from .augment import SpectrogramAugumentation
-from .japanese import text2kata, kata2asciiipa
 
-class CommonVoiceVoiceDataset(Dataset):
+class CommonVoiceDataset(Dataset):
+    r"""``Dataset`` for reading from speech datasets with TSV metafile,
+    like LJ Speech Corpus and Mozilla Common Voice.
+    Args:
+        root (str): Root directory of the dataset.
+    """
+    
     def __init__(self, root: str, metafile='validated.tsv', sep='\t', header=True, idcol=1, textcol=2):
         self._root = root
         self._data = []
@@ -37,7 +45,13 @@ class CommonVoiceVoiceDataset(Dataset):
         audiopath = os.path.join(self._root, 'clips', audioid)
         return audiopath, text
 
-class LibriSpeechVoiceDataset(Dataset):
+class LibriSpeechDataset(Dataset):
+    r"""``Dataset`` for reading from speech datasets with transcript files,
+    like Libri Speech.
+    Args:
+        root (str): Root directory of the dataset.
+    """
+
     def __init__(self, root: str):
         self._root = root
         self._data = []
@@ -60,12 +74,12 @@ class LibriSpeechVoiceDataset(Dataset):
         return audiopath, text
 
 class EncodedVoiceDataset(Dataset):
-    def __init__(self, dataset, repeat=10, augment=False, cachedir=None):
+    def __init__(self, dataset, repeat=10, phonemizer=None, augment=False, cachedir=None):
         self._dataset = dataset
         self._cachedir = cachedir
         self._repeat = repeat
         self._augment = augment
-        self._preprocess = AudioToLetterPreprocess()
+        self._preprocess = AudioToLetterPreprocess(phonemizer=phonemizer)
         self._augment = SpectrogramAugumentation()
 
     def __len__(self):
@@ -95,7 +109,7 @@ class EncodedVoiceDataset(Dataset):
         return encoded_data
 
 class AudioToLetterPreprocess:
-    def __init__(self):
+    def __init__(self, phonemizer):
         self.sample_rate = 16000
         self.n_fft = 512
         self.win_length = 400
@@ -108,24 +122,16 @@ class AudioToLetterPreprocess:
             ["rate", f"{self.sample_rate}"],
         ]
 
-
-        if True:
-            self.transform = MelSpectrogram(
-                sample_rate=self.sample_rate,
-                n_fft=self.n_fft,
-                win_length=self.win_length,
-                hop_length=self.hop_length,
-                n_mels=self.n_mels)
-        else:
-            self.transform = MFCC(
-                sample_rate=self.sample_rate,
-                n_mfcc=self.n_mfcc,
-                melkwargs={
-                    'n_fft': self.n_fft,
-                    'n_mels': self.n_mels,
-                    'hop_length': self.hop_length,
-                    'win_length': self.win_length,
-                })
+        self.transform = MelSpectrogram(
+            sample_rate=self.sample_rate,
+            n_fft=self.n_fft,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            n_mels=self.n_mels)
+        self._phonemizer = None
+        if phonemizer == 'ja':
+            from .japanese import JapanesePhonemizer
+            self._phonemizer = JapanesePhonemizer()
         self._encoder = CharEncoder()
 
     def __call__(self, audiopath, text):
@@ -134,29 +140,15 @@ class AudioToLetterPreprocess:
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
 
-        if True:
-            encoded = self._encoder.encode(text)
-        else:
-            t = text2kata(text)
-            t = kata2asciiipa(t)
-            phonemes = [v2i[x] for x in t.split(' ') if x in v2i]
-            phonemes = torch.tensor(phonemes, dtype=torch.int32)
+        if self._phonemizer:
+            text = self._phonemizer(text)
+        encoded = self._encoder.encode(text)
 
         return audio, encoded
 
 BLANK_IDX = 0
 
-def generate_pack_audio_text_batch(data_batch):
-    audio_batch, text_batch = [], []       
-    for audio_item, text_item in data_batch:
-        audio_batch.append(audio_item)
-        text_batch.append(text_item)
-    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-    audio_batch = pack_sequence(audio_batch, enforce_sorted=False)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
-    return audio_batch, text_batch, text_len
-
-def generate_pad_audio_text_batch(data_batch):
+def generate_audio_text_batch(data_batch):
     audio_batch, text_batch = [], []       
     for audio_item, text_item in data_batch:
         audio_batch.append(audio_item)
@@ -167,15 +159,15 @@ def generate_pad_audio_text_batch(data_batch):
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
     return audio_batch, audio_len, text_batch, text_len
 
-def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
+def get_asr_input_fn(args, num_workers=2):
     chained_ds = None
     for dataset in args.dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
-            ds = LibriSpeechVoiceDataset(root)
+            ds = LibriSpeechDataset(root)
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
-            ds = CommonVoiceVoiceDataset(root)
+            ds = CommonVoiceDataset(root)
         else:
             raise ValueError("Unknown dataset")
             
@@ -194,19 +186,17 @@ def get_ctc_input_fn(args, pack_audio=True, num_workers=2):
     train_ds = EncodedVoiceDataset(train_ds, repeat=args.repeat, augment=True, cachedir=args.cache)
     valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, augment=False, cachedir=args.cache)
 
-    collate_fn = generate_pack_audio_text_batch if pack_audio else generate_pad_audio_text_batch
-
     train_dataloader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=num_workers,
-        collate_fn=collate_fn)
+        collate_fn=generate_audio_text_batch)
     valid_dataloader = DataLoader(
         valid_ds,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=num_workers,
-        collate_fn=collate_fn)
+        collate_fn=generate_audio_text_batch)
 
     return train_dataloader, valid_dataloader
