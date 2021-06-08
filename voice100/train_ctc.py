@@ -30,7 +30,7 @@ class LSTMAudioEncoder(nn.Module):
         lstm_out, lstm_out_len = nn.utils.rnn.pad_packed_sequence(packed_lstm_out, batch_first=True)
         return lstm_out, lstm_out_len
 
-class LSTMAudioToLetter(pl.LightningModule):
+class AudioToLetter(pl.LightningModule):
 
     def __init__(self, audio_size, embed_size, vocab_size, num_layers, learning_rate):
         super().__init__()
@@ -87,13 +87,13 @@ def cli_main():
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
     parser.add_argument('--checkpoint', help='Dataset to use')
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = LSTMAudioToLetter.add_model_specific_args(parser)    
+    parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_rate = 0.1
     args.repeat = 2
 
     train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
-    model = LSTMAudioToLetter(
+    model = AudioToLetter(
         audio_size=MELSPEC_DIM,
         embed_size=HIDDEN_DIM,
         num_layers=NUM_LAYERS,
