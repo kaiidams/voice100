@@ -96,7 +96,7 @@ def cli_main():
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_rate = 0.1
-    args.repeat = 2
+    args.repeat = 10
 
     if args.export:
         model = AudioToLetter.load_from_checkpoint(args.resume_from_checkpoint)
