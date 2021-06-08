@@ -85,7 +85,6 @@ def cli_main():
     parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
-    parser.add_argument('--checkpoint', help='Dataset to use')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
