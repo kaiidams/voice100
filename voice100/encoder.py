@@ -64,6 +64,7 @@ class CharEncoder:
 
     def merge_repeated(self, text):
         import re
-        r = re.sub(r'(.+)( \1)+', r'\1', text).replace(' _', '').replace('_ ', '')
-        if r == '_': r = ''
-        return r
+        text = re.sub(r'(.)\1+', r'\1', text)
+        text = re.sub(r' +', r' ', text)
+        if text == ' ': text = ''
+        return text

@@ -11,7 +11,7 @@ from .encoder import CharEncoder
 AUDIO_DIM = 27
 MELSPEC_DIM = 64
 MFCC_DIM = 20
-HIDDEN_DIM = 256
+HIDDEN_DIM = 1024
 NUM_LAYERS = 2
 VOCAB_SIZE = CharEncoder().vocab_size
 assert VOCAB_SIZE == 28, VOCAB_SIZE
@@ -32,15 +32,20 @@ class LSTMAudioEncoder(nn.Module):
 
 class AudioToLetter(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, num_layers, learning_rate):
+    def __init__(self, audio_size, embed_size, vocab_size, num_layers, encoder_type, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = LSTMAudioEncoder(audio_size, embed_size, num_layers)
+        if encoder_type == 'conv':
+            assert embed_size == 1024
+            from .jasper import QuartzNetEncoder
+            self.encoder = QuartzNetEncoder(audio_size)
+        elif encoder_type == 'rnn':
+            self.encoder = LSTMAudioEncoder(audio_size, embed_size, num_layers)
         self.decoder = nn.Linear(embed_size, vocab_size, bias=True)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio, audio_len):
-        lstm_out, lstm_out_len = self.encoder(audio, audio_len, enforce_sorted=False)
+        lstm_out, lstm_out_len = self.encoder(audio, audio_len)
         return self.decoder(lstm_out), lstm_out_len
 
     def _calc_batch_loss(self, batch):
@@ -85,21 +90,41 @@ def cli_main():
     parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+    parser.add_argument('--checkpoint', help='Dataset to use')
+    parser.add_argument('--export', type=str, help='Export to ONNX')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioToLetter.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_rate = 0.1
     args.repeat = 2
 
-    train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
-    model = AudioToLetter(
-        audio_size=MELSPEC_DIM,
-        embed_size=HIDDEN_DIM,
-        num_layers=NUM_LAYERS,
-        vocab_size=VOCAB_SIZE,
-        learning_rate=args.learning_rate)
-    trainer = pl.Trainer.from_argparse_args(args)
-    trainer.fit(model, train_loader, val_loader)
+    if args.export:
+        model = AudioToLetter.load_from_checkpoint(args.resume_from_checkpoint)
+        audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
+        audio_len = torch.tensor([100], dtype=torch.int32)
+        model.eval()
+
+        torch.onnx.export(
+            model, (audio, audio_len),
+            args.export,
+            export_params=True,
+            opset_version=13,
+            do_constant_folding=True,
+            input_names = ['audio', 'audio_len'],
+            output_names = ['logits', 'logits_len'],
+            dynamic_axes={'audio': {0: 'batch_size', 1: 'audio_len'},
+                          'logits': {0: 'batch_size', 1: 'logits_len'}})
+    else:
+        train_loader, val_loader = get_ctc_input_fn(args, pack_audio=False)
+        model = LSTMAudioToLetter(
+            encoder_type='conv',
+            audio_size=MELSPEC_DIM,
+            embed_size=HIDDEN_DIM,
+            num_layers=NUM_LAYERS,
+            vocab_size=VOCAB_SIZE,
+            learning_rate=args.learning_rate)
+        trainer = pl.Trainer.from_argparse_args(args)
+        trainer.fit(model, train_loader, val_loader)
 
 if __name__ == '__main__':
     cli_main()
