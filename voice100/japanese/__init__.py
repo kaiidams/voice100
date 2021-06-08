@@ -14,6 +14,7 @@ class JapanesePhonemizer:
             text = text.replace(' ', '').lower()
             text = choon_rx.sub(r'\1\1', text)
             text = clean_rx.sub(r'', text)
+            text = text.replace('q', '')
             return text
         self._phonemize_fn = f
 

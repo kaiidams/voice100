@@ -165,9 +165,11 @@ def get_asr_input_fn(args, num_workers=2):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
+            phonemizer = 'en'
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = CommonVoiceDataset(root)
+            phonemizer = 'ja'
         else:
             raise ValueError("Unknown dataset")
             
@@ -183,8 +185,8 @@ def get_asr_input_fn(args, num_workers=2):
     train_ds, valid_ds = torch.utils.data.random_split(chained_ds, [train_len, valid_len])
 
     os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedVoiceDataset(train_ds, repeat=args.repeat, augment=True, cachedir=args.cache)
-    valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, augment=False, cachedir=args.cache)
+    train_ds = EncodedVoiceDataset(train_ds, repeat=args.repeat, phonemizer=phonemizer, augment=True, cachedir=args.cache)
+    valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, phonemizer=phonemizer, augment=False, cachedir=args.cache)
 
     train_dataloader = DataLoader(
         train_ds,
