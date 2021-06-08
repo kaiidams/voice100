@@ -133,3 +133,4 @@ dmypy.json
 /model
 /lightning_logs
 .vscode/
+/cache
