@@ -28,7 +28,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)    
     args = parser.parse_args()
-    args.valid_rate = 0.1
+    args.valid_ratio = 0.1
     args.repeat = 10
 
     if args.export:

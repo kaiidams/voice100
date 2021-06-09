@@ -5,8 +5,10 @@ r"""Definition of Dataset for reading data from speech datasets.
 
 import os
 from glob import glob
+from voice100.vocoder import WORLDVocoder
 from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
+from torch import nn
 import torchaudio
 from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
@@ -14,19 +16,21 @@ from torch.nn.utils.rnn import pad_sequence
 
 from .audio import SpectrogramAugumentation
 
-class CommonVoiceDataset(Dataset):
+class MetafileDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with TSV metafile,
     like LJ Speech Corpus and Mozilla Common Voice.
     Args:
         root (str): Root directory of the dataset.
     """
     
-    def __init__(self, root: str, metafile='validated.tsv', sep='\t', header=True, idcol=1, textcol=2):
+    def __init__(self, root: str, metafile='validated.tsv', sep='|', header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'):
         self._root = root
         self._data = []
         self._sep = sep
         self._idcol = idcol
         self._textcol = textcol
+        self._wavsdir = wavsdir
+        self._ext = ext
         with open(os.path.join(root, metafile)) as f:
             if header:
                 f.readline()
@@ -41,7 +45,7 @@ class CommonVoiceDataset(Dataset):
 
     def __getitem__(self, index):
         audioid, text = self._data[index]
-        audiopath = os.path.join(self._root, 'clips', audioid)
+        audiopath = os.path.join(self._root, self._wavsdir, audioid + self._ext)
         return audiopath, text
 
 class LibriSpeechDataset(Dataset):
@@ -72,13 +76,43 @@ class LibriSpeechDataset(Dataset):
         audiopath = os.path.join(self._root, audioid)
         return audiopath, text
 
-class EncodedVoiceDataset(Dataset):
-    def __init__(self, dataset, repeat=10, phonemizer=None, augment=False, cachedir=None):
+class AudioToAudioTransform(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.sample_rate = 16000
+        self.n_fft = 512
+        self.win_length = 400
+        self.hop_length = 160
+        self.n_mels = 64
+        self.log_offset = 1e-6
+        self.effects = [
+            ["remix", "1"],
+            ["rate", f"{self.sample_rate}"],
+        ]
+        self._transform = MelSpectrogram(
+            sample_rate=self.sample_rate,
+            n_fft=self.n_fft,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            n_mels=self.n_mels)
+        self._vocoder = WORLDVocoder()
+
+    def forward(self, audiopath, text):
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
+        melspec = self._transform(waveform)
+        melspec = torch.transpose(melspec[0, :, :], 0, 1)
+        melspec = torch.log(melspec + self.log_offset)
+        encoded = self._vocoder(waveform[0])
+        return melspec, encoded
+
+class EncodedCacheDataset(Dataset):
+    def __init__(self, dataset, transform, repeat=10, augment=False, cachedir=None):
         self._dataset = dataset
         self._cachedir = cachedir
         self._repeat = repeat
         self._augment = augment
-        self._preprocess = AudioToLetterPreprocess(phonemizer=phonemizer)
+        self._transform = transform
         self._augment = SpectrogramAugumentation()
 
     def __len__(self):
@@ -96,7 +130,7 @@ class EncodedVoiceDataset(Dataset):
             except Exception as ex:
                 print(ex)
         if encoded_data is None:
-            encoded_data = self._preprocess(*data)
+            encoded_data = self._transform(*data)
             try:
                 torch.save(encoded_data, cachefile)
             except Exception as ex:
@@ -147,8 +181,29 @@ class AudioToLetterPreprocess:
 
 BLANK_IDX = 0
 
+def get_dataset(args):
+    chained_ds = None
+    for dataset in args.dataset.split(','):
+        if dataset == 'librispeech':
+            root = './data/LibriSpeech/train-clean-100'
+            ds = LibriSpeechDataset(root)
+        elif dataset == 'cv_ja':
+            root = './data/cv-corpus-6.1-2020-12-11/ja'
+            ds = MetafileDataset(root)
+        elif dataset == 'kokoro_small':
+            root = './data/kokoro-speech-v1_1-small'
+            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=True, idcol=0)
+        else:
+            raise ValueError("Unknown dataset")
+            
+        if chained_ds is None:
+            chained_ds = ds
+        else:
+            chained_ds += ds
+    return chained_ds
+
 def generate_audio_text_batch(data_batch):
-    audio_batch, text_batch = [], []       
+    audio_batch, text_batch = [], []
     for audio_item, text_item in data_batch:
         audio_batch.append(audio_item)
         text_batch.append(text_item)
@@ -159,33 +214,19 @@ def generate_audio_text_batch(data_batch):
     return audio_batch, audio_len, text_batch, text_len
 
 def get_asr_input_fn(args, num_workers=2):
-    chained_ds = None
-    for dataset in args.dataset.split(','):
-        if dataset == 'librispeech':
-            root = './data/LibriSpeech/train-clean-100'
-            ds = LibriSpeechDataset(root)
-            phonemizer = 'en'
-        elif dataset == 'cv_ja':
-            root = './data/cv-corpus-6.1-2020-12-11/ja'
-            ds = CommonVoiceDataset(root)
-            phonemizer = 'ja'
-        else:
-            raise ValueError("Unknown dataset")
-            
-        if chained_ds is None:
-            chained_ds = ds
-        else:
-            chained_ds += ds
+
+    ds = get_dataset(args)
+    phonemizer = 'ja'
 
     # Split the dataset
-    total_len = len(chained_ds)
-    valid_len = int(total_len * args.valid_rate)
+    total_len = len(ds)
+    valid_len = int(total_len * args.valid_ratio)
     train_len = total_len - valid_len
-    train_ds, valid_ds = torch.utils.data.random_split(chained_ds, [train_len, valid_len])
+    train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
     os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedVoiceDataset(train_ds, repeat=args.repeat, phonemizer=phonemizer, augment=True, cachedir=args.cache)
-    valid_ds = EncodedVoiceDataset(valid_ds, repeat=1, phonemizer=phonemizer, augment=False, cachedir=args.cache)
+    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, phonemizer=phonemizer, augment=True, cachedir=args.cache)
+    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, phonemizer=phonemizer, augment=False, cachedir=args.cache)
 
     train_dataloader = DataLoader(
         train_ds,
@@ -199,5 +240,50 @@ def get_asr_input_fn(args, num_workers=2):
         shuffle=False,
         num_workers=num_workers,
         collate_fn=generate_audio_text_batch)
+
+    return train_dataloader, valid_dataloader
+
+def generate_audio_audio_batch(data_batch):
+    melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
+    for melspec_item, (f0_item, spec_item, codeap_item) in data_batch:
+        melspec_batch.append(melspec_item)
+        f0_batch.append(f0_item)
+        spec_batch.append(spec_item)
+        codeap_batch.append(codeap_item)
+    melspec_len = torch.tensor([len(x) for x in melspec_batch], dtype=torch.int32)
+    f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
+    melspec_batch = pad_sequence(melspec_batch, batch_first=True, padding_value=0)
+    f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
+    spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
+    codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
+    return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
+
+def get_vc_input_fn(args, num_workers=2):
+    ds = get_dataset(args)
+
+    # Split the dataset
+    total_len = len(ds)
+    valid_len = int(total_len * args.valid_ratio)
+    train_len = total_len - valid_len
+    train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+
+    transform = AudioToAudioTransform()
+
+    os.makedirs(args.cache, exist_ok=True)
+    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
+    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=args.cache)
+
+    train_dataloader = DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        collate_fn=generate_audio_audio_batch)
+    valid_dataloader = DataLoader(
+        valid_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=generate_audio_audio_batch)
 
     return train_dataloader, valid_dataloader
