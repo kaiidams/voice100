@@ -9,6 +9,51 @@ __all__ = [
     'AudioToCharCTC',
 ]
 
+def ctc_best_path(logits, labels):
+    # Expand label with blanks
+    import numpy as np
+    tmp = labels
+    labels = np.zeros(labels.shape[0] * 2 + 1, dtype=np.int32)
+    labels[1::2] = tmp
+
+    cands = [
+            (logits[0, labels[0]], [labels[0]])
+    ]
+    for i in range(1, logits.shape[0]):
+        next_cands = []
+        for pos, (logit1, path1) in enumerate(cands):
+            logit1 = logit1 + logits[i, labels[pos]]
+            path1 = path1 + [labels[pos]]
+            next_cands.append((logit1, path1))
+
+        for pos, (logit2, path2) in enumerate(cands):
+            if pos + 1 < len(labels):
+                logit2 = logit2 + logits[i, labels[pos + 1]]
+                path2 = path2 + [labels[pos + 1]]
+                if pos + 1 == len(next_cands):
+                    next_cands.append((logit2, path2))
+                else:
+                    logit, _ = next_cands[pos + 1]
+                    if logit2 > logit:
+                        next_cands[pos + 1] = (logit2, path2)
+                        
+        for pos, (logit3, path3) in enumerate(cands):
+            if pos + 2 < len(labels) and labels[pos + 1] == 0:
+                logit3 = logit3 + logits[i, labels[pos + 2]]
+                path3.append(labels[pos + 2])
+                if pos + 2 == len(next_cands):
+                    next_cands.append((logit3, path3))
+                else:
+                    logit, _ = next_cands[pos + 2]
+                    if logit3 > logit:
+                        next_cands[pos + 2] = (logit3, path3)
+                        
+        cands = next_cands
+
+    logprob, best_path = cands[-1]
+    best_path = np.array(best_path, dtype=np.uint8)
+    return logprob, best_path
+
 class LSTMAudioEncoder(nn.Module):
 
     def __init__(self, audio_size, embed_size, num_layers):
@@ -110,11 +155,11 @@ class VoiceDecoder(nn.Module):
         super().__init__()
         layers = [
             VoiceDecoderBlock(in_channels, 512, kernel_size=33, stride=1),
-            VoiceDecoderBlock(512, 256, kernel_size=33, stride=1),
-            VoiceDecoderBlock(256, 256, kernel_size=33, stride=2),
+            VoiceDecoderBlock(512, 512, kernel_size=33, stride=1),
+            VoiceDecoderBlock(512, 256, kernel_size=33, stride=2),
         ]
         self.layers = nn.Sequential(*layers)
-        self.dense = nn.Linear(256, out_channels)
+        self.dense = nn.Linear(256, out_channels, bias=True)
 
     def forward(self, x):
         # x: [batch_size, embed_len, embed_size]
@@ -150,11 +195,15 @@ class AudioToAudio(pl.LightningModule):
         return self.decoder(enc_out), enc_out_len * 2
 
     def _calc_weight_mask(self, f0, f0_len):
-        return (torch.arange(f0.shape[1]).to(f0.device)[None, :] < f0_len[:, None]).float()
+        return (torch.arange(f0.shape[1], dtype=f0.device)[None, :] < f0_len[:, None]).float()
 
     def _calc_batch_loss(self, batch):
         (melspec, melspec_len), (f0, f0_len, spec, codeap) = batch
-        f0 = (f0 - 100) / 100
+
+        f0 = (f0 - 7.9459290e+01) / 61.937077
+        spec = (spec + 8.509372) / 1.786831
+        codeap = (codeap + 2.3349452) / 2.5427816
+
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         f0_hat, f0_hat_len, spec_hat, codeap_hat = self(melspec, melspec_len)
@@ -182,19 +231,25 @@ class AudioToAudio(pl.LightningModule):
         spec_loss = torch.sum(spec_loss) / torch.sum(weights)
         codeap_loss = torch.mean(self.loss_fn(codeap_hat, codeap), axis=2) * weights
         codeap_loss = torch.sum(codeap_loss) / torch.sum(weights)
-        return f0_loss + spec_loss + codeap_loss
+        return f0_loss, spec_loss, codeap_loss
 
     def training_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
+        f0_loss, spec_loss, codeap_loss = self._calc_batch_loss(batch)
+        self.log('train_f0_loss', f0_loss)
+        self.log('train_spec_loss', spec_loss)
+        self.log('train_codeap_loss', codeap_loss)
+        loss = f0_loss + spec_loss + codeap_loss
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
+        f0_loss, spec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = f0_loss + spec_loss + codeap_loss
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
+        f0_loss, spec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = f0_loss + spec_loss + codeap_loss
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
