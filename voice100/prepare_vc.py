@@ -64,7 +64,7 @@ def prepare(use_gpu=False, source_sample_rate=16000, target_sample_rate=22050, u
         for i, line in enumerate(tqdm(f, total=8812)):
             parts = line.rstrip().split('|')
             wavid, _, _ = parts
-            wavfile = f'./data/kokoro-speech-v1_1-small/wavs/{wavid}.wav'
+            wavfile = f'./data/kokoro-speech-v1_1-small/wavs/{wavid}.flac'
             audio_input, sample_rate = librosa.load(wavfile, sr=source_sample_rate)
             if use_w2v2:
                 input_values = processor(audio_input, sampling_rate=sample_rate, return_tensors="pt").input_values
