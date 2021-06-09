@@ -28,7 +28,6 @@ def cli_main():
     args = parser.parse_args()
     args.valid_ratio = 0.1
     args.repeat = 10
-    args.batch_size = 2
 
     train_loader, val_loader = get_vc_input_fn(args)
     model = AudioToAudio(
