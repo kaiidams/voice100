@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 import unittest
-from .tokenizers import *
+from .text import *
 
 class TestEncoder(unittest.TestCase):
     def test(self):

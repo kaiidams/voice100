@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 from glob import glob
 from voice100.japanese import JapanesePhonemizer
-from voice100.tokenizers import CharTokenizer
+from voice100.text import CharTokenizer
 import torch
 import torchaudio
 from torchaudio.transforms import MelSpectrogram

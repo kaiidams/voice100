@@ -6,7 +6,7 @@ from torch import nn
 import pytorch_lightning as pl
 
 from .datasets import get_asr_input_fn
-from .tokenizers import CharTokenizer
+from .text import CharTokenizer
 
 AUDIO_DIM = 27
 MELSPEC_DIM = 64

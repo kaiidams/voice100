@@ -2,7 +2,7 @@ import time
 import onnxruntime as ort
 import numpy as np
 from voice100.vocoder import MelSpectrogramVocoder
-from voice100.tokenizers import CharTokenizer
+from voice100.text import CharTokenizer
 
 sess = ort.InferenceSession('test.onnx')
 import librosa
