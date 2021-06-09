@@ -2,13 +2,13 @@ import time
 import onnxruntime as ort
 import numpy as np
 from voice100.vocoder import MelSpectrogramVocoder
-from voice100.encoder import CharEncoder
+from voice100.tokenizers import CharTokenizer
 
 sess = ort.InferenceSession('test.onnx')
 import librosa
 waveform, sr = librosa.load('test.flac', 16000)
 vocoder = MelSpectrogramVocoder()
-encoder = CharEncoder()
+encoder = CharTokenizer()
 audio = vocoder.encode(waveform)
 
 ort_inputs = {

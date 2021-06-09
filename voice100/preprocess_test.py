@@ -3,7 +3,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 from .vocoder import readwav, writewav, decode_audio, encode_audio, SAMPLE_RATE, AUDIO_DIM
-from .encoder import decode_text
+from .tokenizers import decode_text
 
 class TestPreprocess(unittest.TestCase):
 

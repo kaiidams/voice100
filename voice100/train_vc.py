@@ -2,14 +2,14 @@
 
 from argparse import ArgumentParser
 import os
-from voice100_tts.jasper import QuartzNet
+from voice100.jasper import QuartzNet
 import numpy as np
 import torch
 from torch import nn
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
-from .encoder import decode_text, merge_repeated, VOCAB_SIZE, PhoneEncoder
+from .tokenizers import decode_text, merge_repeated, VOCAB_SIZE, PhoneEncoder
 from .dataset import get_vc_input_fn
 import pytorch_lightning as pl
 from .jasper import QuartzNet

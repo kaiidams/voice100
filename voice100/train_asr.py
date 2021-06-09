@@ -6,14 +6,14 @@ from torch import nn
 import pytorch_lightning as pl
 
 from .datasets import get_asr_input_fn
-from .encoder import CharEncoder
+from .tokenizers import CharTokenizer
 
 AUDIO_DIM = 27
 MELSPEC_DIM = 64
 MFCC_DIM = 20
 HIDDEN_DIM = 1024
 NUM_LAYERS = 2
-VOCAB_SIZE = CharEncoder().vocab_size
+VOCAB_SIZE = CharTokenizer().vocab_size
 assert VOCAB_SIZE == 28, VOCAB_SIZE
 
 class LSTMAudioEncoder(nn.Module):

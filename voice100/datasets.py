@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 from glob import glob
 from voice100.japanese import JapanesePhonemizer
-from voice100.encoder import CharEncoder
+from voice100.tokenizers import CharTokenizer
 import torch
 import torchaudio
 from torchaudio.transforms import MelSpectrogram
@@ -132,7 +132,7 @@ class AudioToLetterPreprocess:
         if phonemizer == 'ja':
             from .japanese import JapanesePhonemizer
             self._phonemizer = JapanesePhonemizer()
-        self._encoder = CharEncoder()
+        self._encoder = CharTokenizer()
 
     def __call__(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)

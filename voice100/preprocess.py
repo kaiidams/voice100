@@ -7,8 +7,8 @@ from tqdm import tqdm
 import argparse
 
 from .vocoder import *
-from .encoder import encode_text
-from .encoder import PhoneEncoder
+from .tokenizers import encode_text
+from .tokenizers import PhoneEncoder
 from .data import open_index_data_for_write
 
 CORPUSDATA_PATH = {

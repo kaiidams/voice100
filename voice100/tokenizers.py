@@ -2,6 +2,7 @@
 
 import numpy as np
 import torch
+from torch import nn
 
 vocab = (
     '_ , . ! ?'
@@ -46,13 +47,18 @@ class PhoneEncoder:
 #vocab = r"_ C N\ _j a b d d_z\ e g h i j k m n o p p\ r` s s\ t t_s t_s\ u v w z"
 DEFAULT_CHARACTERS = " abcdefghijklmnopqrstuvwxyz'"
 
-class CharEncoder:
+class CharTokenizer(nn.Module):
+
     def __init__(self, vocab=None):
+        super().__init__()
         if vocab is None:
             vocab = DEFAULT_CHARACTERS
         self.vocab_size = len(vocab)
         self._vocab = vocab
         self._v2i = {x: i for i, x in enumerate(vocab)}
+
+    def forward(self, text: str) -> torch.Tensor:
+        return self.encode(text)
 
     def encode(self, text):
         t = text.lower().replace(' ', '')
@@ -68,3 +74,7 @@ class CharEncoder:
         text = re.sub(r' +', r' ', text)
         if text == ' ': text = ''
         return text
+
+__all__ = [
+    "CharTokenizer"
+]
