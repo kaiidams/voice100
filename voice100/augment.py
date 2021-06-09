@@ -4,6 +4,10 @@ import torch
 from torch import nn
 import random
 
+__all__ = [
+    'SpectrogramAugumentation'
+]
+
 class SpectrogramAugumentation(nn.Module):
     def __init__(self):
         super().__init__()
