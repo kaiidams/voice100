@@ -169,7 +169,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='./data', help='Directory of training data')
+    parser.add_argument('--dataset', type=str, default='./data/vc', help='Directory of training data')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = VoiceConvert.add_model_specific_args(parser)    
@@ -185,7 +185,7 @@ def cli_main():
         spc_dim = 513
         codecp_dim = 2
 
-    model = VoiceConvert(spc_dim=spc_dim, codecp_dim=codecp_dim)
+    model = VoiceConvert(state_dim=1024, spc_dim=spc_dim, codecp_dim=codecp_dim)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_dataloader)
 
