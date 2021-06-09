@@ -195,7 +195,7 @@ class AudioToAudio(pl.LightningModule):
         return self.decoder(enc_out), enc_out_len * 2
 
     def _calc_weight_mask(self, f0, f0_len):
-        return (torch.arange(f0.shape[1], dtype=f0.device)[None, :] < f0_len[:, None]).float()
+        return (torch.arange(f0.shape[1], device=f0.device)[None, :] < f0_len[:, None]).float()
 
     def _calc_batch_loss(self, batch):
         (melspec, melspec_len), (f0, f0_len, spec, codeap) = batch
