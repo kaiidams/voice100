@@ -12,7 +12,7 @@ from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-from .augment import SpectrogramAugumentation
+from .audio import SpectrogramAugumentation
 
 class CommonVoiceDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with TSV metafile,
