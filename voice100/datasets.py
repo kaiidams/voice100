@@ -192,7 +192,7 @@ def get_dataset(args):
             ds = MetafileDataset(root)
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
-            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=True, idcol=0)
+            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=True, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
             
