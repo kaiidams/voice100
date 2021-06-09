@@ -119,8 +119,6 @@ class VoiceConvert(pl.LightningModule):
         logqz_x = log_normal_pdf(z, mean, logvar)
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
-        if batch_idx % 10 == 0:
-            print(loss, vae_loss)
         self.log('train_loss', loss)
         self.log('train_vae_loss', vae_loss)
         return loss + vae_loss
