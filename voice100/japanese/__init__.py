@@ -1,28 +1,26 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from .kata2ipa import kata2asciiipa
-from .phonemizer import text2kata, kata2phoneme
 import re
-
-class JapanesePhonemizer:
-    def __init__(self):
-        choon_rx = re.compile(r'(.):')
-        clean_rx = re.compile(r'[^ a-z]')
-        def f(text):
-            text = text2kata(text)
-            text = kata2phoneme(text)
-            text = text.replace(' ', '').lower()
-            text = choon_rx.sub(r'\1\1', text)
-            text = clean_rx.sub(r'', text)
-            text = text.replace('q', '')
-            return text
-        self._phonemize_fn = f
-
-    def __call__(self, text):
-        return self._phonemize_fn(text)
+from torch import nn
+from .phonemizer import text2kata, kata2phoneme
 
 __all__ = [
-    "kata2asciiipa",
-    "text2kata",
-    "JapanesePhonemizer"
+    "JapanesePhonemizer",
 ]
+
+_CHOON_RX = re.compile(r'(.):')
+_CLEAN_RX = re.compile(r'[^a-z]')
+
+class JapanesePhonemizer(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, text: str) -> str:
+        text = text2kata(text)
+        text = kata2phoneme(text)
+        text = text.replace(' ', '').lower()
+        text = _CHOON_RX.sub(r'\1\1', text)
+        text = _CLEAN_RX.sub(r'', text.lower())
+        text = text.replace('q', '')
+        return text

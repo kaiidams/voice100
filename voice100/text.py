@@ -5,19 +5,22 @@ from torch import nn
 import re
 
 __all__ = [
-    'BasicPhonimizer',
+    'BasicPhonemizer',
     'CharTokenizer',
 ]
 
 DEFAULT_CHARACTERS = " abcdefghijklmnopqrstuvwxyz'"
+NOT_DEFAULT_CHARACTERS_RX = re.compile("[^" + DEFAULT_CHARACTERS[1:] + "]")
+DEFAULT_VOCAB_SIZE = len(DEFAULT_CHARACTERS)
+assert DEFAULT_VOCAB_SIZE == 28
 
-class BasicPhonimizer(nn.Module):
+class BasicPhonemizer(nn.Module):
 
     def __init__(self):
         super().__init__()
 
     def forward(self, text: str) -> str:
-        return text.lower().replace(' ', '')
+        return NOT_DEFAULT_CHARACTERS_RX.sub('', text.lower())
 
 class CharTokenizer(nn.Module):
 

@@ -5,13 +5,12 @@ r"""Definition of Dataset for reading data from speech datasets.
 
 import os
 from glob import glob
-from voice100.japanese import JapanesePhonemizer
-from voice100.text import CharTokenizer
+from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
 import torchaudio
 from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_sequence, pad_sequence
+from torch.nn.utils.rnn import pad_sequence
 
 from .augment import SpectrogramAugumentation
 
@@ -116,7 +115,7 @@ class AudioToLetterPreprocess:
         self.hop_length = 160
         self.n_mels = 64
         self.n_mfcc = 20
-        self.log_offset=1e-6
+        self.log_offset = 1e-6
         self.effects = [
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
@@ -128,10 +127,11 @@ class AudioToLetterPreprocess:
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        self._phonemizer = None
         if phonemizer == 'ja':
             from .japanese import JapanesePhonemizer
             self._phonemizer = JapanesePhonemizer()
+        else:
+            self._phonemizer = BasicPhonemizer()
         self._encoder = CharTokenizer()
 
     def __call__(self, audiopath, text):
@@ -140,9 +140,8 @@ class AudioToLetterPreprocess:
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
 
-        if self._phonemizer:
-            text = self._phonemizer(text)
-        encoded = self._encoder.encode(text)
+        phoneme = self._phonemizer(text)
+        encoded = self._encoder.encode(phoneme)
 
         return audio, encoded
 
