@@ -12,6 +12,7 @@ AUDIO_DIM = 27
 MELSPEC_DIM = 64
 MFCC_DIM = 20
 HIDDEN_DIM = 512
+EMBED_SIZE = 16
 NUM_LAYERS = 2
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
 
@@ -24,7 +25,6 @@ def cli_main():
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
     parser.add_argument('--language', default='en', type=str, help='Language')
-    parser.add_argument('--initialize_from_checkpoint', help='Load initial weights from checkpoint')
     parser.add_argument('--export', type=str, help='Export to ONNX')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)    
@@ -51,19 +51,11 @@ def cli_main():
     else:
         train_loader, val_loader = get_asr_input_fn(args)
         model = AudioToCharCTC(
-            encoder_type='conv',
             audio_size=MELSPEC_DIM,
-            embed_size=HIDDEN_DIM,
-            num_layers=NUM_LAYERS,
+            embed_size=EMBED_SIZE,
             vocab_size=VOCAB_SIZE,
+            hidden_size=HIDDEN_DIM,
             learning_rate=args.learning_rate)
-        if not args.resume_from_checkpoint and args.initialize_from_checkpoint:
-            print('Initializing from checkpoint')
-            #model.load_from_checkpoint(args.initialize_from_checkpoint)
-            state = torch.load(args.initialize_from_checkpoint, map_location='cpu')
-            model.load_state_dict(state['state_dict'])
-            #for param in model.encoder.parameters():
-            #    param.requires_grad = False
         trainer = pl.Trainer.from_argparse_args(args)
         trainer.fit(model, train_loader, val_loader)
 

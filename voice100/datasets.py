@@ -75,39 +75,8 @@ class LibriSpeechDataset(Dataset):
         audiopath = os.path.join(self._root, audioid)
         return audiopath, text
 
-class AudioToAudioTransform(nn.Module):
-
-    def __init__(self):
-        from voice100.vocoder import WORLDVocoder
-        super().__init__()
-        self.sample_rate = 16000
-        self.n_fft = 512
-        self.win_length = 400
-        self.hop_length = 160
-        self.n_mels = 64
-        self.log_offset = 1e-6
-        self.effects = [
-            ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
-        ]
-        self._transform = MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            win_length=self.win_length,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels)
-        self._vocoder = WORLDVocoder()
-
-    def forward(self, audiopath, text):
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        melspec = self._transform(waveform)
-        melspec = torch.transpose(melspec[0, :, :], 0, 1)
-        melspec = torch.log(melspec + self.log_offset)
-        encoded = self._vocoder(waveform[0])
-        return melspec, encoded
-
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, transform, repeat=10, augment=False, cachedir=None):
+    def __init__(self, dataset, transform, repeat=1, augment=False, cachedir=None):
         self._dataset = dataset
         self._cachedir = cachedir
         self._repeat = repeat
@@ -141,8 +110,10 @@ class EncodedCacheDataset(Dataset):
             return encoded_audio, encoded_text
         return encoded_data
 
-class AudioToCharPreprocess:
+class AudioToCharProcessor(nn.Module):
+
     def __init__(self, phonemizer):
+        super().__init__()
         self.sample_rate = 16000
         self.n_fft = 512
         self.win_length = 400
@@ -168,7 +139,7 @@ class AudioToCharPreprocess:
             self._phonemizer = BasicPhonemizer()
         self._encoder = CharTokenizer()
 
-    def __call__(self, audiopath, text):
+    def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
@@ -178,6 +149,37 @@ class AudioToCharPreprocess:
         encoded = self._encoder.encode(phoneme)
 
         return audio, encoded
+
+class AudioToAudioProcessor(nn.Module):
+
+    def __init__(self):
+        from voice100.vocoder import WORLDVocoder
+        super().__init__()
+        self.sample_rate = 16000
+        self.n_fft = 512
+        self.win_length = 400
+        self.hop_length = 160
+        self.n_mels = 64
+        self.log_offset = 1e-6
+        self.effects = [
+            ["remix", "1"],
+            ["rate", f"{self.sample_rate}"],
+        ]
+        self._transform = MelSpectrogram(
+            sample_rate=self.sample_rate,
+            n_fft=self.n_fft,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            n_mels=self.n_mels)
+        self._vocoder = WORLDVocoder()
+
+    def forward(self, audiopath, text):
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
+        melspec = self._transform(waveform)
+        melspec = torch.transpose(melspec[0, :, :], 0, 1)
+        melspec = torch.log(melspec + self.log_offset)
+        encoded = self._vocoder(waveform[0])
+        return melspec, encoded
 
 BLANK_IDX = 0
 
@@ -192,7 +194,7 @@ def get_dataset(args):
             ds = MetafileDataset(root)
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
-            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=True, idcol=0, ext='.flac')
+            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=False, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
             
@@ -223,7 +225,7 @@ def get_asr_input_fn(args, num_workers=2):
     train_len = total_len - valid_len
     train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-    transform = AudioToCharPreprocess(args.language)
+    transform = AudioToCharProcessor(args.language)
 
     os.makedirs(args.cache, exist_ok=True)
     train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
@@ -268,7 +270,7 @@ def get_vc_input_fn(args, num_workers=2):
     train_len = total_len - valid_len
     train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-    transform = AudioToAudioTransform()
+    transform = AudioToAudioProcessor()
 
     os.makedirs(args.cache, exist_ok=True)
     train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)

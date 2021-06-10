@@ -1,6 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
+from typing import Tuple
 import torch
 from torch import nn
 import pytorch_lightning as pl
@@ -56,7 +57,7 @@ def ctc_best_path(logits, labels):
 
 class VoiceEncoder(nn.Module):
 
-    def __init__(self, in_channels, hidden_size=512):
+    def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(in_channels, hidden_size, bias=True),
@@ -78,40 +79,51 @@ class VoiceEncoder(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.2),
         )
+        self.out_proj = nn.Linear(hidden_size, out_channels)
 
-    def forward(self, audio):
-        return self.layers(audio)
+    def forward(self, audio) -> torch.Tensor:
+        x = self.layers(audio)
+        x = self.out_proj(x)
+        # No activation
+        return x
 
 class CharDecoder(nn.Module):
 
-    def __init__(self, out_channels, hidden_size=512):
+    def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
+        self.in_proj = nn.Sequential(
+            nn.Linear(in_channels, hidden_size, bias=True),
+            nn.ReLU(),
+            nn.Dropout(0.2)
+        )
         self.layers = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=2, padding=2, groups=hidden_size),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=2, padding=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2)
         )
-        self.dense = nn.Linear(hidden_size, out_channels, bias=True)
+        self.out_proj = nn.Linear(hidden_size, out_channels, bias=True)
 
-    def forward(self, embed, embed_len):
-        x = torch.transpose(embed, 1, 2)
+    def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.in_proj(embed)
+        x = torch.transpose(x, 1, 2)
         x = self.layers(x)
         x = torch.transpose(x, 1, 2)
-        x = self.dense(x)
+        x = self.out_proj(x)
+        # No activation
         return x, (embed_len + 1) // 2
 
 class LSTMAudioEncoder(nn.Module):
@@ -130,22 +142,22 @@ class LSTMAudioEncoder(nn.Module):
 
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, num_layers, encoder_type, learning_rate):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = VoiceEncoder(audio_size, embed_size)
-        self.decoder = CharDecoder(vocab_size, embed_size)
+        self.encoder = VoiceEncoder(audio_size, embed_size, hidden_size=hidden_size)
+        self.decoder = CharDecoder(embed_size, vocab_size, hidden_size=hidden_size)
         self.loss_fn = nn.CTCLoss()
 
-    def forward(self, audio, audio_len):
+    def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
         return dec_out, dec_out_len
 
-    def encode(self, audio, audio_len) -> torch.Tensor:
+    def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.encoder(audio), audio_len
 
-    def decode(self, enc_out, enc_out_len):
+    def decode(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.decoder(enc_out, enc_out_len)
 
     def _calc_batch_loss(self, batch):
