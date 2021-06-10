@@ -56,7 +56,7 @@ def ctc_best_path(logits, labels):
 
 class VoiceEncoder(nn.Module):
 
-    def __init__(self, in_channels, hidden_size=256):
+    def __init__(self, in_channels, hidden_size=512):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(in_channels, hidden_size, bias=True),
@@ -64,17 +64,17 @@ class VoiceEncoder(nn.Module):
             nn.Dropout(0.2),
 
             nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.LayerNorm([hidden_size], eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
             nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.LayerNorm([hidden_size], eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
             nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.LayerNorm([hidden_size], eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
         )
@@ -84,29 +84,35 @@ class VoiceEncoder(nn.Module):
 
 class CharDecoder(nn.Module):
 
-    def __init__(self, out_channels, hidden_size=256):
+    def __init__(self, out_channels, hidden_size=512):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=2, padding=2, groups=hidden_size),
-            nn.Conv1d(hidden_size, hidden_size * 2, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=5, stride=1, padding=2, groups=hidden_size),
-            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=5, stride=1, padding=2, groups=hidden_size),
-            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=1),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Linear(hidden_size * 2, out_channels, bias=True)
+            nn.Dropout(0.2)
         )
+        self.dense = nn.Linear(hidden_size, out_channels, bias=True)
 
     def forward(self, embed, embed_len):
-        return self.layers(embed), (embed_len + 1) // 2
+        x = torch.transpose(embed, 1, 2)
+        x = self.layers(x)
+        x = torch.transpose(x, 1, 2)
+        x = self.dense(x)
+        return x, (embed_len + 1) // 2
 
 class LSTMAudioEncoder(nn.Module):
 
