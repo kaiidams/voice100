@@ -54,6 +54,60 @@ def ctc_best_path(logits, labels):
     best_path = np.array(best_path, dtype=np.uint8)
     return logprob, best_path
 
+class VoiceEncoder(nn.Module):
+
+    def __init__(self, in_channels, hidden_size=256):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(in_channels, hidden_size, bias=True),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(hidden_size, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(hidden_size, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(hidden_size, hidden_size, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+        )
+
+    def forward(self, audio):
+        return self.layers(audio)
+
+class CharDecoder(nn.Module):
+
+    def __init__(self, out_channels, hidden_size=256):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=2, padding=2, groups=hidden_size),
+            nn.Conv1d(hidden_size, hidden_size * 2, kernel_size=1),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=5, stride=1, padding=2, groups=hidden_size),
+            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=1),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=5, stride=1, padding=2, groups=hidden_size),
+            nn.Conv1d(hidden_size * 2, hidden_size * 2, kernel_size=1),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(hidden_size * 2, out_channels, bias=True)
+        )
+
+    def forward(self, embed, embed_len):
+        return self.layers(embed), (embed_len + 1) // 2
+
 class LSTMAudioEncoder(nn.Module):
 
     def __init__(self, audio_size, embed_size, num_layers):
@@ -73,25 +127,20 @@ class AudioToCharCTC(pl.LightningModule):
     def __init__(self, audio_size, embed_size, vocab_size, num_layers, encoder_type, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        if encoder_type == 'conv':
-            assert embed_size == 1024
-            from .jasper import QuartzNetEncoder
-            self.encoder = QuartzNetEncoder(audio_size)
-        elif encoder_type == 'rnn':
-            self.encoder = LSTMAudioEncoder(audio_size, embed_size, num_layers)
-        self.decoder = nn.Linear(embed_size, vocab_size, bias=True)
+        self.encoder = VoiceEncoder(audio_size, embed_size)
+        self.decoder = CharDecoder(vocab_size, embed_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio, audio_len):
         enc_out, enc_out_len = self.encode(audio, audio_len)
-        logits, logits_len =self.decode(enc_out, enc_out_len) 
-        return logits, logits_len
+        dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
+        return dec_out, dec_out_len
 
     def encode(self, audio, audio_len) -> torch.Tensor:
-        return self.encoder(audio, audio_len)
+        return self.encoder(audio), audio_len
 
     def decode(self, enc_out, enc_out_len):
-        return self.decoder(enc_out), enc_out_len
+        return self.decoder(enc_out, enc_out_len)
 
     def _calc_batch_loss(self, batch):
         audio, audio_len, text, text_len = batch
