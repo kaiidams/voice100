@@ -141,7 +141,7 @@ class EncodedCacheDataset(Dataset):
             return encoded_audio, encoded_text
         return encoded_data
 
-class AudioToLetterPreprocess:
+class AudioToCharPreprocess:
     def __init__(self, phonemizer):
         self.sample_rate = 16000
         self.n_fft = 512
@@ -216,7 +216,6 @@ def generate_audio_text_batch(data_batch):
 def get_asr_input_fn(args, num_workers=2):
 
     ds = get_dataset(args)
-    phonemizer = 'ja'
 
     # Split the dataset
     total_len = len(ds)
@@ -224,9 +223,11 @@ def get_asr_input_fn(args, num_workers=2):
     train_len = total_len - valid_len
     train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
+    transform = AudioToCharPreprocess(args.language)
+
     os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, phonemizer=phonemizer, augment=True, cachedir=args.cache)
-    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, phonemizer=phonemizer, augment=False, cachedir=args.cache)
+    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
+    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=args.cache)
 
     train_dataloader = DataLoader(
         train_ds,

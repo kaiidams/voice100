@@ -23,6 +23,7 @@ def cli_main():
     parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+    parser.add_argument('--language', default='en', type=str, help='Language')
     parser.add_argument('--initialize_from_checkpoint', help='Load initial weights from checkpoint')
     parser.add_argument('--export', type=str, help='Export to ONNX')
     parser = pl.Trainer.add_argparse_args(parser)
