@@ -5,7 +5,6 @@ r"""Definition of Dataset for reading data from speech datasets.
 
 import os
 from glob import glob
-from voice100.vocoder import WORLDVocoder
 from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
 from torch import nn
@@ -79,6 +78,7 @@ class LibriSpeechDataset(Dataset):
 class AudioToAudioTransform(nn.Module):
 
     def __init__(self):
+        from voice100.vocoder import WORLDVocoder
         super().__init__()
         self.sample_rate = 16000
         self.n_fft = 512
