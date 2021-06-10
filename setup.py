@@ -24,7 +24,7 @@ setup(
             #'pyworld>=0.2.12',
             #'pysptk>=0.1.18',
         ],
-        "text": [
+        "lang-ja": [
             'mecab-python3',
             'unidic-lite',
         ]
