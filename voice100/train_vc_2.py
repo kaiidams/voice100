@@ -137,20 +137,16 @@ class VoiceDataset(Dataset):
     def __init__(self, path):
         super().__init__()
         self.files = glob(os.path.join(path, '*.npz'))
-        self.data = {}
     def __len__(self):
         return len(self.files)
     def __getitem__(self, index):
-        v = self.data.get(index)
-        if not v:
-            with np.load(self.files[index], allow_pickle=False) as arr:
-                v = [
-                    arr['wavvec'],
-                    arr['f0'],
-                    arr['spc'],
-                    arr['codeap']
-                ]
-                self.data[index] = v
+        with np.load(self.files[index], allow_pickle=False) as arr:
+            v = [
+                arr['wavvec'],
+                arr['f0'],
+                arr['spc'],
+                arr['codeap']
+            ]
         return [torch.from_numpy(x).float() for x in v]
 
 def generate_batch(batch):
