@@ -97,19 +97,19 @@ class CharDecoder(nn.Module):
             nn.Dropout(0.2)
         )
         self.layers = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=2, padding=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=2, padding=16, groups=hidden_size, bias=False),
             nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size, bias=False),
             nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
             nn.Dropout(0.2),
 
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, stride=1, padding=4, dilation=2, groups=hidden_size, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size, bias=False),
             nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
             nn.BatchNorm1d(hidden_size, eps=0.001),
             nn.ReLU(),
@@ -152,6 +152,7 @@ class AudioToCharCTC(pl.LightningModule):
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
+        # assert (enc_out.shape[1] + 1) // 2 == dec_out.shape[1]
         return dec_out, dec_out_len
 
     def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
