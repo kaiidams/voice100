@@ -114,8 +114,6 @@ def prepare(
             outfile = os.path.join(a2a_path, f'{wavid}.pt')
             obj = dict(wavvec=wavvec, f0=f0, logspec=logspec, codeap=codeap)
             torch.save(obj, outfile)
-            if len(stat) > 10:
-                break                
 
     stat = np.mean(np.stack(stat), axis=0)
     print(stat)
