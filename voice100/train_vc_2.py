@@ -117,7 +117,7 @@ class VoiceConvert(pl.LightningModule):
         loss = self.criteria(pred, target)
         loss_weights = (torch.arange(target.shape[1], device=target.device)[None, :] < f0_len[:, None]).float()
         loss = torch.mean(loss, axis=2)
-        loss = torch.sum(loss * loss_weights[:, None]) / torch.sum(loss_weights)
+        loss = torch.sum(loss * loss_weights) / torch.sum(loss_weights)
 
         z_weights = (torch.arange(state.shape[1], device=state.device)[None, :] < state_len[:, None]).float()
         logpz = log_normal_pdf0(z)
