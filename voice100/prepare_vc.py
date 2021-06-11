@@ -131,7 +131,7 @@ def cli_main():
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, default='kokoro_small', help='Directory of training data')
     args = parser.parse_args()
-    args.use_gpu = torch.cuda.is_available()
+    args.use_gpu = False #torch.cuda.is_available()
     from multiprocessing import Pool
     pool = Pool(4)
     for i in range(20):
