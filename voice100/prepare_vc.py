@@ -39,14 +39,14 @@ def prepare(
     target_sample_rate=22050, eps=1e-15,
     use_w2v2=False):
 
-    print('hoge')
+    print('hoge', split)
     if target_sample_rate == 16000:
         n_fft = 512
     elif target_sample_rate == 22050:
         n_fft = 1024
 
     device = torch.device('cuda' if use_gpu else 'cpu')
-    print('hoge')
+    print('hoge', split)
 
     if use_w2v2:
         from transformers import Wav2Vec2Model, Wav2Vec2Processor
@@ -62,13 +62,13 @@ def prepare(
         audio2char.eval()
         audio2char.to(device)
 
-    print('hoge')
+    print('hoge', split)
     wav_path = './data/kokoro-speech-v1_1-small/wavs'
     a2a_path = './data/kokoro-speech-v1_1-small/a2a'
     os.makedirs(a2a_path, exist_ok=True)
     stat = []
 
-    print('reade')
+    print('reade', split)
     with open('./data/kokoro-speech-v1_1-small/metadata.csv') as f:
         print('read')
         for i, line in enumerate(tqdm(f, total=8812)):
