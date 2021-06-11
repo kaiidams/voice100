@@ -178,7 +178,7 @@ def cli_main():
         spc_dim = 513
         codecp_dim = 2
 
-    model = VoiceConvert(state_dim=1024, spc_dim=spc_dim, codecp_dim=codecp_dim)
+    model = VoiceConvert(state_dim=16, spc_dim=spc_dim, codecp_dim=codecp_dim)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_dataloader)
 
