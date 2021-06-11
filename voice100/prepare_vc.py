@@ -38,7 +38,6 @@ def prepare(
     use_gpu=False, source_sample_rate=16000,
     target_sample_rate=22050, eps=1e-15,
     use_w2v2=False):
-    print(split)
 
     if target_sample_rate == 16000:
         n_fft = 512
@@ -68,6 +67,7 @@ def prepare(
 
     with open('./data/kokoro-speech-v1_1-small/metadata.csv') as f:
         for i, line in enumerate(tqdm(f, total=8812)):
+            print('e', i, split)
             if i % 20 != split:
                 continue
             parts = line.rstrip().split('|')
