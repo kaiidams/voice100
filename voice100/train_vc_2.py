@@ -45,6 +45,10 @@ class VoiceDecoder(nn.Module):
         x = self.convtrans3(x)
         #x = self.batchnorm3(x)
         x = torch.relu(x)
+        x = self.convtrans4(x)
+        x = torch.relu(x)
+        x = self.convtrans5(x)
+        x = torch.relu(x)
         x = torch.transpose(x, 1, 2)
         x = self.dense(x)
         return x
