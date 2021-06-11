@@ -33,13 +33,15 @@ class AudioProcessor(nn.Module):
         melspec = torch.log(melspec + self.log_offset)
         return melspec
 
-def prepare(use_gpu=False, source_sample_rate=16000, target_sample_rate=22050, use_w2v2=False):
+def prepare(
+    use_gpu=False, source_sample_rate=16000,
+    target_sample_rate=22050, eps=1e-15,
+    use_w2v2=False):
 
     if target_sample_rate == 16000:
         n_fft = 512
     elif target_sample_rate == 22050:
         n_fft = 1024
-    eps = 1e-15
 
     device = torch.device('cuda' if use_gpu else 'cpu')
 
@@ -53,18 +55,20 @@ def prepare(use_gpu=False, source_sample_rate=16000, target_sample_rate=22050, u
     else:
         from .models import AudioToCharCTC
         processor = AudioProcessor()
-        audio2char = AudioToCharCTC.load_from_checkpoint('model/stt_ja_conv_base_ctc-20210608.ckpt')
+        audio2char = AudioToCharCTC.load_from_checkpoint('model/stt_en_conv_base_ctc.ckpt')
         audio2char.eval()
         audio2char.to(device)
 
-    os.makedirs('data/vc', exist_ok=True)
+    wav_path = './data/kokoro-speech-v1_1-small/wavs'
+    a2a_path = './data/kokoro-speech-v1_1-small/a2a'
+    os.makedirs(a2a_path, exist_ok=True)
     stat = []
 
     with open('./data/kokoro-speech-v1_1-small/metadata.csv') as f:
-        for i, line in enumerate(tqdm(f, total=8812)):
+        for line in tqdm(f, total=8812):
             parts = line.rstrip().split('|')
             wavid, _, _ = parts
-            wavfile = f'./data/kokoro-speech-v1_1-small/wavs/{wavid}.flac'
+            wavfile = os.path.join(wav_path, f'{wavid}.flac')
             audio_input, sample_rate = librosa.load(wavfile, sr=source_sample_rate)
             if use_w2v2:
                 input_values = processor(audio_input, sampling_rate=sample_rate, return_tensors="pt").input_values
@@ -78,8 +82,8 @@ def prepare(use_gpu=False, source_sample_rate=16000, target_sample_rate=22050, u
                     melspec = processor(torch.from_numpy(audio_input).float()[None, :])
                     melspec = melspec[None, :, :].to(device)
                     melspec_len = torch.tensor([melspec.shape[1]]).to(device)
-                    wavvec, wavvec_len = audio2char.encode(melspec, melspec_len)
-                    wavvec = wavvec.cpu().numpy()[0, :, :]
+                    wavvec, _ = audio2char.encode(melspec, melspec_len)
+                    wavvec = wavvec.cpu()[0, :, :]
 
             if sample_rate != target_sample_rate:
                 audio_input, sample_rate = librosa.load(wavfile, sr=target_sample_rate)
@@ -89,28 +93,39 @@ def prepare(use_gpu=False, source_sample_rate=16000, target_sample_rate=22050, u
                 waveform, sample_rate,
                 f0_floor=40, f0_ceil=400,
                 frame_period=5.0)
-            spc = pyworld.cheaptrick(waveform, f0, time_axis, sample_rate, fft_size=n_fft)
+            spec = pyworld.cheaptrick(waveform, f0, time_axis, sample_rate, fft_size=n_fft)
             ap = pyworld.d4c(waveform, f0, time_axis, sample_rate, fft_size=n_fft)
             codeap = pyworld.code_aperiodicity(ap, sample_rate)
-
-            f0 = f0.astype(np.float32)
-            spc = np.log(spc + eps).astype(np.float32)
-            codeap = codeap.astype(np.float32)
+            logspec = np.log(spec + eps)
 
             stat.append(np.array([
                 np.mean(f0),
-                np.mean(spc),
+                np.mean(logspec),
                 np.mean(codeap),
                 np.std(f0),
-                np.std(spc),
+                np.std(logspec),
                 np.std(codeap)
             ]))
 
-            outfile = f'data/vc/{i}.npz'
-            np.savez(outfile, 
-                wavvec=wavvec, f0=f0, spc=spc, codeap=codeap)
+            f0 = torch.from_numpy(f0.astype(np.float32))
+            logspec = torch.from_numpy(logspec.astype(np.float32))
+            codeap = torch.from_numpy(codeap.astype(np.float32))
+
+            outfile = os.path.join(a2a_path, f'{wavid}.pt')
+            obj = dict(wavvec=wavvec, f0=f0, logspec=logspec, codeap=codeap)
+            torch.save(obj, outfile)
+            if len(stat) > 10:
+                break                
 
     stat = np.mean(np.stack(stat), axis=0)
     print(stat)
 
-prepare(use_gpu=torch.cuda.is_available())
+def cli_main():
+    parser = ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='kokoro_small', help='Directory of training data')
+    args = parser.parse_args()
+    args.use_gpu = torch.cuda.is_available()
+    prepare(use_gpu=args.use_gpu)
+
+if __name__ == '__main__':
+    cli_main()
