@@ -34,9 +34,11 @@ class AudioProcessor(nn.Module):
         return melspec
 
 def prepare(
+    split,
     use_gpu=False, source_sample_rate=16000,
     target_sample_rate=22050, eps=1e-15,
     use_w2v2=False):
+    print(split)
 
     if target_sample_rate == 16000:
         n_fft = 512
@@ -65,7 +67,9 @@ def prepare(
     stat = []
 
     with open('./data/kokoro-speech-v1_1-small/metadata.csv') as f:
-        for line in tqdm(f, total=8812):
+        for i, line in enumerate(tqdm(f, total=8812)):
+            if i % 20 != split:
+                continue
             parts = line.rstrip().split('|')
             wavid, _, _ = parts
             wavfile = os.path.join(wav_path, f'{wavid}.flac')
@@ -123,7 +127,11 @@ def cli_main():
     parser.add_argument('--dataset', type=str, default='kokoro_small', help='Directory of training data')
     args = parser.parse_args()
     args.use_gpu = torch.cuda.is_available()
-    prepare(use_gpu=args.use_gpu)
-
+    from multiprocessing import Pool
+    pool = Pool(4)
+    for i in range(20):
+        pool.apply_async(prepare, (i,), dict(use_gpu=args.use_gpu))
+    pool.close()
+    pool.join()
 if __name__ == '__main__':
     cli_main()
