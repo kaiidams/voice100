@@ -68,8 +68,9 @@ def prepare(
     os.makedirs(a2a_path, exist_ok=True)
     stat = []
 
+    print('reade')
     with open('./data/kokoro-speech-v1_1-small/metadata.csv') as f:
-        print('hoge')
+        print('read')
         for i, line in enumerate(tqdm(f, total=8812)):
             print('e', i, split)
             if i % 20 != split:
