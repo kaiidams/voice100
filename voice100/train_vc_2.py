@@ -21,13 +21,17 @@ class VoiceEncoder(nn.Module):
         return self.net(x)
 
 class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_dim=512, kernel_size=33):
+    def __init__(self, in_channels, out_channels, hidden_dim=256, kernel_size=33):
         super().__init__()
-        self.convtrans1 = nn.ConvTranspose1d(in_channels, hidden_dim, kernel_size, stride=2, padding=15)
+        self.convtrans1 = nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32)
         #self.batchnorm1 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans2 = nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size, stride=1, padding=15)
+        self.convtrans2 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32)
         #self.batchnorm2 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans3 = nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size, stride=1, padding=15)
+        self.convtrans3 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32)
+        #self.batchnorm3 = nn.BatchNorm1d(hidden_dim)
+        self.convtrans4 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16)
+        #self.batchnorm2 = nn.BatchNorm1d(hidden_dim)
+        self.convtrans5 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8)
         #self.batchnorm3 = nn.BatchNorm1d(hidden_dim)
         self.dense = nn.Linear(hidden_dim, out_channels)
         
@@ -112,7 +116,8 @@ class VoiceConvert(pl.LightningModule):
             pred = pred[:, :target.shape[1], :]
         loss = self.criteria(pred, target)
         loss_weights = (torch.arange(target.shape[1], device=target.device)[None, :] < f0_len[:, None]).float()
-        loss = torch.sum(loss * loss_weights[:, :, None]) / torch.sum(loss_weights) / (1 + 257 + 1)
+        loss = torch.mean(loss, axis=2)
+        loss = torch.sum(loss * loss_weights[:, None]) / torch.sum(loss_weights)
 
         z_weights = (torch.arange(state.shape[1], device=state.device)[None, :] < state_len[:, None]).float()
         logpz = log_normal_pdf0(z)
