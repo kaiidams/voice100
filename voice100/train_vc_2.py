@@ -136,18 +136,17 @@ class VoiceConvert(pl.LightningModule):
 class VoiceDataset(Dataset):
     def __init__(self, path):
         super().__init__()
-        self.files = glob(os.path.join(path, '*.npz'))
+        self.files = glob(os.path.join(path, '*.pt'))
     def __len__(self):
         return len(self.files)
     def __getitem__(self, index):
-        with np.load(self.files[index], allow_pickle=False) as arr:
-            v = [
-                arr['wavvec'],
-                arr['f0'],
-                arr['spc'],
-                arr['codeap']
-            ]
-        return [torch.from_numpy(x).float() for x in v]
+        obj = torch.load(self.files[index])
+        return [
+            obj['wavvec'],
+            obj['f0'],
+            obj['logspec'],
+            obj['codeap']
+        ]
 
 def generate_batch(batch):
     res = []
@@ -163,7 +162,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='./data/vc', help='Directory of training data')
+    parser.add_argument('--dataset', type=str, default='./data/kokoro-speech-v1_1-small/a2a', help='Directory of training data')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = VoiceConvert.add_model_specific_args(parser)    
