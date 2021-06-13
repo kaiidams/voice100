@@ -59,11 +59,13 @@ class VoiceEncoder(nn.Module):
 
     def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
-        self.layers = nn.Sequential(
+
+        self.in_proj = nn.Sequential(
             nn.Linear(in_channels, hidden_size, bias=True),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.2))
 
+        self.layers = nn.Sequential(
             nn.Linear(hidden_size, hidden_size, bias=False),
             nn.LayerNorm([hidden_size], eps=0.001),
             nn.ReLU(),
@@ -75,17 +77,58 @@ class VoiceEncoder(nn.Module):
             nn.Dropout(0.2),
 
             nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.LayerNorm([hidden_size], eps=0.001),
+            nn.LayerNorm([hidden_size], eps=0.001))
+
+        self.res = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size, bias=False),
+            nn.LayerNorm([hidden_size], eps=0.001))
+
+        self.out_proj = nn.Sequential(
             nn.ReLU(),
             nn.Dropout(0.2),
-        )
-        self.out_proj = nn.Linear(hidden_size, out_channels)
+            nn.Linear(hidden_size, out_channels))
 
     def forward(self, audio) -> torch.Tensor:
-        x = self.layers(audio)
-        x = self.out_proj(x)
+        x = self.in_proj(audio)
+        r = self.res(x)
+        x = self.layers(x)
+        x = self.out_proj(x + r)
         # No activation
         return x
+
+class ConvBlock(nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001))
+
+        self.res = nn.Sequential(
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
+            nn.BatchNorm1d(hidden_size, eps=0.001))
+
+        self.out = nn.Sequential(
+            nn.ReLU(),
+            nn.Dropout(0.2))
+
+    def forward(self, x):
+        r = self.res(x)
+        x = self.layers(x)
+        return self.out(r + x)
 
 class CharDecoder(nn.Module):
 
@@ -97,24 +140,14 @@ class CharDecoder(nn.Module):
             nn.Dropout(0.2)
         )
         self.layers = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=2, padding=16, groups=hidden_size, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size),
+            ConvBlock(hidden_size))
 
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2)
-        )
         self.out_proj = nn.Linear(hidden_size, out_channels, bias=True)
 
     def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -151,6 +184,7 @@ class AudioToCharCTC(pl.LightningModule):
 
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
+        enc_out = torch.sigmoid(enc_out)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
         # assert (enc_out.shape[1] + 1) // 2 == dec_out.shape[1]
         return dec_out, dec_out_len
