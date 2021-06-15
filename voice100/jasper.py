@@ -56,16 +56,16 @@ class QuartzNetEncoder(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
         self.layer = nn.Sequential(
-            JasperBlock(input_dim, 256, kernel_size=33, stride=2, dilation=1, separable=True, repeat=1, residual=False),
+            JasperBlock(input_dim, 128, kernel_size=33, stride=2, dilation=1, separable=True, repeat=1, residual=False),
 
-            JasperBlock(256, 256, kernel_size=33, stride=1, dilation=1, separable=True, repeat=3, residual=True),
-            JasperBlock(256, 256, kernel_size=39, stride=1, dilation=1, separable=True, repeat=3, residual=True),
-            JasperBlock(256, 512, kernel_size=51, stride=1, dilation=1, separable=True, repeat=3, residual=True),
-            JasperBlock(512, 512, kernel_size=63, stride=1, dilation=1, separable=True, repeat=3, residual=True),
-            JasperBlock(512, 512, kernel_size=75, stride=1, dilation=1, separable=True, repeat=3, residual=True),
+            JasperBlock(128, 128, kernel_size=33, stride=1, dilation=1, separable=True, repeat=3, residual=True),
+            JasperBlock(128, 128, kernel_size=39, stride=1, dilation=1, separable=True, repeat=3, residual=True),
+            JasperBlock(128, 256, kernel_size=51, stride=1, dilation=1, separable=True, repeat=3, residual=True),
+            JasperBlock(256, 256, kernel_size=63, stride=1, dilation=1, separable=True, repeat=3, residual=True),
+            JasperBlock(256, 256, kernel_size=75, stride=1, dilation=1, separable=True, repeat=3, residual=True),
 
-            JasperBlock(512, 512, kernel_size=87, stride=1, dilation=2, separable=True, repeat=1, residual=False),
-            JasperBlock(512, 1024, kernel_size=1, stride=1, dilation=1, separable=False, repeat=1, residual=False),
+            JasperBlock(256, 256, kernel_size=87, stride=1, dilation=2, separable=True, repeat=1, residual=False),
+            JasperBlock(256, 512, kernel_size=1, stride=1, dilation=1, separable=False, repeat=1, residual=False),
         )
 
     def forward(self, audio, audio_len):

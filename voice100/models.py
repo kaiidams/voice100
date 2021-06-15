@@ -167,17 +167,18 @@ class CharDecoder(nn.Module):
 
 class LinearCharDecoder(nn.Module):
 
-    def __init__(self, in_channels, out_channels, hidden_size=256):
+    def __init__(self, in_channels, out_channels, hidden_size=128):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv1d(in_channels, hidden_size, kernel_size=1, padding=0, bias=True),
+            nn.Dropout(0.2),
             nn.ReLU(),
             nn.Conv1d(hidden_size, out_channels, kernel_size=1, padding=0, bias=True))
 
     def forward(self, enc_out, enc_out_len):
         x = torch.transpose(enc_out, 1, 2)
         x = self.layers(x)
-        x = torch.transpose(enc_out, 1, 2)
+        x = torch.transpose(x, 1, 2)
         return x, enc_out_len
 
 class LSTMAudioEncoder(nn.Module):
