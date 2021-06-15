@@ -12,7 +12,7 @@ AUDIO_DIM = 27
 MELSPEC_DIM = 64
 MFCC_DIM = 20
 HIDDEN_DIM = None
-EMBED_SIZE = 512
+EMBED_SIZE = 1024
 NUM_LAYERS = 2
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
 
@@ -20,7 +20,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
     parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
     parser.add_argument('--cache', default='./cache', help='Cache directory')
     parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
