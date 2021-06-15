@@ -165,6 +165,21 @@ class CharDecoder(nn.Module):
         # No activation
         return x, (embed_len + 1) // 2
 
+class LinearCharDecoder(nn.Module):
+
+    def __init__(self, in_channels, out_channels, hidden_size=256):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv1d(in_channels, hidden_size, kernel_size=1, padding=0, bias=True),
+            nn.ReLU(),
+            nn.Conv1d(hidden_size, out_channels, kernel_size=1, padding=0, bias=True))
+
+    def forward(self, enc_out, enc_out_len):
+        x = torch.transpose(enc_out, 1, 2)
+        x = self.layers(x)
+        x = torch.transpose(enc_out, 1, 2)
+        return x, enc_out_len
+
 class LSTMAudioEncoder(nn.Module):
 
     def __init__(self, audio_size, embed_size, num_layers):
@@ -181,22 +196,31 @@ class LSTMAudioEncoder(nn.Module):
 
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate,
+        encoder_type='quartznet', decoder_type='linear'
+        ):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = VoiceEncoder(audio_size, embed_size, hidden_size=hidden_size)
-        self.decoder = CharDecoder(embed_size, vocab_size, hidden_size=hidden_size)
+        if encoder_type == 'quartznet':
+            from .jasper import QuartzNetEncoder
+            self.encoder = QuartzNetEncoder(audio_size)
+        else:
+            self.encoder = VoiceEncoder(audio_size, embed_size, hidden_size=hidden_size)
+        if decoder_type == 'linear':
+            self.decoder = LinearCharDecoder(embed_size, vocab_size)
+        else:
+            self.decoder = CharDecoder(embed_size, vocab_size, hidden_size=hidden_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
-        enc_out = torch.sigmoid(enc_out)
+        enc_out = torch.relu(enc_out)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
-        assert (enc_out.shape[1] + 1) // 2 == dec_out.shape[1]
+        assert (audio.shape[1] + 1) // 2 ==enc_out.shape[1]
         return dec_out, dec_out_len
 
     def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.encoder(audio), audio_len
+        return self.encoder(audio, audio_len) 
 
     def decode(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.decoder(enc_out, enc_out_len)
