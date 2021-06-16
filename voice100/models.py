@@ -96,76 +96,80 @@ class VoiceEncoder(nn.Module):
         # No activation
         return x
 
-class ConvBlock(nn.Module):
-    def __init__(self, hidden_size):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
+def make_conv_bn_activate(in_channels, out_channels, kernel_size, stride=1, separable=False, dilation=1):
+    padding = ((kernel_size - 1) // 2) * dilation
+    if separable:
+        return nn.Sequential(
+            nn.Conv1d(
+                in_channels, in_channels,
+                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                groups=in_channels, bias=False),
+            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm1d(out_channels),
             nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001))
-
-        self.res = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=1, padding=32, dilation=2, groups=hidden_size // 8, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001))
-
-        self.out = nn.Sequential(
+            nn.Dropout(0.2))
+    else:
+        return nn.Sequential(
+            nn.Conv1d(
+                in_channels, out_channels,
+                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                bias=False),
+            nn.BatchNorm1d(out_channels),
             nn.ReLU(),
             nn.Dropout(0.2))
 
-    def forward(self, x):
-        r = self.res(x)
-        x = self.layers(x)
-        return self.out(r + x)
+class ConvVoiceEncoder(nn.Module):
 
-class CharDecoder(nn.Module):
-
-    def __init__(self, in_channels, out_channels, hidden_size):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.in_proj = nn.Sequential(
-            nn.Linear(in_channels, hidden_size, bias=True),
-            nn.ReLU(),
-            nn.Dropout(0.2)
-        )
         self.layers = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=33, stride=2, padding=16, groups=hidden_size // 8, bias=False),
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=1, bias=False),
-            nn.BatchNorm1d(hidden_size, eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            make_conv_bn_activate(in_channels, 128, kernel_size=1, separable=True),
 
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size),
-            ConvBlock(hidden_size))
+            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
+            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
+            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
 
-        self.out_proj = nn.Linear(hidden_size, out_channels, bias=True)
+            make_conv_bn_activate(128, 256, kernel_size=7, separable=True),
+
+            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
+
+            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
+
+            make_conv_bn_activate(256, 512, kernel_size=23, separable=True, stride=2),
+
+            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
+
+            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
+
+            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+
+            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+
+            # No activation
+            nn.Conv1d(512, out_channels, kernel_size=1, bias=True))
 
     def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.in_proj(embed)
-        x = torch.transpose(x, 1, 2)
+        x = torch.transpose(embed, 1, 2)
         x = self.layers(x)
         x = torch.transpose(x, 1, 2)
-        x = self.out_proj(x)
-        # No activation
         return x, (embed_len + 1) // 2
 
-class LinearCharDecoder(nn.Module):
+class ConvCharDecoder(nn.Module):
 
     def __init__(self, in_channels, out_channels, hidden_size=128):
         super().__init__()
@@ -178,6 +182,18 @@ class LinearCharDecoder(nn.Module):
     def forward(self, enc_out, enc_out_len):
         x = torch.transpose(enc_out, 1, 2)
         x = self.layers(x)
+        x = torch.transpose(x, 1, 2)
+        return x, enc_out_len
+
+class LinearCharDecoder(nn.Module):
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, padding=0, bias=True)
+
+    def forward(self, enc_out, enc_out_len):
+        x = torch.transpose(enc_out, 1, 2)
+        x = self.conv(x)
         x = torch.transpose(x, 1, 2)
         return x, enc_out_len
 
@@ -198,19 +214,26 @@ class LSTMAudioEncoder(nn.Module):
 class AudioToCharCTC(pl.LightningModule):
 
     def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate,
-        encoder_type='quartznet', decoder_type='linear'
+        encoder_type='conv', decoder_type='conv'
         ):
         super().__init__()
         self.save_hyperparameters()
+
         if encoder_type == 'quartznet':
             from .jasper import QuartzNetEncoder
             self.encoder = QuartzNetEncoder(audio_size)
-        else:
+        elif encoder_type == 'conv':
+            self.encoder = ConvVoiceEncoder(audio_size, embed_size)
+        elif encoder_type == 'linear':
             self.encoder = VoiceEncoder(audio_size, embed_size, hidden_size=hidden_size)
-        if decoder_type == 'linear':
+
+        if decoder_type == 'conv':
+            self.decoder = ConvCharDecoder(embed_size, vocab_size)
+        elif decoder_type == 'linear':
             self.decoder = LinearCharDecoder(embed_size, vocab_size)
         else:
-            self.decoder = CharDecoder(embed_size, vocab_size, hidden_size=hidden_size)
+            raise ValueError()
+
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
