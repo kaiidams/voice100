@@ -96,56 +96,64 @@ class VoiceEncoder(nn.Module):
         # No activation
         return x
 
-def make_conv_bn_activate(in_channels, out_channels, kernel_size, stride=1, separable=False, dilation=1):
-    padding = ((kernel_size - 1) // 2) * dilation
-    if separable:
-        return nn.Sequential(
-            nn.Conv1d(
-                in_channels, in_channels,
-                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-                groups=in_channels, bias=False),
-            nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm1d(out_channels),
+class ConvBNActivate(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, separable=True, residual=True, dilation=1):
+        super().__init__()
+        padding = ((kernel_size - 1) // 2) * dilation
+        self.residual = residual
+        if separable:
+            self.conv_bn = nn.Sequential(
+                nn.Conv1d(
+                    in_channels, in_channels,
+                    kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                    groups=in_channels, bias=False),
+                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
+                nn.BatchNorm1d(out_channels))
+        else:
+            self.conv_bn = nn.Sequential(
+                nn.Conv1d(
+                    in_channels, out_channels,
+                    kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                    bias=False),
+                nn.BatchNorm1d(out_channels))
+        self.out = nn.Sequential(
             nn.ReLU(),
             nn.Dropout(0.2))
-    else:
-        return nn.Sequential(
-            nn.Conv1d(
-                in_channels, out_channels,
-                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-                bias=False),
-            nn.BatchNorm1d(out_channels),
-            nn.ReLU(),
-            nn.Dropout(0.2))
+
+    def forward(self, x):
+        y = self.conv_bn(x)
+        if self.residual:
+            y += x
+        return self.out(y)
 
 class ConvVoiceEncoder(nn.Module):
 
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.layers = nn.Sequential(
-            make_conv_bn_activate(in_channels, 256, kernel_size=33, separable=True, stride=2),
+            ConvBNActivate(in_channels, 256, kernel_size=33, stride=2, residual=False),
 
-            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
+            ConvBNActivate(256, 256, kernel_size=33),
+            ConvBNActivate(256, 256, kernel_size=33),
+            ConvBNActivate(256, 256, kernel_size=33),
 
-            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
+            ConvBNActivate(256, 256, kernel_size=39),
+            ConvBNActivate(256, 256, kernel_size=39),
+            ConvBNActivate(256, 256, kernel_size=39),
 
-            make_conv_bn_activate(256, 512, kernel_size=51, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=51, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=51, separable=True),
+            ConvBNActivate(256, 512, kernel_size=51, residual=False),
+            ConvBNActivate(512, 512, kernel_size=51),
+            ConvBNActivate(512, 512, kernel_size=51),
 
-            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
+            ConvBNActivate(512, 512, kernel_size=63),
+            ConvBNActivate(512, 512, kernel_size=63),
+            ConvBNActivate(512, 512, kernel_size=63),
 
-            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
+            ConvBNActivate(512, 512, kernel_size=75),
+            ConvBNActivate(512, 512, kernel_size=75),
+            ConvBNActivate(512, 512, kernel_size=75),
 
-            make_conv_bn_activate(512, 512, kernel_size=173, separable=True),
+            ConvBNActivate(512, 512, kernel_size=173),
 
             # No activation
             nn.Conv1d(512, out_channels, kernel_size=1, bias=True))
