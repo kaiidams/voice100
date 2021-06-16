@@ -123,42 +123,29 @@ class ConvVoiceEncoder(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.layers = nn.Sequential(
-            make_conv_bn_activate(in_channels, 128, kernel_size=1, separable=True),
+            make_conv_bn_activate(in_channels, 256, kernel_size=33, separable=True, stride=2),
 
-            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
-            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
-            make_conv_bn_activate(128, 128, kernel_size=7, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=33, separable=True),
 
-            make_conv_bn_activate(128, 256, kernel_size=7, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
+            make_conv_bn_activate(256, 256, kernel_size=39, separable=True),
 
-            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=11, separable=True),
+            make_conv_bn_activate(256, 512, kernel_size=51, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=51, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=51, separable=True),
 
-            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
-            make_conv_bn_activate(256, 256, kernel_size=23, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=63, separable=True),
 
-            make_conv_bn_activate(256, 512, kernel_size=23, separable=True, stride=2),
+            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=75, separable=True),
 
-            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=37, separable=True),
-
-            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=49, separable=True),
-
-            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
-            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
-
-            make_conv_bn_activate(512, 512, kernel_size=61, separable=True),
+            make_conv_bn_activate(512, 512, kernel_size=173, separable=True),
 
             # No activation
             nn.Conv1d(512, out_channels, kernel_size=1, bias=True))
