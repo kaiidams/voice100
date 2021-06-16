@@ -96,67 +96,64 @@ class VoiceEncoder(nn.Module):
         # No activation
         return x
 
-class ConvBNActivate(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, separable=True, residual=True, dilation=1):
-        super().__init__()
+class ConvBNActivate(nn.Sequential):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
         padding = ((kernel_size - 1) // 2) * dilation
-        self.residual = residual
-        if separable:
-            self.conv_bn = nn.Sequential(
-                nn.Conv1d(
-                    in_channels, in_channels,
-                    kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-                    groups=in_channels, bias=False),
-                nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm1d(out_channels))
-        else:
-            self.conv_bn = nn.Sequential(
-                nn.Conv1d(
-                    in_channels, out_channels,
-                    kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-                    bias=False),
-                nn.BatchNorm1d(out_channels))
-        self.out = nn.Sequential(
-            nn.ReLU(),
-            nn.Dropout(0.2))
+        super().__init__(
+            nn.Conv1d(
+                in_channels, out_channels,
+                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                groups=groups,
+                bias=False),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU6(inplace=True))
 
+class InvertedResidual(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, use_residual=True):
+        super().__init__()
+        hidden_size = in_channels * 4
+        self.use_residual = use_residual
+        self.conv = nn.Sequential(
+            # pw
+            ConvBNActivate(in_channels, hidden_size, kernel_size=1),
+            # dw
+            ConvBNActivate(hidden_size, hidden_size, kernel_size=kernel_size, stride=stride, groups=hidden_size),
+            # pw-linear
+            nn.Conv1d(hidden_size, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm1d(out_channels)
+        )
     def forward(self, x):
-        y = self.conv_bn(x)
-        if self.residual:
-            y += x
-        return self.out(y)
+        if self.use_residual:
+            return x + self.conv(x)
+        else:
+            return self.conv(x)
 
 class ConvVoiceEncoder(nn.Module):
 
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.layers = nn.Sequential(
-            ConvBNActivate(in_channels, 256, kernel_size=33, stride=2, residual=False),
+            InvertedResidual(in_channels, 128, kernel_size=11, stride=2, use_residual=False),
 
-            ConvBNActivate(256, 256, kernel_size=33),
-            ConvBNActivate(256, 256, kernel_size=33),
-            ConvBNActivate(256, 256, kernel_size=33),
+            InvertedResidual(128, 128, kernel_size=33),
+            InvertedResidual(128, 128, kernel_size=33),
 
-            ConvBNActivate(256, 256, kernel_size=39),
-            ConvBNActivate(256, 256, kernel_size=39),
-            ConvBNActivate(256, 256, kernel_size=39),
+            InvertedResidual(128, 128, kernel_size=39),
+            InvertedResidual(128, 128, kernel_size=39),
 
-            ConvBNActivate(256, 512, kernel_size=51, residual=False),
-            ConvBNActivate(512, 512, kernel_size=51),
-            ConvBNActivate(512, 512, kernel_size=51),
+            InvertedResidual(128, 256, kernel_size=51, use_residual=False),
+            InvertedResidual(256, 256, kernel_size=51),
 
-            ConvBNActivate(512, 512, kernel_size=63),
-            ConvBNActivate(512, 512, kernel_size=63),
-            ConvBNActivate(512, 512, kernel_size=63),
+            InvertedResidual(256, 256, kernel_size=63),
+            InvertedResidual(256, 256, kernel_size=63),
 
-            ConvBNActivate(512, 512, kernel_size=75),
-            ConvBNActivate(512, 512, kernel_size=75),
-            ConvBNActivate(512, 512, kernel_size=75),
+            InvertedResidual(256, 256, kernel_size=75),
+            InvertedResidual(256, 256, kernel_size=75),
 
-            ConvBNActivate(512, 512, kernel_size=173),
+            InvertedResidual(256, 256, kernel_size=173),
 
             # No activation
-            nn.Conv1d(512, out_channels, kernel_size=1, bias=True))
+            nn.Conv1d(256, out_channels, kernel_size=1, bias=True))
 
     def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
         x = torch.transpose(embed, 1, 2)
@@ -169,9 +166,9 @@ class ConvCharDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_size=128):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Conv1d(in_channels, hidden_size, kernel_size=1, padding=0, bias=True),
             nn.Dropout(0.2),
-            nn.ReLU(),
+            nn.Conv1d(in_channels, hidden_size, kernel_size=1, padding=0, bias=True),
+            nn.ReLU6(),
             nn.Conv1d(hidden_size, out_channels, kernel_size=1, padding=0, bias=True))
 
     def forward(self, enc_out, enc_out_len):
@@ -235,7 +232,7 @@ class AudioToCharCTC(pl.LightningModule):
         enc_out, enc_out_len = self.encode(audio, audio_len)
         enc_out = torch.relu(enc_out)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
-        assert (audio.shape[1] + 1) // 2 ==enc_out.shape[1]
+        assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return dec_out, dec_out_len
 
     def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
