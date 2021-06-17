@@ -232,7 +232,7 @@ class AudioToCharCTC(pl.LightningModule):
         enc_out, enc_out_len = self.encode(audio, audio_len)
         enc_out = torch.relu(enc_out)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
-        assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
+        #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return dec_out, dec_out_len
 
     def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -267,7 +267,15 @@ class AudioToCharCTC(pl.LightningModule):
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+        scheduler.step()
+        scheduler.step()
+        scheduler.step()
+        scheduler.step()
+        scheduler.step()
+        self.hoge = scheduler
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):

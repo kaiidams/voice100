@@ -6,7 +6,6 @@ from torch import nn
 class JasperBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, dilation, separable, repeat, residual):
         super(JasperBlock, self).__init__()
-        residual = False
         layers = []
         c = in_channels
         for i in range(repeat):
