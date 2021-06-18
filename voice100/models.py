@@ -55,47 +55,6 @@ def ctc_best_path(logits, labels):
     best_path = np.array(best_path, dtype=np.uint8)
     return logprob, best_path
 
-class VoiceEncoder(nn.Module):
-
-    def __init__(self, in_channels, out_channels, hidden_size):
-        super().__init__()
-
-        self.in_proj = nn.Sequential(
-            nn.Linear(in_channels, hidden_size, bias=True),
-            nn.ReLU(),
-            nn.Dropout(0.2))
-
-        self.layers = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.LayerNorm([hidden_size], eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.LayerNorm([hidden_size], eps=0.001),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.LayerNorm([hidden_size], eps=0.001))
-
-        self.res = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size, bias=False),
-            nn.LayerNorm([hidden_size], eps=0.001))
-
-        self.out_proj = nn.Sequential(
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden_size, out_channels))
-
-    def forward(self, audio) -> torch.Tensor:
-        x = self.in_proj(audio)
-        r = self.res(x)
-        x = self.layers(x)
-        x = self.out_proj(x + r)
-        # No activation
-        return x
-
 class ConvBNActivate(nn.Sequential):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
         padding = ((kernel_size - 1) // 2) * dilation
@@ -109,9 +68,9 @@ class ConvBNActivate(nn.Sequential):
             nn.ReLU6(inplace=True))
 
 class InvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, use_residual=True):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
         super().__init__()
-        hidden_size = in_channels * 4
+        hidden_size = in_channels * expand_ratio
         self.use_residual = use_residual
         self.conv = nn.Sequential(
             # pw
@@ -130,52 +89,28 @@ class InvertedResidual(nn.Module):
 
 class ConvVoiceEncoder(nn.Module):
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
+        half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, 128, kernel_size=11, stride=2, use_residual=False),
-
-            InvertedResidual(128, 128, kernel_size=33),
-            InvertedResidual(128, 128, kernel_size=33),
-
-            InvertedResidual(128, 128, kernel_size=39),
-            InvertedResidual(128, 128, kernel_size=39),
-
-            InvertedResidual(128, 256, kernel_size=51, use_residual=False),
-            InvertedResidual(256, 256, kernel_size=51),
-
-            InvertedResidual(256, 256, kernel_size=63),
-            InvertedResidual(256, 256, kernel_size=63),
-
-            InvertedResidual(256, 256, kernel_size=75),
-            InvertedResidual(256, 256, kernel_size=75),
-
-            InvertedResidual(256, 256, kernel_size=173),
-
-            # No activation
-            nn.Conv1d(256, out_channels, kernel_size=1, bias=True))
+            InvertedResidual(in_channels, half_hidden_size, kernel_size=11, stride=2, use_residual=False),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=19),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=27),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=35),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=51),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=59, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=67),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=75),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=83),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=81),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=91),
+            InvertedResidual(hidden_size, out_channels, kernel_size=99, use_residual=False))
 
     def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
         x = torch.transpose(embed, 1, 2)
         x = self.layers(x)
         x = torch.transpose(x, 1, 2)
-        return x, (embed_len + 1) // 2
-
-class ConvCharDecoder(nn.Module):
-
-    def __init__(self, in_channels, out_channels, hidden_size=128):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Dropout(0.2),
-            nn.Conv1d(in_channels, hidden_size, kernel_size=1, padding=0, bias=True),
-            nn.ReLU6(),
-            nn.Conv1d(hidden_size, out_channels, kernel_size=1, padding=0, bias=True))
-
-    def forward(self, enc_out, enc_out_len):
-        x = torch.transpose(enc_out, 1, 2)
-        x = self.layers(x)
-        x = torch.transpose(x, 1, 2)
-        return x, enc_out_len
+        return x, torch.div(embed_len + 1, 2, rounding_mode='floor')
 
 class LinearCharDecoder(nn.Module):
 
@@ -183,54 +118,23 @@ class LinearCharDecoder(nn.Module):
         super().__init__()
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, padding=0, bias=True)
 
-    def forward(self, enc_out, enc_out_len):
+    def forward(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
         x = torch.transpose(enc_out, 1, 2)
         x = self.conv(x)
         x = torch.transpose(x, 1, 2)
         return x, enc_out_len
 
-class LSTMAudioEncoder(nn.Module):
-
-    def __init__(self, audio_size, embed_size, num_layers):
-        super().__init__()
-        self.dense = nn.Linear(audio_size, embed_size, bias=True)
-        self.lstm = nn.LSTM(embed_size, embed_size // 2, num_layers=num_layers, dropout=0.2, bidirectional=True)
-
-    def forward(self, audio, audio_len, enforce_sorted=False):
-        dense_out = self.dense(audio)
-        packed_dense_out = nn.utils.rnn.pack_padded_sequence(dense_out, audio_len, batch_first=True, enforce_sorted=enforce_sorted)
-        packed_lstm_out, _ = self.lstm(packed_dense_out)
-        lstm_out, lstm_out_len = nn.utils.rnn.pad_packed_sequence(packed_lstm_out, batch_first=True)
-        return lstm_out, lstm_out_len
-
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate,
-        encoder_type='conv', decoder_type='conv'
-        ):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-
-        if encoder_type == 'quartznet':
-            from .jasper import QuartzNetEncoder
-            self.encoder = QuartzNetEncoder(audio_size)
-        elif encoder_type == 'conv':
-            self.encoder = ConvVoiceEncoder(audio_size, embed_size)
-        elif encoder_type == 'linear':
-            self.encoder = VoiceEncoder(audio_size, embed_size, hidden_size=hidden_size)
-
-        if decoder_type == 'conv':
-            self.decoder = ConvCharDecoder(embed_size, vocab_size)
-        elif decoder_type == 'linear':
-            self.decoder = LinearCharDecoder(embed_size, vocab_size)
-        else:
-            raise ValueError()
-
+        self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
+        self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.loss_fn = nn.CTCLoss()
 
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
-        enc_out = torch.relu(enc_out)
         dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
         #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return dec_out, dec_out_len
@@ -269,17 +173,14 @@ class AudioToCharCTC(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
-        scheduler.step()
-        scheduler.step()
-        scheduler.step()
-        scheduler.step()
-        scheduler.step()
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--hidden_size', type=float, default=256)
+        parser.add_argument('--embed_size', type=float, default=256)
         return parser
 
 class VoiceDecoderBlock(nn.Module):

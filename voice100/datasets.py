@@ -5,6 +5,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 
 import os
 from glob import glob
+from typing import Optional
 from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
 from torch import nn
@@ -12,6 +13,7 @@ import torchaudio
 from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
+import pytorch_lightning as pl
 
 from .audio import SpectrogramAugumentation
 
@@ -183,9 +185,9 @@ class AudioToAudioProcessor(nn.Module):
 
 BLANK_IDX = 0
 
-def get_dataset(args):
+def get_dataset(dataset):
     chained_ds = None
-    for dataset in args.dataset.split(','):
+    for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
@@ -215,36 +217,46 @@ def generate_audio_text_batch(data_batch):
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
     return audio_batch, audio_len, text_batch, text_len
 
-def get_asr_input_fn(args, num_workers=2):
+class ASRDataModule(pl.LightningDataModule):
+    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+        super().__init__()
+        self.dataset = dataset
+        self.valid_ratio = valid_ratio
+        self.language = language
+        self.repeat = repeat
+        self.cache = cache
+        self.batch_size = batch_size
+        self.num_workers = 2
 
-    ds = get_dataset(args)
+    def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset)
 
-    # Split the dataset
-    total_len = len(ds)
-    valid_len = int(total_len * args.valid_ratio)
-    train_len = total_len - valid_len
-    train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+        # Split the dataset
+        total_len = len(ds)
+        valid_len = int(total_len * self.valid_ratio)
+        train_len = total_len - valid_len
+        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-    transform = AudioToCharProcessor(args.language)
+        transform = AudioToCharProcessor(self.language)
 
-    os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
-    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=args.cache)
+        os.makedirs(self.cache, exist_ok=True)
+        self.train_ds = EncodedCacheDataset(train_ds, repeat=self.repeat, transform=transform, augment=True, cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=self.cache)
 
-    train_dataloader = DataLoader(
-        train_ds,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        collate_fn=generate_audio_text_batch)
-    valid_dataloader = DataLoader(
-        valid_ds,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        collate_fn=generate_audio_text_batch)
-
-    return train_dataloader, valid_dataloader
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_text_batch)
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_text_batch)
 
 def generate_audio_audio_batch(data_batch):
     melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []

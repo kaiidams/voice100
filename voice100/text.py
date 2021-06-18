@@ -9,10 +9,10 @@ __all__ = [
     'CharTokenizer',
 ]
 
-DEFAULT_CHARACTERS = " abcdefghijklmnopqrstuvwxyz'"
+DEFAULT_CHARACTERS = "_ abcdefghijklmnopqrstuvwxyz'"
 NOT_DEFAULT_CHARACTERS_RX = re.compile("[^" + DEFAULT_CHARACTERS[1:] + "]")
 DEFAULT_VOCAB_SIZE = len(DEFAULT_CHARACTERS)
-assert DEFAULT_VOCAB_SIZE == 28
+assert DEFAULT_VOCAB_SIZE == 29
 
 class BasicPhonemizer(nn.Module):
 

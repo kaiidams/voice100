@@ -4,17 +4,13 @@ from argparse import ArgumentParser
 import torch
 import pytorch_lightning as pl
 
-from .datasets import get_asr_input_fn
+from .datasets import ASRDataModule
 from .text import DEFAULT_VOCAB_SIZE
 from .models import AudioToCharCTC
 
-AUDIO_DIM = 27
 MELSPEC_DIM = 64
-MFCC_DIM = 20
-HIDDEN_DIM = None
-EMBED_SIZE = 1024
-NUM_LAYERS = 2
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
+assert VOCAB_SIZE == 29
 
 def cli_main():
     pl.seed_everything(1234)
@@ -49,15 +45,21 @@ def cli_main():
             dynamic_axes={'audio': {0: 'batch_size', 1: 'audio_len'},
                           'logits': {0: 'batch_size', 1: 'logits_len'}})
     else:
-        train_loader, val_loader = get_asr_input_fn(args)
         model = AudioToCharCTC(
             audio_size=MELSPEC_DIM,
-            embed_size=EMBED_SIZE,
             vocab_size=VOCAB_SIZE,
-            hidden_size=HIDDEN_DIM,
+            embed_size=args.embed_size,
+            hidden_size=args.hidden_size,
             learning_rate=args.learning_rate)
+        data = ASRDataModule(
+            dataset=args.dataset,
+            valid_ratio=args.valid_ratio,
+            language=args.language,
+            repeat=args.repeat,
+            cache=args.cache,
+            batch_size=args.batch_size)
         trainer = pl.Trainer.from_argparse_args(args)
-        trainer.fit(model, train_loader, val_loader)
+        trainer.fit(model, data)
 
 if __name__ == '__main__':
     cli_main()
