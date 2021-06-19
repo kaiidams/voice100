@@ -4,6 +4,10 @@ import torch
 from torch import nn
 import random
 
+__all__ = [
+    'SpectrogramAugumentation'
+]
+
 class SpectrogramAugumentation(nn.Module):
     def __init__(self):
         super().__init__()
@@ -60,3 +64,15 @@ class SpectrogramAugumentation(nn.Module):
         scale = torch.linspace(low, high, 64)[None, :]
         noise = torch.rand(audio.shape) * std + scale
         return torch.log(torch.exp(audio) + torch.exp(noise))
+
+class BatchSpectrogramAugumentation(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, audio, audio_len):
+        if random.random() < 0.2:
+            audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
+            x = torch.exp(audio - 1e-6) * audio_mask
+            y = torch.cat([x[1:], x[:1]])
+            return torch.log(0.9 * x + 0.1 * y + 1e-6) * audio_mask, audio_len
+        return audio, audio_len
