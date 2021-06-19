@@ -178,11 +178,9 @@ class AudioToCharCTC(pl.LightningModule):
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.RMSprop(
+        optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.learning_rate,
-            momentum=0.9,
-            alpha=0.9,
             weight_decay=0.00004)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
