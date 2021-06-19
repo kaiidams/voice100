@@ -5,6 +5,7 @@ from typing import Tuple
 import torch
 from torch import nn
 import pytorch_lightning as pl
+from .audio import BatchSpectrogramAugumentation
 
 __all__ = [
     'AudioToCharCTC',
@@ -116,11 +117,13 @@ class LinearCharDecoder(nn.Module):
 
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, padding=0, bias=True)
+        self.layers = nn.Sequential(
+            nn.Dropout(0.2),
+            nn.Conv1d(in_channels, out_channels, kernel_size=1, padding=0, bias=True))
 
     def forward(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
         x = torch.transpose(enc_out, 1, 2)
-        x = self.conv(x)
+        x = self.layers(x)
         x = torch.transpose(x, 1, 2)
         return x, enc_out_len
 
@@ -132,6 +135,7 @@ class AudioToCharCTC(pl.LightningModule):
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.loss_fn = nn.CTCLoss()
+        self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_out, enc_out_len = self.encode(audio, audio_len)
@@ -147,6 +151,9 @@ class AudioToCharCTC(pl.LightningModule):
 
     def _calc_batch_loss(self, batch):
         audio, audio_len, text, text_len = batch
+
+        if self.training:
+            audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         logits, logits_len = self(audio, audio_len)
@@ -171,14 +178,19 @@ class AudioToCharCTC(pl.LightningModule):
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+        optimizer = torch.optim.RMSprop(
+            self.parameters(),
+            lr=self.hparams.learning_rate,
+            momentum=0.9,
+            alpha=0.9,
+            weight_decay=0.00004)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--learning_rate', type=float, default=0.045)
         parser.add_argument('--hidden_size', type=float, default=256)
         parser.add_argument('--embed_size', type=float, default=256)
         return parser

@@ -26,7 +26,7 @@ def cli_main():
     parser = AudioToCharCTC.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_ratio = 0.1
-    args.repeat = 10
+    args.dataset_repeat = 10
 
     if args.export:
         model = AudioToCharCTC.load_from_checkpoint(args.resume_from_checkpoint)
@@ -55,7 +55,7 @@ def cli_main():
             dataset=args.dataset,
             valid_ratio=args.valid_ratio,
             language=args.language,
-            repeat=args.repeat,
+            repeat=args.dataset_repeat,
             cache=args.cache,
             batch_size=args.batch_size)
         trainer = pl.Trainer.from_argparse_args(args)
