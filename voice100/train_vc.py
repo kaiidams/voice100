@@ -41,6 +41,7 @@ class AudioVAEEncoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim):
         super().__init__()
         self.layers = nn.Sequential(
+            nn.ReLU(),
             nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=True),
             nn.ReLU(),
             nn.Conv1d(hidden_dim, out_channels, kernel_size=3, padding=1, bias=True))
