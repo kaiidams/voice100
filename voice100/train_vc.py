@@ -60,11 +60,12 @@ class AudioToAudioVAE(pl.LightningModule):
         #self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
         #self.a2c.freeze()
         self.a2c = nn.Conv1d(64, 256, 3, padding=1, bias=True)
+        embed_size = 256
 
         self.encoder = AudioVAEEncoder(
-            self.a2c.embed_size,
+            embed_size,
             latent_dim * 2,
-            hidden_dim=self.a2c.embed_size * 4)
+            hidden_dim=embed_size * 4)
         self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
         self.criteria = nn.MSELoss(reduction='none')
 
