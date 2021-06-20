@@ -98,9 +98,13 @@ class AudioToAudioVAE(pl.LightningModule):
         spc = (spc + 8.509372) / 1.786831
         codecp = (codecp + 2.3349452) / 2.5427816
 
+        # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
-        enc_out = self.a2c.encoder(trans_audio)
-        enc_out_len = self.a2c.output_length(audio_len)
+        # trans_audio: [batch_size, audio_size, audio_len]
+        with torch.no_grad():
+            enc_out = self.a2c.encoder.forward(trans_audio)
+            enc_out_len = self.a2c.output_length(audio_len)
+            # enc_out: [batch_size, embed_size, enc_out_len]
 
         state = self.encoder(enc_out)
         state = torch.transpose(state, 1, 2)
