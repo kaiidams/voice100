@@ -59,7 +59,7 @@ class AudioToAudioVAE(pl.LightningModule):
 
         #self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
         #self.a2c.freeze()
-        self.a2c = nn.Conv1d(64, 256, 3, padding=1, bias=True)
+        self.a2c = nn.Conv1d(64, 256, 3, padding=1, stride=2, bias=True)
         embed_size = 256
 
         self.encoder = AudioVAEEncoder(
@@ -101,8 +101,10 @@ class AudioToAudioVAE(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
         # trans_audio: [batch_size, audio_size, audio_len]
-        enc_out = self.a2c.encoder.forward(trans_audio)
-        enc_out_len = self.a2c.output_length(audio_len)
+        #enc_out = self.a2c.encoder.forward(trans_audio)
+        #enc_out_len = self.a2c.output_length(audio_len)
+        enc_out = self.a2c.forward(trans_audio)
+        enc_out_len = (audio_len + 1) // 2
         # enc_out: [batch_size, embed_size, enc_out_len]
 
         state = self.encoder(enc_out)
