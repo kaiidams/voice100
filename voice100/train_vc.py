@@ -14,16 +14,16 @@ class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256, kernel_size=33):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8),
-            nn.ReLU6(),
+            nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32, bias=True),
+            nn.ReLU(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32, bias=True),
+            nn.ReLU(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32, bias=True),
+            nn.ReLU(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16, bias=True),
+            nn.ReLU(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8, bias=True),
+            nn.ReLU(),
             nn.Conv1d(hidden_dim, out_channels, kernel_size=1, bias=True))
         
     def forward(self, x):
@@ -44,7 +44,7 @@ class AudioVAEEncoder(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=True),
-            nn.ReLU6(),
+            nn.ReLU(),
             nn.Conv1d(hidden_dim, out_channels, kernel_size=3, padding=1, bias=True))
 
     def forward(self, x):
