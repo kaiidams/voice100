@@ -84,7 +84,7 @@ class EncodedCacheDataset(Dataset):
         self._repeat = repeat
         self._augment = augment
         self._transform = transform
-        self._augment = SpectrogramAugumentation()
+        self._spec_augment = SpectrogramAugumentation()
 
     def __len__(self):
         return len(self._dataset) * self._repeat
@@ -108,7 +108,7 @@ class EncodedCacheDataset(Dataset):
                 print(ex)
         if self._augment:
             encoded_audio, encoded_text = encoded_data
-            encoded_audio = self._augment(encoded_audio)
+            encoded_audio = self._spec_augment(encoded_audio)
             return encoded_audio, encoded_text
         return encoded_data
 
@@ -157,9 +157,10 @@ class AudioToAudioProcessor(nn.Module):
     def __init__(self, a2c_ckpt_path, target_sample_rate=22050):
         from voice100.vocoder import WORLDVocoder
         from voice100.models import AudioToCharCTC
-        
+
         super().__init__()
         self.sample_rate = 16000
+        self.target_sample_rate = target_sample_rate
         self.n_fft = 512
         self.win_length = 400
         self.hop_length = 160
@@ -169,6 +170,10 @@ class AudioToAudioProcessor(nn.Module):
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
         ]
+        self.target_effects = [
+            ["remix", "1"],
+            ["rate", f"{self.target_sample_rate}"],
+        ]
         self._transform = MelSpectrogram(
             sample_rate=self.sample_rate,
             n_fft=self.n_fft,
@@ -177,15 +182,19 @@ class AudioToAudioProcessor(nn.Module):
             n_mels=self.n_mels)
 
         self._audio2char = AudioToCharCTC.load_from_checkpoint(a2c_ckpt_path)
+        self._audio2char.eval()
+        self._audio2char.freeze()
 
         self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         melspec = self._transform(waveform)
-        melspec = torch.transpose(melspec[0, :, :], 0, 1)
         melspec = torch.log(melspec + self.log_offset)
-        enc_out = self._audio2char.encoder(melspec)
+        with torch.no_grad():
+            enc_out = self._audio2char.encoder(melspec)
+        enc_out = torch.transpose(enc_out[0, :, :], 0, 1)
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
         enc_tgt = self._vocoder(waveform[0])
         return enc_out, enc_tgt
 
@@ -286,8 +295,9 @@ def generate_audio_audio_batch(data_batch):
 
 class VCDataModule(pl.LightningDataModule):
 
-    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+    def __init__(self, a2c_ckpt_path, dataset, valid_ratio, language, repeat, cache, batch_size):
         super().__init__()
+        self.a2c_ckpt_path = a2c_ckpt_path
         self.dataset = dataset
         self.valid_ratio = valid_ratio
         self.language = language
@@ -305,13 +315,13 @@ class VCDataModule(pl.LightningDataModule):
         train_len = total_len - valid_len
         train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-        transform = AudioToAudioProcessor()
+        transform = AudioToAudioProcessor(self.a2c_ckpt_path)
 
         os.makedirs(self.cache, exist_ok=True)
 
         self.train_ds = EncodedCacheDataset(
             train_ds, repeat=self.repeat, transform=transform,
-            augment=True, cachedir=self.cache)
+            augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
             valid_ds, repeat=1, transform=transform,
             augment=False, cachedir=self.cache)

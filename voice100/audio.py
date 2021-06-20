@@ -15,7 +15,7 @@ class SpectrogramAugumentation(nn.Module):
     def forward(self, audio):
         assert len(audio.shape) == 2
         if random.random() < 0.2:
-            audio = self.timestretch(audio)
+            pass # audio = self.timestretch(audio)
         if random.random() < 0.2:
             audio = self.pitchshift(audio)
         if random.random() < 0.2:
