@@ -314,7 +314,7 @@ class VCDataModule(pl.LightningDataModule):
 
         self.train_ds = EncodedCacheDataset(
             train_ds, repeat=self.repeat, transform=transform,
-            augment=True, cachedir=self.cache)
+            augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
             valid_ds, repeat=1, transform=transform,
             augment=False, cachedir=self.cache)
