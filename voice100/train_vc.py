@@ -22,9 +22,7 @@ class VoiceDecoder(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16, bias=True),
             nn.ReLU(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8, bias=True),
-            nn.ReLU(),
-            nn.Conv1d(hidden_dim, out_channels, kernel_size=1, bias=True))
+            nn.ConvTranspose1d(hidden_dim, out_channels, 17, stride=1, padding=8, bias=True))
         
     def forward(self, x):
         return self.layers(x)
@@ -59,7 +57,6 @@ class AudioToAudioVAE(pl.LightningModule):
         self.codecp_dim = codecp_dim
 
         self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
-        self.a2c.eval()
         self.a2c.freeze()
 
         self.encoder = AudioVAEEncoder(
@@ -101,10 +98,9 @@ class AudioToAudioVAE(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
         # trans_audio: [batch_size, audio_size, audio_len]
-        with torch.no_grad():
-            enc_out = self.a2c.encoder.forward(trans_audio)
-            enc_out_len = self.a2c.output_length(audio_len)
-            # enc_out: [batch_size, embed_size, enc_out_len]
+        enc_out = self.a2c.encoder.forward(trans_audio)
+        enc_out_len = self.a2c.output_length(audio_len)
+        # enc_out: [batch_size, embed_size, enc_out_len]
 
         state = self.encoder(enc_out)
         state = torch.transpose(state, 1, 2)
@@ -136,6 +132,7 @@ class AudioToAudioVAE(pl.LightningModule):
         logqz_x = log_normal_pdf(z, mean, logvar)
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
+        print(loss, vae_loss)
         self.log('train_loss', loss)
         self.log('train_vae_loss', vae_loss)
         return loss + vae_loss
