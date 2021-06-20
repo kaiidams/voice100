@@ -46,12 +46,6 @@ def cli_main():
             dynamic_axes={'audio': {0: 'batch_size', 1: 'audio_len'},
                           'logits': {0: 'batch_size', 1: 'logits_len'}})
     else:
-        model = AudioToCharCTC(
-            audio_size=MELSPEC_DIM,
-            vocab_size=VOCAB_SIZE,
-            embed_size=args.embed_size,
-            hidden_size=args.hidden_size,
-            learning_rate=args.learning_rate)
         data = ASRDataModule(
             dataset=args.dataset,
             valid_ratio=args.valid_ratio,
@@ -59,6 +53,12 @@ def cli_main():
             repeat=args.dataset_repeat,
             cache=args.cache,
             batch_size=args.batch_size)
+        model = AudioToCharCTC(
+            audio_size=MELSPEC_DIM,
+            vocab_size=VOCAB_SIZE,
+            embed_size=args.embed_size,
+            hidden_size=args.hidden_size,
+            learning_rate=args.learning_rate)
         trainer = pl.Trainer.from_argparse_args(args)
         trainer.fit(model, data)
 

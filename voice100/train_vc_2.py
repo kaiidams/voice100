@@ -5,53 +5,28 @@ import os
 import torch
 from torch import nn
 import numpy as np
-from glob import glob
-from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from torch.nn.utils.rnn import pad_sequence
 
-class VoiceEncoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_dim=128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_channels, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, out_channels))
-    def forward(self, x):
-        return self.net(x)
+from .datasets import VCDataModule
 
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256, kernel_size=33):
         super().__init__()
-        self.convtrans1 = nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32)
-        #self.batchnorm1 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans2 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32)
-        #self.batchnorm2 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans3 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32)
-        #self.batchnorm3 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans4 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16)
-        #self.batchnorm2 = nn.BatchNorm1d(hidden_dim)
-        self.convtrans5 = nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8)
-        #self.batchnorm3 = nn.BatchNorm1d(hidden_dim)
-        self.dense = nn.Linear(hidden_dim, out_channels)
+        self.layers = nn.Sequential(
+            nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, 17, stride=1, padding=8),
+            nn.ReLU6(),
+            nn.Conv1d(hidden_dim, out_channels, kenel_size=1, bias=True))
         
     def forward(self, x):
-        x = self.convtrans1(x)
-        #x = self.batchnorm1(x)
-        x = torch.relu(x)
-        x = self.convtrans2(x)
-        #x = self.batchnorm2(x)
-        x = torch.relu(x)
-        x = self.convtrans3(x)
-        #x = self.batchnorm3(x)
-        x = torch.relu(x)
-        x = self.convtrans4(x)
-        x = torch.relu(x)
-        x = self.convtrans5(x)
-        x = torch.relu(x)
-        x = torch.transpose(x, 1, 2)
-        x = self.dense(x)
-        return x
+        return self.layers(x)
 
 import math
 log2pi = math.log(2. * np.pi)
@@ -63,13 +38,12 @@ def log_normal_pdf(sample, mean, logvar):
   return -.5 * ((sample - mean) ** 2. * torch.exp(-logvar) + logvar + log2pi)
 
 class VoiceConvert(pl.LightningModule):
-    def __init__(self, state_dim=768, latent_dim=16, spc_dim=257, codecp_dim=1, learning_rate=0.001):
+    def __init__(self, latent_dim=128, spc_dim=257, codecp_dim=1, learning_rate=0.001):
         super().__init__()
         self.save_hyperparameters()
         self.latent_dim = latent_dim
         self.spc_dim = spc_dim
         self.codecp_dim = codecp_dim
-        self.encoder = VoiceEncoder(state_dim, latent_dim * 2)
         self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
         self.criteria = nn.MSELoss(reduction='none')
 
@@ -142,31 +116,6 @@ class VoiceConvert(pl.LightningModule):
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
-class VoiceDataset(Dataset):
-    def __init__(self, path):
-        super().__init__()
-        self.files = glob(os.path.join(path, '*.pt'))
-    def __len__(self):
-        return len(self.files)
-    def __getitem__(self, index):
-        obj = torch.load(self.files[index])
-        return [
-            obj['wavvec'],
-            obj['f0'],
-            obj['logspec'],
-            obj['codeap']
-        ]
-
-def generate_batch(batch):
-    res = []
-    for i in range(4):
-        data = [x[i] for x in batch]
-        data_len = torch.tensor([len(x) for x in data], dtype=torch.int32)
-        data = pad_sequence(data, batch_first=True)
-        res.append(data)
-        res.append(data_len)
-    return res
-
 def cli_main():
     pl.seed_everything(1234)
 
@@ -177,8 +126,13 @@ def cli_main():
     parser = VoiceConvert.add_model_specific_args(parser)    
     args = parser.parse_args()
 
-    train_dataset = VoiceDataset(args.dataset)
-    train_dataloader = DataLoader(train_dataset, args.batch_size, shuffle=True, collate_fn=generate_batch)
+    data = VCDataModule(
+        dataset=args.dataset,
+        valid_ratio=args.valid_ratio,
+        language=args.language,
+        repeat=args.dataset_repeat,
+        cache=args.cache,
+        batch_size=args.batch_size)
 
     if args.sample_rate == 16000:
         spc_dim = 257
@@ -187,9 +141,9 @@ def cli_main():
         spc_dim = 513
         codecp_dim = 2
 
-    model = VoiceConvert(state_dim=16, spc_dim=spc_dim, codecp_dim=codecp_dim)
+    model = VoiceConvert(spc_dim=spc_dim, codecp_dim=codecp_dim)
     trainer = pl.Trainer.from_argparse_args(args)
-    trainer.fit(model, train_dataloader)
+    trainer.fit(model, data)
 
 if __name__ == '__main__':
     cli_main()

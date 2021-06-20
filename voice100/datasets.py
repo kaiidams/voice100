@@ -154,8 +154,10 @@ class AudioToCharProcessor(nn.Module):
 
 class AudioToAudioProcessor(nn.Module):
 
-    def __init__(self):
+    def __init__(self, a2c_ckpt_path, target_sample_rate=22050):
         from voice100.vocoder import WORLDVocoder
+        from voice100.models import AudioToCharCTC
+        
         super().__init__()
         self.sample_rate = 16000
         self.n_fft = 512
@@ -173,15 +175,19 @@ class AudioToAudioProcessor(nn.Module):
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        self._vocoder = WORLDVocoder()
+
+        self._audio2char = AudioToCharCTC.load_from_checkpoint(a2c_ckpt_path)
+
+        self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         melspec = self._transform(waveform)
         melspec = torch.transpose(melspec[0, :, :], 0, 1)
         melspec = torch.log(melspec + self.log_offset)
-        encoded = self._vocoder(waveform[0])
-        return melspec, encoded
+        enc_out = self._audio2char.encoder(melspec)
+        enc_tgt = self._vocoder(waveform[0])
+        return enc_out, enc_tgt
 
 BLANK_IDX = 0
 
@@ -213,8 +219,8 @@ def generate_audio_text_batch(data_batch):
         text_batch.append(text_item)
     audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=BLANK_IDX)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
+    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return audio_batch, audio_len, text_batch, text_len
 
 class ASRDataModule(pl.LightningDataModule):
@@ -240,8 +246,12 @@ class ASRDataModule(pl.LightningDataModule):
         transform = AudioToCharProcessor(self.language)
 
         os.makedirs(self.cache, exist_ok=True)
-        self.train_ds = EncodedCacheDataset(train_ds, repeat=self.repeat, transform=transform, augment=True, cachedir=self.cache)
-        self.valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=self.cache)
+        self.train_ds = EncodedCacheDataset(
+            train_ds, repeat=self.repeat, transform=transform,
+            augment=True, cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(
+            valid_ds, repeat=1, transform=transform,
+            augment=False, cachedir=self.cache)
 
     def train_dataloader(self):
         return DataLoader(
@@ -250,6 +260,7 @@ class ASRDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             collate_fn=generate_audio_text_batch)
+
     def val_dataloader(self):
         return DataLoader(
             self.valid_ds,
@@ -273,32 +284,50 @@ def generate_audio_audio_batch(data_batch):
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
     return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
 
-def get_vc_input_fn(args, num_workers=2):
-    ds = get_dataset(args)
+class VCDataModule(pl.LightningDataModule):
 
-    # Split the dataset
-    total_len = len(ds)
-    valid_len = int(total_len * args.valid_ratio)
-    train_len = total_len - valid_len
-    train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+        super().__init__()
+        self.dataset = dataset
+        self.valid_ratio = valid_ratio
+        self.language = language
+        self.repeat = repeat
+        self.cache = cache
+        self.batch_size = batch_size
+        self.num_workers = 2
 
-    transform = AudioToAudioProcessor()
+    def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset)
 
-    os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
-    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=args.cache)
+        # Split the dataset
+        total_len = len(ds)
+        valid_len = int(total_len * self.valid_ratio)
+        train_len = total_len - valid_len
+        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-    train_dataloader = DataLoader(
-        train_ds,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        collate_fn=generate_audio_audio_batch)
-    valid_dataloader = DataLoader(
-        valid_ds,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        collate_fn=generate_audio_audio_batch)
+        transform = AudioToAudioProcessor()
 
-    return train_dataloader, valid_dataloader
+        os.makedirs(self.cache, exist_ok=True)
+
+        self.train_ds = EncodedCacheDataset(
+            train_ds, repeat=self.repeat, transform=transform,
+            augment=True, cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(
+            valid_ds, repeat=1, transform=transform,
+            augment=False, cachedir=self.cache)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_audio_batch)
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_audio_batch)

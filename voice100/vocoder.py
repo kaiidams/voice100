@@ -7,16 +7,18 @@ from torch import nn
 
 class WORLDVocoder(nn.Module):
 
-    def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=512):
+    def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=None):
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_period = frame_period
         self.n_fft = n_fft
         if sample_rate == 16000:
             self.codeap_dim = 1
+            if self.n_fft is None: self.n_fft = 512
         elif sample_rate == 22050:
             self.codeap_dim = 2
-        self.log_offset = 1e-6
+            if self.n_fft is None: self.n_fft = 1024
+        self.log_offset = 1e-15
 
     def forward(self, waveform):
         return self.encode(waveform)

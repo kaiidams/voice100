@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import torch
 import pytorch_lightning as pl
 
-from .datasets import get_vc_input_fn
+from .datasets import VCDataModule
 from .models import AudioToAudio
 
 AUDIO_DIM = 27
@@ -29,12 +29,18 @@ def cli_main():
     args.valid_ratio = 0.1
     args.repeat = 10
 
-    train_loader, val_loader = get_vc_input_fn(args)
+    data = VCDataModule(
+        dataset=args.dataset,
+        valid_ratio=args.valid_ratio,
+        language=args.language,
+        repeat=args.dataset_repeat,
+        cache=args.cache,
+        batch_size=args.batch_size)
     model = AudioToAudio(
         embed_size=HIDDEN_DIM,
         learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, data)
 
 if __name__ == '__main__':
     cli_main()
