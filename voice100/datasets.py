@@ -154,9 +154,8 @@ class AudioToCharProcessor(nn.Module):
 
 class AudioToAudioProcessor(nn.Module):
 
-    def __init__(self, a2c_ckpt_path, target_sample_rate=22050):
+    def __init__(self, target_sample_rate=22050):
         from voice100.vocoder import WORLDVocoder
-        from voice100.models import AudioToCharCTC
 
         super().__init__()
         self.sample_rate = 16000
@@ -174,29 +173,24 @@ class AudioToAudioProcessor(nn.Module):
             ["remix", "1"],
             ["rate", f"{self.target_sample_rate}"],
         ]
-        self._transform = MelSpectrogram(
+        self.transform = MelSpectrogram(
             sample_rate=self.sample_rate,
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
 
-        self._audio2char = AudioToCharCTC.load_from_checkpoint(a2c_ckpt_path)
-        self._audio2char.eval()
-        self._audio2char.freeze()
-
         self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        melspec = self._transform(waveform)
-        melspec = torch.log(melspec + self.log_offset)
-        with torch.no_grad():
-            enc_out = self._audio2char.encoder(melspec)
-        enc_out = torch.transpose(enc_out[0, :, :], 0, 1)
+        audio = self.transform(waveform)
+        audio = torch.transpose(audio[0, :, :], 0, 1)
+        audio = torch.log(audio + self.log_offset)
+        
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        enc_tgt = self._vocoder(waveform[0])
-        return enc_out, enc_tgt
+        target = self._vocoder(waveform[0])
+        return audio, target
 
 BLANK_IDX = 0
 
@@ -295,9 +289,8 @@ def generate_audio_audio_batch(data_batch):
 
 class VCDataModule(pl.LightningDataModule):
 
-    def __init__(self, a2c_ckpt_path, dataset, valid_ratio, language, repeat, cache, batch_size):
+    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
         super().__init__()
-        self.a2c_ckpt_path = a2c_ckpt_path
         self.dataset = dataset
         self.valid_ratio = valid_ratio
         self.language = language
@@ -315,13 +308,13 @@ class VCDataModule(pl.LightningDataModule):
         train_len = total_len - valid_len
         train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-        transform = AudioToAudioProcessor(self.a2c_ckpt_path)
+        transform = AudioToAudioProcessor()
 
         os.makedirs(self.cache, exist_ok=True)
 
         self.train_ds = EncodedCacheDataset(
             train_ds, repeat=self.repeat, transform=transform,
-            augment=False, cachedir=self.cache)
+            augment=True, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
             valid_ds, repeat=1, transform=transform,
             augment=False, cachedir=self.cache)

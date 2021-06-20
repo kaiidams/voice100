@@ -6,6 +6,7 @@ import torch
 from torch import nn
 import numpy as np
 import pytorch_lightning as pl
+from .models import AudioToCharCTC
 
 from .datasets import VCDataModule
 
@@ -37,13 +38,34 @@ def log_normal_pdf0(sample):
 def log_normal_pdf(sample, mean, logvar):
   return -.5 * ((sample - mean) ** 2. * torch.exp(-logvar) + logvar + log2pi)
 
-class VoiceConvert(pl.LightningModule):
-    def __init__(self, latent_dim=128, spc_dim=257, codecp_dim=1, learning_rate=0.001):
+class AudioVAEEncoder(nn.Module):
+
+    def __init__(self, in_channels, out_channels, hidden_dim):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=True),
+            nn.ReLU6(),
+            nn.Conv1d(hidden_dim, out_channels, kernel_size=3, padding=1, bias=True))
+
+    def forward(self, x):
+        return self.layers(x)
+
+class AudioToAudioVAE(pl.LightningModule):
+    def __init__(self, a2c_checkpoint_path, latent_dim=128, spc_dim=257, codecp_dim=1, learning_rate=0.001):
         super().__init__()
         self.save_hyperparameters()
         self.latent_dim = latent_dim
         self.spc_dim = spc_dim
         self.codecp_dim = codecp_dim
+
+        self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
+        self.a2c.eval()
+        self.a2c.freeze()
+
+        self.encoder = AudioVAEEncoder(
+            self.a2c.embed_size,
+            latent_dim * 2,
+            hidden_dim=self.a2c.embed_size * 4)
         self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
         self.criteria = nn.MSELoss(reduction='none')
 
@@ -69,13 +91,20 @@ class VoiceConvert(pl.LightningModule):
         return f0, spc, codecp
 
     def training_step(self, batch, batch_idx):
-        (state, state_len), (f0, f0_len, spc, codecp) = batch
+        (audio, audio_len), (f0, f0_len, spc, codecp) = batch
 
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
         f0 = (f0 - 7.9459290e+01) / 61.937077
         spc = (spc + 8.509372) / 1.786831
         codecp = (codecp + 2.3349452) / 2.5427816
 
+        trans_audio = torch.transpose(audio, 1, 2)
+        enc_out = self.a2c.encoder(trans_audio)
+        enc_out_len = self.a2c.output_length(audio_len)
+
+        state = self.encoder(enc_out)
+        state = torch.transpose(state, 1, 2)
+        state_len = enc_out_len
         mean, logvar = torch.split(state, self.latent_dim, dim=2)
 
         # reparameterize
@@ -127,13 +156,12 @@ def cli_main():
     parser.add_argument('--language', default='en', type=str, help='Language')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = VoiceConvert.add_model_specific_args(parser)    
+    parser = AudioToAudioVAE.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_ratio = 0.1
     args.dataset_repeat = 5
 
     data = VCDataModule(
-        a2c_ckpt_path=args.a2c_ckpt_path,
         dataset=args.dataset,
         valid_ratio=args.valid_ratio,
         language=args.language,
@@ -148,7 +176,7 @@ def cli_main():
         spc_dim = 513
         codecp_dim = 2
 
-    model = VoiceConvert(spc_dim=spc_dim, codecp_dim=codecp_dim)
+    model = AudioToAudioVAE(args.a2c_ckpt_path, spc_dim=spc_dim, codecp_dim=codecp_dim)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, data)
 

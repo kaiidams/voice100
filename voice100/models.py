@@ -129,6 +129,7 @@ class AudioToCharCTC(pl.LightningModule):
     def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
         super().__init__()
         self.save_hyperparameters()
+        self.embed_size = embed_size
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.loss_fn = nn.CTCLoss()
