@@ -50,17 +50,16 @@ class AudioVAEEncoder(nn.Module):
         return self.layers(x)
 
 class AudioToAudioVAE(pl.LightningModule):
-    def __init__(self, a2c_checkpoint_path, latent_dim=128, spc_dim=257, codecp_dim=1, learning_rate=0.001):
+    def __init__(self, a2c_checkpoint_path, learning_rate, latent_dim=128, spc_dim=257, codecp_dim=1):
         super().__init__()
         self.save_hyperparameters()
         self.latent_dim = latent_dim
         self.spc_dim = spc_dim
         self.codecp_dim = codecp_dim
 
-        #self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
-        #self.a2c.freeze()
-        self.a2c = nn.Conv1d(64, 256, 3, padding=1, stride=2, bias=True)
-        embed_size = 256
+        self.a2c = AudioToCharCTC.load_from_checkpoint(a2c_checkpoint_path)
+        self.a2c.freeze()
+        embed_size = self.a2c.embed_size
 
         self.encoder = AudioVAEEncoder(
             embed_size,
@@ -101,10 +100,8 @@ class AudioToAudioVAE(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
         # trans_audio: [batch_size, audio_size, audio_len]
-        #enc_out = self.a2c.encoder.forward(trans_audio)
-        #enc_out_len = self.a2c.output_length(audio_len)
-        enc_out = self.a2c.forward(trans_audio)
-        enc_out_len = (audio_len + 1) // 2
+        enc_out = self.a2c.encoder.forward(trans_audio)
+        enc_out_len = self.a2c.output_length(audio_len)
         # enc_out: [batch_size, embed_size, enc_out_len]
 
         state = self.encoder(enc_out)
@@ -182,7 +179,9 @@ def cli_main():
         spc_dim = 513
         codecp_dim = 2
 
-    model = AudioToAudioVAE(args.a2c_ckpt_path, spc_dim=spc_dim, codecp_dim=codecp_dim)
+    model = AudioToAudioVAE(
+        args.a2c_ckpt_path, learning_rate=args.learning_rate,
+        spc_dim=spc_dim, codecp_dim=codecp_dim)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, data)
 
