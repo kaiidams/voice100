@@ -44,6 +44,6 @@ class CharTokenizer(nn.Module):
 
     def merge_repeated(self, text: str) -> str:
         text = re.sub(r'(.)\1+', r'\1', text)
-        text = re.sub(r' +', r' ', text)
+        text = text.replace('_', '')
         if text == ' ': text = ''
         return text

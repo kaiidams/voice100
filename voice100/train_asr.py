@@ -29,19 +29,20 @@ def cli_main():
     args.dataset_repeat = 5
 
     if args.export:
+        from torch.utils.mobile_optimizer import optimize_for_mobile
         model = AudioToCharCTC.load_from_checkpoint(args.resume_from_checkpoint)
         audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
-        audio_len = torch.tensor([100], dtype=torch.int32)
         model.eval()
 
         torch.onnx.export(
-            model, (audio, audio_len),
+            model, audio,
             args.export,
             export_params=True,
             opset_version=13,
+            verbose=True,
             do_constant_folding=True,
-            input_names = ['audio', 'audio_len'],
-            output_names = ['logits', 'logits_len'],
+            input_names = ['audio'],
+            output_names = ['logits'],
             dynamic_axes={'audio': {0: 'batch_size', 1: 'audio_len'},
                           'logits': {0: 'batch_size', 1: 'logits_len'}})
     else:
