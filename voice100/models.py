@@ -107,11 +107,11 @@ class ConvVoiceEncoder(nn.Module):
             InvertedResidual(hidden_size, hidden_size, kernel_size=91),
             InvertedResidual(hidden_size, out_channels, kernel_size=99, use_residual=False))
 
-    def forward(self, embed, embed_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = torch.transpose(embed, 1, 2)
-        x = self.layers(x)
-        x = torch.transpose(x, 1, 2)
-        return x, torch.div(embed_len + 1, 2, rounding_mode='floor')
+    def forward(self, embed) -> torch.Tensor:
+        return self.layers(embed)
+
+    def output_length(self, embed_len) -> torch.Tensor:
+        return torch.div(embed_len + 1, 2, rounding_mode='trunc')
 
 class LinearCharDecoder(nn.Module):
 
@@ -121,11 +121,8 @@ class LinearCharDecoder(nn.Module):
             nn.Dropout(0.2),
             nn.Conv1d(in_channels, out_channels, kernel_size=1, padding=0, bias=True))
 
-    def forward(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = torch.transpose(enc_out, 1, 2)
-        x = self.layers(x)
-        x = torch.transpose(x, 1, 2)
-        return x, enc_out_len
+    def forward(self, enc_out) -> torch.Tensor:
+        return self.layers(enc_out)
 
 class AudioToCharCTC(pl.LightningModule):
 
@@ -137,17 +134,19 @@ class AudioToCharCTC(pl.LightningModule):
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
-    def forward(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        enc_out, enc_out_len = self.encode(audio, audio_len)
-        dec_out, dec_out_len = self.decode(enc_out, enc_out_len) 
+    def forward(self, audio) -> torch.Tensor:
+        audio = torch.transpose(audio, 1, 2)
+        enc_out = self.encoder(audio)
+        logits = self.decoder(enc_out)
+        logits = torch.transpose(logits, 1, 2)
         #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
-        return dec_out, dec_out_len
+        return logits
 
-    def encode(self, audio, audio_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.encoder(audio, audio_len) 
-
-    def decode(self, enc_out, enc_out_len) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.decoder(enc_out, enc_out_len)
+    def output_length(self, audio_len) -> torch.Tensor:
+        enc_out_len = self.encoder.output_length(audio_len)
+        dec_out_len = enc_out_len
+        #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
+        return dec_out_len
 
     def _calc_batch_loss(self, batch):
         audio, audio_len, text, text_len = batch
@@ -156,8 +155,10 @@ class AudioToCharCTC(pl.LightningModule):
             audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
-        logits, logits_len = self(audio, audio_len)
+        logits = self.forward(audio)
         # logits: [batch_size, audio_len, vocab_size]
+        logits_len = self.output_length(audio_len)
+
         logits = torch.transpose(logits, 0, 1)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
