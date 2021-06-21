@@ -17,9 +17,9 @@ class VoiceDecoder(nn.Module):
         half_hidden_size = hidden_dim // 2
         self.layers = nn.Sequential(
             InvertedResidual(in_channels, half_hidden_size, kernel_size=65, use_residual=False),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
-            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=5, padding=16, stride=2),
-            InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
+            #InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
+            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=5, padding=2, stride=2),
+            #InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
             InvertedResidual(hidden_dim, out_channels, kernel_size=11, use_residual=False))
 
     def forward(self, x):
