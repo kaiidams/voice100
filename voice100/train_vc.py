@@ -191,7 +191,7 @@ class AudioToAudioVAE(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
         parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.00001)
+        parser.add_argument('--learning_rate', type=float, default=0.0001)
         return parser
 
 def cli_main():
