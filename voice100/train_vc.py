@@ -22,7 +22,7 @@ class ConvTransposeActivate(nn.Sequential):
                 bias=True),
             nn.ReLU6(inplace=True))
 
-class InvertedResidual(nn.Module):
+class xInvertedResidual(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
         super().__init__()
         hidden_size = in_channels * expand_ratio
@@ -41,6 +41,8 @@ class InvertedResidual(nn.Module):
         else:
             return self.conv(x)
 
+from .models import InvertedResidual
+
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256):
         super().__init__()
@@ -48,7 +50,7 @@ class VoiceDecoder(nn.Module):
         self.layers = nn.Sequential(
             InvertedResidual(in_channels, half_hidden_size, kernel_size=65, use_residual=False),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
-            InvertedResidual(half_hidden_size, hidden_dim, kernel_size=33, stride=2, use_residual=False),
+            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=33, padding=16, stride=2),
             InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
             InvertedResidual(hidden_dim, out_channels, kernel_size=11, use_residual=False))
 
