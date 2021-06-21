@@ -14,6 +14,7 @@ from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
+import hashlib
 
 from .audio import SpectrogramAugumentation
 
@@ -92,7 +93,9 @@ class EncodedCacheDataset(Dataset):
     def __getitem__(self, index):
         orig_index = index // self._repeat
         data = self._dataset[orig_index]
-        cachefile = 'encoded_%016x.pt' % (abs(hash(data)))
+        h = hashlib.sha1()
+        h.update((data[0] + '@' + data[1]).encode('utf-8'))
+        cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
         encoded_data = None
         if os.path.exists(cachefile):
