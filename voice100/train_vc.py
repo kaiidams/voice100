@@ -101,6 +101,17 @@ class AudioToAudioVAE(pl.LightningModule):
         return f0, logspc, codeap
 
     def training_step(self, batch, batch_idx):
+        pred_loss, vae_loss = self._calc_batch_loss(batch)
+        self.log('train_pred_loss', pred_loss)
+        self.log('train_vae_loss', vae_loss)
+        return pred_loss + vae_loss
+
+    def validation_step(self, batch, batch_idx):
+        pred_loss, vae_loss = self._calc_batch_loss(batch)
+        self.log('val_pred_loss', pred_loss)
+        self.log('val_vae_loss', vae_loss)
+
+    def _calc_batch_loss(self, batch):
         (audio, audio_len), (f0, f0_len, logspc, codeap) = batch
 
         f0, logspc, codeap = self.normalize_world_components(f0, logspc, codeap)
@@ -119,8 +130,11 @@ class AudioToAudioVAE(pl.LightningModule):
         mean, logvar = torch.split(state, self.latent_dim, dim=2)
 
         # reparameterize
-        eps = torch.normal(0.0, 1.0, size=mean.shape, device=mean.device)
-        z = eps * torch.exp(logvar * .5) + mean
+        if self.training:
+            eps = torch.normal(0.0, 1.0, size=mean.shape, device=mean.device)
+            z = eps * torch.exp(logvar * .5) + mean
+        else:
+            z = mean
 
         ztran = torch.transpose(z, 1, 2)
         pred = self.decoder(ztran)
@@ -136,7 +150,7 @@ class AudioToAudioVAE(pl.LightningModule):
         loss = self.criteria(pred, target)
         loss_weights = (torch.arange(target.shape[1], device=target.device)[None, :] < f0_len[:, None]).float()
         loss = torch.mean(loss, axis=2)
-        loss = torch.sum(loss * loss_weights) / torch.sum(loss_weights)
+        pred_loss = torch.sum(loss * loss_weights) / torch.sum(loss_weights)
 
         z_weights = (torch.arange(state.shape[1], device=state.device)[None, :] < state_len[:, None]).float()
         logpz = log_normal_pdf0(z)
@@ -144,9 +158,7 @@ class AudioToAudioVAE(pl.LightningModule):
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
         #print(loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
-        self.log('train_loss', loss)
-        self.log('train_vae_loss', vae_loss)
-        return loss + vae_loss
+        return pred_loss, vae_loss
 
     def join_world_components(self, f0, logspc, codeap) -> torch.Tensor:
         return torch.cat([f0[:, :, None], logspc, codeap], axis=2)
