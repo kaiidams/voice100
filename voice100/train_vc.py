@@ -8,40 +8,8 @@ from torch import nn
 import numpy as np
 import pytorch_lightning as pl
 from .models import AudioToCharCTC
-
-from .datasets import VCDataModule
-
-class ConvTransposeActivate(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
-        padding = ((kernel_size - 1) // 2) * dilation
-        super().__init__(
-            nn.ConvTranspose1d(
-                in_channels, out_channels,
-                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-                groups=groups,
-                bias=True),
-            nn.ReLU6(inplace=True))
-
-class xInvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
-        super().__init__()
-        hidden_size = in_channels * expand_ratio
-        self.use_residual = use_residual
-        self.conv = nn.Sequential(
-            # pw
-            ConvTransposeActivate(in_channels, hidden_size, kernel_size=1),
-            # dw
-            ConvTransposeActivate(hidden_size, hidden_size, kernel_size=kernel_size, stride=stride, groups=hidden_size),
-            # pw-linear
-            nn.ConvTranspose1d(hidden_size, out_channels, kernel_size=1, bias=True)
-        )
-    def forward(self, x):
-        if self.use_residual:
-            return x + self.conv(x)
-        else:
-            return self.conv(x)
-
 from .models import InvertedResidual
+from .datasets import VCDataModule
 
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256):
@@ -50,7 +18,7 @@ class VoiceDecoder(nn.Module):
         self.layers = nn.Sequential(
             InvertedResidual(in_channels, half_hidden_size, kernel_size=65, use_residual=False),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
-            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=33, padding=16, stride=2),
+            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=5, padding=16, stride=2),
             InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
             InvertedResidual(hidden_dim, out_channels, kernel_size=11, use_residual=False))
 
