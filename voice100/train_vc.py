@@ -11,31 +11,46 @@ from .models import AudioToCharCTC
 
 from .datasets import VCDataModule
 
-class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_dim=256, kernel_size=33):
+class ConvTransposeActivate(nn.Sequential):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
+        padding = ((kernel_size - 1) // 2) * dilation
+        super().__init__(
+            nn.ConvTranspose1d(
+                in_channels, out_channels,
+                kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                groups=groups,
+                bias=True),
+            nn.ReLU6(inplace=True))
+
+class InvertedResidual(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
         super().__init__()
+        hidden_size = in_channels * expand_ratio
+        self.use_residual = use_residual
+        self.conv = nn.Sequential(
+            # pw
+            ConvTransposeActivate(in_channels, hidden_size, kernel_size=1),
+            # dw
+            ConvTransposeActivate(hidden_size, hidden_size, kernel_size=kernel_size, stride=stride, groups=hidden_size),
+            # pw-linear
+            nn.ConvTranspose1d(hidden_size, out_channels, kernel_size=1, bias=True)
+        )
+    def forward(self, x):
+        if self.use_residual:
+            return x + self.conv(x)
+        else:
+            return self.conv(x)
+
+class VoiceDecoder(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_dim=256):
+        super().__init__()
+        half_hidden_size = hidden_dim // 2
         self.layers = nn.Sequential(
-            nn.ConvTranspose1d(in_channels, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=65, stride=1, padding=32, groups=hidden_dim, bias=True),
-            nn.ReLU6(),
-
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=65, stride=2, padding=32, groups=hidden_dim, bias=True),
-            nn.ReLU6(),
-
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=33, stride=1, padding=16, groups=hidden_dim, bias=True),
-            nn.ReLU6(),
-
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.ReLU6(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=17, stride=1, padding=8, groups=hidden_dim, bias=True),
-            nn.ReLU6(),
-
-            nn.ConvTranspose1d(hidden_dim, out_channels, kernel_size=1, stride=1, padding=0, bias=True))
+            InvertedResidual(in_channels, half_hidden_size, kernel_size=65, use_residual=False),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
+            InvertedResidual(half_hidden_size, hidden_dim, kernel_size=33, stride=2, use_residual=False),
+            InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
+            InvertedResidual(hidden_dim, out_channels, kernel_size=11, use_residual=False))
 
     def forward(self, x):
         return self.layers(x)
