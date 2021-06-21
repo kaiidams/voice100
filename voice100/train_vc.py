@@ -15,16 +15,28 @@ class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256, kernel_size=33):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.ConvTranspose1d(in_channels, hidden_dim, 65, stride=1, padding=32, bias=True),
-            nn.ReLU(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=1, padding=32, bias=True),
-            nn.ReLU(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 65, stride=2, padding=32, bias=True),
-            nn.ReLU(),
-            nn.ConvTranspose1d(hidden_dim, hidden_dim, 33, stride=1, padding=16, bias=True),
-            nn.ReLU(),
-            nn.ConvTranspose1d(hidden_dim, out_channels, 17, stride=1, padding=8, bias=True))
-        
+            nn.ConvTranspose1d(in_channels, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=65, stride=1, padding=32, groups=hidden_dim, bias=True),
+            nn.ReLU6(),
+
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=65, stride=2, padding=32, groups=hidden_dim, bias=True),
+            nn.ReLU6(),
+
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=33, stride=1, padding=16, groups=hidden_dim, bias=True),
+            nn.ReLU6(),
+
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.ReLU6(),
+            nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=17, stride=1, padding=8, groups=hidden_dim, bias=True),
+            nn.ReLU6(),
+
+            nn.ConvTranspose1d(hidden_dim, out_channels, kernel_size=1, stride=1, padding=0, bias=True))
+
     def forward(self, x):
         return self.layers(x)
 
@@ -42,9 +54,11 @@ class AudioVAEEncoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.ReLU(),
+            nn.ReLU6(),
             nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=True),
-            nn.ReLU(),
+            nn.ReLU6(),
+            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1, bias=True),
+            nn.ReLU6(),
             nn.Conv1d(hidden_dim, out_channels, kernel_size=3, padding=1, bias=True))
 
     def forward(self, x):
@@ -65,7 +79,7 @@ class AudioToAudioVAE(pl.LightningModule):
         self.encoder = AudioVAEEncoder(
             embed_size,
             latent_dim * 2,
-            hidden_dim=embed_size * 4)
+            hidden_dim=embed_size)
         self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
         self.criteria = nn.MSELoss(reduction='none')
 
@@ -113,10 +127,10 @@ class AudioToAudioVAE(pl.LightningModule):
         pred = torch.transpose(pred, 1, 2)
 
         if target.shape[1] > pred.shape[1]:
-            #print(target.shape[1], pred.shape[1])
+            print(target.shape[1], pred.shape[1])
             target = target[:, :pred.shape[1], :]
         if pred.shape[1] > target.shape[1]:
-            #print(target.shape[1], pred.shape[1])
+            print(target.shape[1], pred.shape[1])
             pred = pred[:, :target.shape[1], :]
 
         loss = self.criteria(pred, target)
@@ -129,7 +143,7 @@ class AudioToAudioVAE(pl.LightningModule):
         logqz_x = log_normal_pdf(z, mean, logvar)
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
-        #print(loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
+        print(loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
         self.log('train_loss', loss)
         self.log('train_vae_loss', vae_loss)
         return loss + vae_loss
@@ -165,7 +179,7 @@ class AudioToAudioVAE(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
         parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+        parser.add_argument('--learning_rate', type=float, default=0.00001)
         return parser
 
 def cli_main():
