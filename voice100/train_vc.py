@@ -2,7 +2,6 @@
 
 from argparse import ArgumentParser
 import os
-from typing import Tuple
 import torch
 from torch import nn
 import numpy as np
@@ -10,6 +9,8 @@ import pytorch_lightning as pl
 from .models import AudioToCharCTC
 from .models import InvertedResidual
 from .datasets import VCDataModule
+
+torch.backends.cudnn.benchmark = True
 
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_dim=256):
