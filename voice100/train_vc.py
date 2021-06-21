@@ -2,6 +2,7 @@
 
 from argparse import ArgumentParser
 import os
+from typing import Tuple
 import torch
 from torch import nn
 import numpy as np
@@ -76,26 +77,20 @@ class AudioToAudioVAE(pl.LightningModule):
         ztran = torch.transpose(z, 1, 2)
         pred = self.decoder(ztran)
 
-        f0 = pred[:, :, 0]
-        spc = pred[:, :, 1:1 + self.spc_dim]
-        codecp = pred[:, :, 1 + self.spc_dim:]
+        f0, logspc, codeap = self.split_world_components(pred)
+        f0, logspc, codeap = self.unnormalize_world_components(f0, logspc, codeap)
 
-        f0 = f0 * 6.1937077e+01 + 7.9459290e+01 
-        spc = spc * 1.786831 - 8.509372
-        codecp = codecp * 2.5427816e+00 - 2.3349452e+00
+        #f0[f0 < 50] = 0.0
+        logspc[logspc < -8] = -12
+        codeap[codeap > -1.5] = -1e-12
 
-        f0[f0 < 50] = 0.0
-        spc[spc < -8] = -12
-        codecp[codecp > -1.5] = -1e-12
-        return f0, spc, codecp
+        return f0, logspc, codeap
 
     def training_step(self, batch, batch_idx):
-        (audio, audio_len), (f0, f0_len, spc, codecp) = batch
+        (audio, audio_len), (f0, f0_len, logspc, codeap) = batch
 
-        # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        f0 = (f0 - 7.9459290e+01) / 61.937077
-        spc = (spc + 8.509372) / 1.786831
-        codecp = (codecp + 2.3349452) / 2.5427816
+        f0, logspc, codeap = self.normalize_world_components(f0, logspc, codeap)
+        target = self.join_world_components(f0, logspc, codeap)
 
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
@@ -117,13 +112,13 @@ class AudioToAudioVAE(pl.LightningModule):
         pred = self.decoder(ztran)
         pred = torch.transpose(pred, 1, 2)
 
-        target = torch.cat([f0[:, :, None], spc, codecp], axis=2)
         if target.shape[1] > pred.shape[1]:
             #print(target.shape[1], pred.shape[1])
             target = target[:, :pred.shape[1], :]
         if pred.shape[1] > target.shape[1]:
             #print(target.shape[1], pred.shape[1])
             pred = pred[:, :target.shape[1], :]
+
         loss = self.criteria(pred, target)
         loss_weights = (torch.arange(target.shape[1], device=target.device)[None, :] < f0_len[:, None]).float()
         loss = torch.mean(loss, axis=2)
@@ -139,14 +134,38 @@ class AudioToAudioVAE(pl.LightningModule):
         self.log('train_vae_loss', vae_loss)
         return loss + vae_loss
 
+    def join_world_components(self, f0, logspc, codeap) -> torch.Tensor:
+        return torch.cat([f0[:, :, None], logspc, codeap], axis=2)
+
+    def split_world_components(self, x):
+        f0 = x[:, :, 0]
+        logspc = x[:, :, 1:1 + self.spc_dim]
+        codeap = x[:, :, 1 + self.spc_dim:]
+        return f0, logspc, codeap
+
+    def normalize_world_components(self, f0, logspc, codeap):
+        # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
+        f0 = (f0 - 7.9459290e+01) / 61.937077
+        logspc = (logspc + 8.509372) / 1.786831
+        codeap = (codeap + 2.3349452) / 2.5427816
+        return f0, logspc, codeap
+
+    def unnormalize_world_components(self, f0, logspc, codeap):
+        # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
+        f0 = f0 * 6.1937077e+01 + 7.9459290e+01 
+        logspc = logspc * 1.786831 - 8.509372
+        codeap = codeap * 2.5427816e+00 - 2.3349452e+00
+        return f0, logspc, codeap
+
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--sample_rate', default=22050, type=int, help='Sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
+        parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
+        parser.add_argument('--learning_rate', type=float, default=0.0001)
         return parser
 
 def cli_main():
@@ -162,7 +181,7 @@ def cli_main():
     parser = AudioToAudioVAE.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_ratio = 0.1
-    args.dataset_repeat = 5
+    args.dataset_repeat = 10
 
     data = VCDataModule(
         dataset=args.dataset,
@@ -172,10 +191,10 @@ def cli_main():
         cache=args.cache,
         batch_size=args.batch_size)
 
-    if args.sample_rate == 16000:
+    if args.target_sample_rate == 16000:
         spc_dim = 257
         codecp_dim = 1
-    elif args.sample_rate == 22050:
+    elif args.target_sample_rate == 22050:
         spc_dim = 513
         codecp_dim = 2
 
