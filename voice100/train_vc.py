@@ -12,16 +12,31 @@ from .datasets import VCDataModule
 
 torch.backends.cudnn.benchmark = True
 
-class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_dim=256):
+class AudioVAEEncoder(nn.Module):
+
+    def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
-        half_hidden_size = hidden_dim // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, half_hidden_size, kernel_size=65, use_residual=False),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=65),
-            nn.ConvTranspose1d(half_hidden_size, hidden_dim, kernel_size=5, padding=2, stride=2),
-            InvertedResidual(hidden_dim, hidden_dim, kernel_size=17),
-            InvertedResidual(hidden_dim, out_channels, kernel_size=11, use_residual=False))
+            nn.ReLU6(),
+            nn.Conv1d(in_channels, hidden_size, kernel_size=3, padding=1, bias=True),
+            nn.ReLU6(),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=3, padding=1, bias=True),
+            nn.ReLU6(),
+            nn.Conv1d(hidden_size, out_channels, kernel_size=3, padding=1, bias=True))
+
+    def forward(self, x):
+        return self.layers(x)
+
+class VoiceDecoder(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_size=256):
+        super().__init__()
+        half_hidden_size = hidden_size // 2
+        self.layers = nn.Sequential(
+            InvertedResidual(in_channels, hidden_size, kernel_size=65, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=17),
+            InvertedResidual(half_hidden_size, out_channels, kernel_size=11, use_residual=False))
 
     def forward(self, x):
         return self.layers(x)
@@ -34,21 +49,6 @@ def log_normal_pdf0(sample):
 
 def log_normal_pdf(sample, mean, logvar):
   return -.5 * ((sample - mean) ** 2. * torch.exp(-logvar) + logvar + log2pi)
-
-class AudioVAEEncoder(nn.Module):
-
-    def __init__(self, in_channels, out_channels, hidden_dim):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.ReLU6(),
-            nn.Conv1d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=True),
-            nn.ReLU6(),
-            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1, bias=True),
-            nn.ReLU6(),
-            nn.Conv1d(hidden_dim, out_channels, kernel_size=3, padding=1, bias=True))
-
-    def forward(self, x):
-        return self.layers(x)
 
 class AudioToAudioVAE(pl.LightningModule):
     def __init__(self, a2c_checkpoint_path, learning_rate, latent_dim=128, spc_dim=257, codecp_dim=1):
@@ -65,7 +65,7 @@ class AudioToAudioVAE(pl.LightningModule):
         self.encoder = AudioVAEEncoder(
             embed_size,
             latent_dim * 2,
-            hidden_dim=embed_size)
+            hidden_size=embed_size)
         self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
         self.criteria = nn.MSELoss(reduction='none')
 
