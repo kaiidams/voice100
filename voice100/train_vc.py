@@ -169,7 +169,7 @@ class AudioToAudioVAE(pl.LightningModule):
         logqz_x = log_normal_pdf(z, mean, logvar)
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
-        print(pred_loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
+        #print(pred_loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
         self.optimizers().param_groups[0]['lr'] = 0.001
 
         return pred_loss, vae_loss
