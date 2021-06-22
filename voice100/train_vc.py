@@ -70,7 +70,7 @@ class WORLDLoss(nn.Module):
         f0_loss = torch.sum(f0_loss) / weights_sum
         logspec_loss = torch.sum(logspec_loss) / weights_sum
         codeap_loss = torch.sum(codeap_loss) / weights_sum
-        return has_f0_loss * f0_loss, logspec_loss, codeap_loss
+        return has_f0_loss, f0_loss, logspec_loss, codeap_loss
 
 class AudioToAudioVAE(pl.LightningModule):
     def __init__(self, a2c_checkpoint_path, learning_rate, latent_dim=128, spc_dim=257, codecp_dim=1):
@@ -161,9 +161,9 @@ class AudioToAudioVAE(pl.LightningModule):
         hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.split_world_components(pred)
         #f0_hat, logspc_hat, codeap_hat = self.unnormalize_world_components(f0_hat, logspc_hat, codeap_hat)
 
-        f0_loss, logspc_loss, codeap_loss = self.criteria(f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, f0, logspc, codeap)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, f0, logspc, codeap)
 
-        pred_loss = f0_loss + logspc_loss + codeap_loss
+        pred_loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss
 
         z_weights = (torch.arange(state.shape[1], device=state.device)[None, :] < state_len[:, None]).float()
         logpz = log_normal_pdf0(z)
