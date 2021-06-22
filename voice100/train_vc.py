@@ -126,7 +126,7 @@ class AudioToAudioVAE(pl.LightningModule):
         hasf0 = (f0 > 0).float()
         f0, logspc, codeap = self.normalize_world_components(f0, logspc, codeap)
         target = self.join_world_components(f0, logspc, codeap)
-        print(f0)
+        #print(f0)
 
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
@@ -228,7 +228,7 @@ def cli_main():
     parser = AudioToAudioVAE.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_ratio = 0.1
-    args.dataset_repeat = 10
+    args.dataset_repeat = 20
 
     data = VCDataModule(
         dataset=args.dataset,
