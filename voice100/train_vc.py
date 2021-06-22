@@ -53,14 +53,16 @@ class WORLDLoss(nn.Module):
         super().__init__()
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.mse_loss = nn.MSELoss(reduction='none')
-        self.logspec_weight = (6 - 5 * torch.arange(spec_dim))[None, None, :].float()
-        self.logspec_weight = self.logspec_weight / torch.sum(self.logspec_weight)
+        logspec_weights = (6 - 5 * torch.arange(spec_dim))[None, None, :].float()
+        logspec_weights = logspec_weights / torch.sum(logspec_weights)
+        self.logspec_weights = nn.Parameter(logspec_weights, requires_grad=False)
+
     def forward(self, length, hasf0_hat, f0, logspec, codeap, f0_target, logspec_target, codeap_target):
         weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
         has_f0 = (f0_target > 0).float()
         has_f0_loss = self.bce_loss(hasf0_hat, has_f0) * weights
         f0_loss = self.mse_loss(f0, f0_target) * has_f0 * weights
-        logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weight, axis=2) * weights
+        logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weights, axis=2) * weights
         codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
         weights_sum = torch.sum(weights)
         has_f0_loss = torch.sum(has_f0_loss) / weights_sum
