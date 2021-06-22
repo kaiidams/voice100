@@ -54,7 +54,7 @@ class WORLDLoss(nn.Module):
         super().__init__()
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.mse_loss = nn.MSELoss(reduction='none')
-        logspec_weights = (6 - 5 * torch.arange(spec_dim))[None, None, :].float()
+        logspec_weights = (6 - 5 * torch.arange(spec_dim) / spec_dim)[None, None, :].float()
         logspec_weights = logspec_weights / torch.sum(logspec_weights)
         self.logspec_weights = nn.Parameter(logspec_weights, requires_grad=False)
 
@@ -191,16 +191,16 @@ class AudioToAudioVAE(pl.LightningModule):
     def normalize_world_components(self, f0, logspc, codeap):
         # 124.72452458429298 28.127268439734607
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        #f0 = (f0 - 124.72452458429298) / 28.127268439734607
-        f0 = (f0 - 79.45929) / 61.937077
+        f0 = (f0 - 124.72452458429298) / 28.127268439734607
+        #f0 = (f0 - 79.45929) / 61.937077
         logspc = (logspc + 8.509372) / 1.786831
         codeap = (codeap + 2.3349452) / 2.5427816
         return f0, logspc, codeap
 
     def unnormalize_world_components(self, f0, logspc, codeap):
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        #f0 = f0 * 28.127268439734607 + 124.72452458429298
-        f0 = f0 * 61.937077 + 79.45929
+        f0 = f0 * 28.127268439734607 + 124.72452458429298
+        #f0 = f0 * 61.937077 + 79.45929
         logspc = logspc * 1.786831 - 8.509372
         codeap = codeap * 2.5427816e+00 - 2.3349452e+00
         return f0, logspc, codeap
@@ -213,7 +213,7 @@ class AudioToAudioVAE(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
         parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
 def cli_main():
