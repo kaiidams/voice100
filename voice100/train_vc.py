@@ -66,7 +66,7 @@ class WORLDLoss(nn.Module):
         logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weights, axis=2) * weights
         codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
         weights_sum = torch.sum(weights)
-        has_f0_loss = torch.sum(has_f0_loss) / weights_sum
+        #has_f0_loss = torch.sum(has_f0_loss) / weights_sum
         f0_loss = torch.sum(f0_loss) / weights_sum
         logspec_loss = torch.sum(logspec_loss) / weights_sum
         codeap_loss = torch.sum(codeap_loss) / weights_sum
@@ -126,6 +126,7 @@ class AudioToAudioVAE(pl.LightningModule):
         hasf0 = (f0 > 0).float()
         f0, logspc, codeap = self.normalize_world_components(f0, logspc, codeap)
         target = self.join_world_components(f0, logspc, codeap)
+        print(f0)
 
         # audio: [batch_size, audio_len, audio_size]
         trans_audio = torch.transpose(audio, 1, 2)
