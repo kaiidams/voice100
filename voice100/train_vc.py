@@ -10,8 +10,6 @@ from .models import AudioToCharCTC
 from .models import InvertedResidual
 from .datasets import VCDataModule
 
-torch.backends.cudnn.benchmark = True
-
 class AudioVAEEncoder(nn.Module):
 
     def __init__(self, in_channels, out_channels, hidden_size):
@@ -50,11 +48,33 @@ def log_normal_pdf0(sample):
 def log_normal_pdf(sample, mean, logvar):
   return -.5 * ((sample - mean) ** 2. * torch.exp(-logvar) + logvar + log2pi)
 
+class WORLDLoss(nn.Module):
+    def __init__(self, spec_dim):
+        super().__init__()
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
+        self.mse_loss = nn.MSELoss(reduction='none')
+        self.logspec_weight = (6 - 5 * torch.arange(spec_dim))[None, None, :].float()
+        self.logspec_weight = self.logspec_weight / torch.sum(self.logspec_weight)
+    def forward(self, length, hasf0_hat, f0, logspec, codeap, f0_target, logspec_target, codeap_target):
+        weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
+        has_f0 = (f0_target > 0).float()
+        has_f0_loss = self.bce_loss(hasf0_hat, has_f0) * weights
+        f0_loss = self.mse_loss(f0, f0_target) * has_f0 * weights
+        logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weight, axis=2) * weights
+        codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
+        weights_sum = torch.sum(weights)
+        has_f0_loss = torch.sum(has_f0_loss) / weights_sum
+        f0_loss = torch.sum(f0_loss) / weights_sum
+        logspec_loss = torch.sum(logspec_loss) / weights_sum
+        codeap_loss = torch.sum(codeap_loss) / weights_sum
+        return has_f0_loss * f0_loss, logspec_loss, codeap_loss
+
 class AudioToAudioVAE(pl.LightningModule):
     def __init__(self, a2c_checkpoint_path, learning_rate, latent_dim=128, spc_dim=257, codecp_dim=1):
         super().__init__()
         self.save_hyperparameters()
         self.latent_dim = latent_dim
+        self.f0_dim = 2
         self.spc_dim = spc_dim
         self.codecp_dim = codecp_dim
 
@@ -66,8 +86,8 @@ class AudioToAudioVAE(pl.LightningModule):
             embed_size,
             latent_dim * 2,
             hidden_size=embed_size)
-        self.decoder = VoiceDecoder(latent_dim, 1 + spc_dim + codecp_dim)
-        self.criteria = nn.MSELoss(reduction='none')
+        self.decoder = VoiceDecoder(latent_dim, self.f0_dim + spc_dim + codecp_dim)
+        self.criteria = WORLDLoss(spc_dim)
 
     def predict(self, state):
 
@@ -128,23 +148,27 @@ class AudioToAudioVAE(pl.LightningModule):
 
         if target.shape[1] > pred.shape[1]:
             #print(target.shape[1], pred.shape[1])
-            target = target[:, :pred.shape[1], :]
+            f0 = f0[:, :pred.shape[1]]
+            logspc = logspc[:, :pred.shape[1], :]
+            codeap = codeap[:, :pred.shape[1], :]
         if pred.shape[1] > target.shape[1]:
             #print(target.shape[1], pred.shape[1])
             pred = pred[:, :target.shape[1], :]
 
-        loss = self.criteria(pred, target)
-        loss_weights = (torch.arange(target.shape[1], device=target.device)[None, :] < f0_len[:, None]).float()
-        loss = torch.mean(loss, axis=2)
-        pred_loss = torch.sum(loss * loss_weights) / torch.sum(loss_weights)
+        hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.split_world_components(pred)
+        #f0_hat, logspc_hat, codeap_hat = self.unnormalize_world_components(f0_hat, logspc_hat, codeap_hat)
+
+        f0_loss, logspc_loss, codeap_loss = self.criteria(f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, f0, logspc, codeap)
+
+        pred_loss = f0_loss + logspc_loss + codeap_loss
 
         z_weights = (torch.arange(state.shape[1], device=state.device)[None, :] < state_len[:, None]).float()
         logpz = log_normal_pdf0(z)
         logqz_x = log_normal_pdf(z, mean, logvar)
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
-        #print(loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
-        self.optimizers().param_groups[0]['lr'] = 0.0001
+        print(pred_loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
+        self.optimizers().param_groups[0]['lr'] = 0.001
 
         return pred_loss, vae_loss
 
@@ -152,21 +176,23 @@ class AudioToAudioVAE(pl.LightningModule):
         return torch.cat([f0[:, :, None], logspc, codeap], axis=2)
 
     def split_world_components(self, x):
-        f0 = x[:, :, 0]
-        logspc = x[:, :, 1:1 + self.spc_dim]
-        codeap = x[:, :, 1 + self.spc_dim:]
-        return f0, logspc, codeap
+        hasf0 = x[:, :, 0]
+        f0 = x[:, :, 1]
+        logspc = x[:, :, 2:2 + self.spc_dim]
+        codeap = x[:, :, 2 + self.spc_dim:]
+        return hasf0, f0, logspc, codeap
 
     def normalize_world_components(self, f0, logspc, codeap):
+        # 124.72452458429298 28.127268439734607
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        f0 = (f0 - 7.9459290e+01) / 61.937077
+        f0 = (f0 - 124.72452458429298) / 28.127268439734607
         logspc = (logspc + 8.509372) / 1.786831
         codeap = (codeap + 2.3349452) / 2.5427816
         return f0, logspc, codeap
 
     def unnormalize_world_components(self, f0, logspc, codeap):
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        f0 = f0 * 6.1937077e+01 + 7.9459290e+01 
+        f0 = f0 * 28.127268439734607 + 124.72452458429298
         logspc = logspc * 1.786831 - 8.509372
         codeap = codeap * 2.5427816e+00 - 2.3349452e+00
         return f0, logspc, codeap
