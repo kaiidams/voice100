@@ -151,6 +151,7 @@ class AudioToAudioVAE(pl.LightningModule):
 
         if target.shape[1] > pred.shape[1]:
             #print(target.shape[1], pred.shape[1])
+            hasf0 = hasf0[:, :pred.shape[1]]
             f0 = f0[:, :pred.shape[1]]
             logspc = logspc[:, :pred.shape[1], :]
             codeap = codeap[:, :pred.shape[1], :]
