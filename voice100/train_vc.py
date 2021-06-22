@@ -60,7 +60,8 @@ class WORLDLoss(nn.Module):
 
     def forward(self, length, hasf0_hat, f0, logspec, codeap, hasf0, f0_target, logspec_target, codeap_target):
         weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
-        has_f0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
+        hasf0 = 1
+        has_f0_loss = 0 #self.bce_loss(hasf0_hat, hasf0) * weights
         f0_loss = self.mse_loss(f0, f0_target) * hasf0 * weights
         logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weights, axis=2) * weights
         codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
