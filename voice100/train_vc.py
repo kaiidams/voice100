@@ -60,13 +60,12 @@ class WORLDLoss(nn.Module):
 
     def forward(self, length, hasf0_hat, f0, logspec, codeap, hasf0, f0_target, logspec_target, codeap_target):
         weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
-        hasf0 = 1
-        has_f0_loss = 0 #self.bce_loss(hasf0_hat, hasf0) * weights
+        has_f0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
         f0_loss = self.mse_loss(f0, f0_target) * hasf0 * weights
         logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weights, axis=2) * weights
         codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
         weights_sum = torch.sum(weights)
-        #has_f0_loss = torch.sum(has_f0_loss) / weights_sum
+        has_f0_loss = torch.sum(has_f0_loss) / weights_sum
         f0_loss = torch.sum(f0_loss) / weights_sum
         logspec_loss = torch.sum(logspec_loss) / weights_sum
         codeap_loss = torch.sum(codeap_loss) / weights_sum
@@ -175,7 +174,7 @@ class AudioToAudioVAE(pl.LightningModule):
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
         #print(pred_loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
-        self.optimizers().param_groups[0]['lr'] = 0.001
+        #self.optimizers().param_groups[0]['lr'] = 0.001
 
         return pred_loss, vae_loss
 
@@ -212,7 +211,7 @@ class AudioToAudioVAE(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
         parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--learning_rate', type=float, default=0.0001)
         return parser
 
 def cli_main():
