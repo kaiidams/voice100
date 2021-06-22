@@ -144,6 +144,8 @@ class AudioToAudioVAE(pl.LightningModule):
 
         vae_loss = -torch.sum((logpz - logqz_x) * z_weights[:, :, None]) / torch.sum(z_weights) / self.latent_dim
         #print(loss.detach().cpu().numpy(), vae_loss.detach().cpu().numpy())
+        print(self.optimizers().param_groups[0]['lr'])
+
         return pred_loss, vae_loss
 
     def join_world_components(self, f0, logspc, codeap) -> torch.Tensor:
@@ -177,7 +179,7 @@ class AudioToAudioVAE(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--source_sample_rate', default=16000, type=int, help='Source sampling rate')
         parser.add_argument('--target_sample_rate', default=22050, type=int, help='Target sampling rate')
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
 def cli_main():
