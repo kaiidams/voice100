@@ -58,11 +58,10 @@ class WORLDLoss(nn.Module):
         logspec_weights = logspec_weights / torch.sum(logspec_weights)
         self.logspec_weights = nn.Parameter(logspec_weights, requires_grad=False)
 
-    def forward(self, length, hasf0_hat, f0, logspec, codeap, f0_target, logspec_target, codeap_target):
+    def forward(self, length, hasf0_hat, f0, logspec, codeap, hasf0, f0_target, logspec_target, codeap_target):
         weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
-        has_f0 = (f0_target > 0).float()
-        has_f0_loss = self.bce_loss(hasf0_hat, has_f0) * weights
-        f0_loss = self.mse_loss(f0, f0_target) * has_f0 * weights
+        has_f0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
+        f0_loss = self.mse_loss(f0, f0_target) * hasf0 * weights
         logspec_loss = torch.sum(self.mse_loss(logspec, logspec_target) * self.logspec_weights, axis=2) * weights
         codeap_loss = torch.mean(self.mse_loss(codeap, codeap_target), axis=2) * weights
         weights_sum = torch.sum(weights)
@@ -123,6 +122,7 @@ class AudioToAudioVAE(pl.LightningModule):
     def _calc_batch_loss(self, batch):
         (audio, audio_len), (f0, f0_len, logspc, codeap) = batch
 
+        hasf0 = (f0 > 0).float()
         f0, logspc, codeap = self.normalize_world_components(f0, logspc, codeap)
         target = self.join_world_components(f0, logspc, codeap)
 
@@ -161,7 +161,8 @@ class AudioToAudioVAE(pl.LightningModule):
         hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.split_world_components(pred)
         #f0_hat, logspc_hat, codeap_hat = self.unnormalize_world_components(f0_hat, logspc_hat, codeap_hat)
 
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, f0, logspc, codeap)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
+            f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
 
         pred_loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss
 
