@@ -191,14 +191,16 @@ class AudioToAudioVAE(pl.LightningModule):
     def normalize_world_components(self, f0, logspc, codeap):
         # 124.72452458429298 28.127268439734607
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        f0 = (f0 - 124.72452458429298) / 28.127268439734607
+        #f0 = (f0 - 124.72452458429298) / 28.127268439734607
+        f0 = (f0 - 79.45929) / 61.937077
         logspc = (logspc + 8.509372) / 1.786831
         codeap = (codeap + 2.3349452) / 2.5427816
         return f0, logspc, codeap
 
     def unnormalize_world_components(self, f0, logspc, codeap):
         # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-        f0 = f0 * 28.127268439734607 + 124.72452458429298
+        #f0 = f0 * 28.127268439734607 + 124.72452458429298
+        f0 = f0 * 61.937077 + 79.45929
         logspc = logspc * 1.786831 - 8.509372
         codeap = codeap * 2.5427816e+00 - 2.3349452e+00
         return f0, logspc, codeap
