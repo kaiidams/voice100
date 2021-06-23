@@ -127,7 +127,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         low = -5.0 + 5.0 * random.random()
         high = -5.0 + 5.0 * random.random()
         std = 5.0 * random.random()
-        scale = torch.linspace(low, high, 64)[None, :]
+        scale = torch.linspace(low, high, 64, device=audio.device)[None, :]
         noise = torch.rand(audio.shape, device=audio.device) * std + scale
         return torch.log(torch.exp(audio) + torch.exp(noise))
 
