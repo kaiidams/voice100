@@ -79,7 +79,7 @@ class AudioAlignCTC(pl.LightningModule):
             audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
-        packed_audio = pack_padded_sequence(audio, audio_len.clone().cpu(), batch_first=True, enforce_sorted=False)
+        packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_logits = self.forward(packed_audio)
 
         logits, logits_len = pad_packed_sequence(packed_logits, batch_first=False)
