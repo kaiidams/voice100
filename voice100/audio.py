@@ -5,7 +5,8 @@ from torch import nn
 import random
 
 __all__ = [
-    'SpectrogramAugumentation'
+    'SpectrogramAugumentation',
+    'BatchSpectrogramAugumentation'
 ]
 
 class SpectrogramAugumentation(nn.Module):
@@ -66,13 +67,72 @@ class SpectrogramAugumentation(nn.Module):
         return torch.log(torch.exp(audio) + torch.exp(noise))
 
 class BatchSpectrogramAugumentation(nn.Module):
-    def __init__(self):
+
+    def __init__(self, do_timestretch=True):
         super().__init__()
+        self.do_timestretch = do_timestretch
 
     def forward(self, audio, audio_len):
+        assert len(audio.shape) == 3
+
+        if self.do_timestretch and random.random() < 0.2:
+            audio, audio_len = self.timestretch(audio, audio_len)
         if random.random() < 0.2:
-            audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
-            x = torch.exp(audio - 1e-6) * audio_mask
-            y = torch.cat([x[1:], x[:1]])
-            return torch.log(0.9 * x + 0.1 * y + 1e-6) * audio_mask, audio_len
+            audio = self.pitchshift(audio)
+        if random.random() < 0.2:
+            audio = self.timemask(audio)
+        if random.random() < 0.2:
+            audio = self.freqmask(audio)
+        if random.random() < 0.2:
+            audio = self.mixnoise(audio)
+        if random.random() < 0.2:
+            audio = self.mixaudio(audio, audio_len)
+
         return audio, audio_len
+
+    def timestretch(self, audio, audio_len):
+        rate = 1.0 + random.random() * 0.3
+        i = (torch.arange(int(rate * audio.shape[1])) / rate).int()
+        audio = torch.index_select(audio, 1, i)
+        audio_len = (audio_len * rate).int()
+        return audio, audio_len
+
+    def pitchshift(self, audio):
+        rate = 1.0 + random.random() * 0.2
+        i = rate * torch.arange(audio.shape[2])
+        i = torch.clamp(i.int(), 0, audio.shape[2] - 1)
+        return torch.index_select(audio, 2, i)
+
+    def timemask(self, audio):
+        audio = audio.clone()
+        n = random.randint(1, 3)
+        for i in range(n):
+            t = random.randrange(0, audio.shape[1])
+            hw = random.randint(1, 20)
+            s = int(t - hw)
+            e = int(t + hw)
+            audio[:, s:e, :] = -20.0
+        return audio
+
+    def freqmask(self, audio):
+        audio = audio.clone()
+        t = random.randrange(0, audio.shape[2])
+        hw = random.randint(1, 3)
+        s = int(t - hw)
+        e = int(t + hw)
+        audio[:, :, s:e] = -20.0
+        return audio
+
+    def mixnoise(self, audio):
+        low = -5.0 + 5.0 * random.random()
+        high = -5.0 + 5.0 * random.random()
+        std = 5.0 * random.random()
+        scale = torch.linspace(low, high, 64)[None, :]
+        noise = torch.rand(audio.shape) * std + scale
+        return torch.log(torch.exp(audio) + torch.exp(noise))
+
+    def mixaudio(self, audio, audio_len):
+        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
+        x = torch.exp(audio - 1e-6) * audio_mask
+        y = torch.cat([x[1:], x[:1]])
+        return torch.log(0.9 * x + 0.1 * y + 1e-6) * audio_mask

@@ -105,7 +105,7 @@ class AudioToCharCTC(pl.LightningModule):
         return dec_out_len
 
     def _calc_batch_loss(self, batch):
-        audio, audio_len, text, text_len = batch
+        (audio, audio_len), (text, text_len) = batch
 
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)

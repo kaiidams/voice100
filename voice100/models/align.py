@@ -1,15 +1,15 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Tuple
 import torch
 from torch import nn
 import pytorch_lightning as pl
+from torch.nn.utils.rnn import PackedSequence, pack_padded_sequence, pad_packed_sequence
 
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
-    'AudioToCharCTC',
+    'AudioAlignCTC',
 ]
 
 def ctc_best_path(logits, labels):
@@ -57,16 +57,64 @@ def ctc_best_path(logits, labels):
     best_path = np.array(best_path, dtype=np.uint8)
     return logprob, best_path
 
-class LSTMAudioEncoder(nn.Module):
+class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, num_layers):
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
-        self.dense = nn.Linear(audio_size, embed_size, bias=True)
-        self.lstm = nn.LSTM(embed_size, embed_size // 2, num_layers=num_layers, dropout=0.2, bidirectional=True)
+        self.save_hyperparameters()
+        self.lstm = nn.LSTM(
+            input_size=audio_size, hidden_size=hidden_size, proj_size=vocab_size,
+            num_layers=num_layers, batch_first=False, dropout=0.2, bidirectional=True)
+        self.loss_fn = nn.CTCLoss()
+        self.batch_augment = BatchSpectrogramAugumentation()
 
-    def forward(self, audio, audio_len, enforce_sorted=False):
-        dense_out = self.dense(audio)
-        packed_dense_out = nn.utils.rnn.pack_padded_sequence(dense_out, audio_len, batch_first=True, enforce_sorted=enforce_sorted)
-        packed_lstm_out, _ = self.lstm(packed_dense_out)
-        lstm_out, lstm_out_len = nn.utils.rnn.pad_packed_sequence(packed_lstm_out, batch_first=True)
-        return lstm_out, lstm_out_len
+    def forward(self, audio: PackedSequence) -> PackedSequence:
+        lstm_out, _ = self.lstm(audio)
+        return lstm_out
+
+    def _calc_batch_loss(self, batch):
+        (audio, audio_len), (text, text_len) = batch
+
+        if self.training:
+            audio, audio_len = self.batch_augment(audio, audio_len)
+        # audio: [batch_size, audio_len, audio_size]
+        # text: [batch_size, text_len]
+        packed_audio = pack_padded_sequence(audio, audio_len, batch_first=True, enforce_sorted=False)
+        packed_logits = self.forward(packed_audio)
+
+        logits, logits_len = pad_packed_sequence(packed_logits, batch_first=False)
+        # logits: [batch_size, audio_len, vocab_size]
+
+        # logits: [audio_len, batch_size, vocab_size]
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        log_probs_len = logits_len
+        return self.loss_fn(log_probs, text, log_probs_len, text_len)
+
+    def training_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log('val_loss', loss)
+
+    def test_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log('test_loss', loss)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(),
+            lr=self.hparams.learning_rate,
+            weight_decay=0.00004)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--hidden_size', type=float, default=128)
+        parser.add_argument('--num_layers', type=int, default=2)
+        return parser

@@ -227,7 +227,7 @@ def generate_audio_text_batch(data_batch):
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
     audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
-    return audio_batch, audio_len, text_batch, text_len
+    return (audio_batch, audio_len), (text_batch, text_len)
 
 class ASRDataModule(pl.LightningDataModule):
     def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
@@ -254,7 +254,7 @@ class ASRDataModule(pl.LightningDataModule):
         os.makedirs(self.cache, exist_ok=True)
         self.train_ds = EncodedCacheDataset(
             train_ds, repeat=self.repeat, transform=transform,
-            augment=True, cachedir=self.cache)
+            augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
             valid_ds, repeat=1, transform=transform,
             augment=False, cachedir=self.cache)
