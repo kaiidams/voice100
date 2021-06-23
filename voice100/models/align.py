@@ -63,14 +63,16 @@ class AudioAlignCTC(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.lstm = nn.LSTM(
-            input_size=audio_size, hidden_size=hidden_size, proj_size=vocab_size,
+            input_size=audio_size, hidden_size=hidden_size,
             num_layers=num_layers, batch_first=False, dropout=0.2, bidirectional=True)
+        self.dense = nn.Linear(hidden_size * 2, vocab_size)
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: PackedSequence) -> PackedSequence:
         lstm_out, _ = self.lstm(audio)
-        return lstm_out
+        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out, batch_first=False)
+        return self.dense(lstm_out), lstm_out_len
 
     def _calc_batch_loss(self, batch):
         (audio, audio_len), (text, text_len) = batch
@@ -80,11 +82,7 @@ class AudioAlignCTC(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
-        packed_logits = self.forward(packed_audio)
-
-        logits, logits_len = pad_packed_sequence(packed_logits, batch_first=False)
-        # logits: [batch_size, audio_len, vocab_size]
-
+        logits, logits_len = self.forward(packed_audio)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
