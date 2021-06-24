@@ -5,7 +5,7 @@ from typing import Tuple
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
 from ..audio import BatchSpectrogramAugumentation
 
@@ -73,16 +73,7 @@ class AudioAlignCTC(pl.LightningModule):
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
-        try:
-            lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
-        except:
-            torch.save(packed_lstm_out, 'model/hoge2.pt')
-            print('****************************')
-            print(audio)
-            print('****************************')
-            print(packed_lstm_out)
-            print('****************************')
-            raise
+        lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
         return self.dense(lstm_out), lstm_out_len
 
     def _calc_batch_loss(self, batch):
@@ -119,6 +110,27 @@ class AudioAlignCTC(pl.LightningModule):
             weight_decay=0.00004)
         #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
         return optimizer#{"optimizer": optimizer, "lr_scheduler": scheduler}
+
+    def ctc_best_path(self, audio=None, audio_len=None, text=None, text_len=None, logits=None):
+        # logits [audio_len, batch_size, vocab_size]
+        if logits is None:
+            logits, logits_len = self.forward(audio, audio_len)
+        if text is None:
+            return logits.argmax(axis=-1)
+        path = []
+        score = []
+        for i in range(logits.shape[1]):
+            one_logits_len = logits_len[i].cpu().numpy()
+            one_logits = logits[:one_logits_len, i, :].cpu().numpy()
+            one_text_len = text_len[i].cpu().numpy()
+            one_text = text[i, :one_text_len].cpu().numpy()
+            one_score, one_path = ctc_best_path(one_logits, one_text)
+            assert one_path.shape[0] == one_logits_len
+            score.append(float(one_score))
+            path.append(torch.from_numpy(one_path))
+        score = torch.tensor(one_path, dtype=torch.float32)
+        path = pad_sequence(path, batch_first=True, padding_value=0)
+        return score, path
 
     @staticmethod
     def add_model_specific_args(parent_parser):
