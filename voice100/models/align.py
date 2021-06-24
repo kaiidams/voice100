@@ -97,6 +97,8 @@ class AudioAlignCTC(pl.LightningModule):
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
+        print(self.optimizers().state_dict['lr'])
+        self.optimizers().state_dict['lr'] = 0.001
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
         return loss
@@ -114,8 +116,8 @@ class AudioAlignCTC(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+        return optimizer#{"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
