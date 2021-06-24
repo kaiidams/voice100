@@ -22,5 +22,5 @@ for i in range(10):
                 audio1 = torch.index_select(audio, 1, i)
                 audio_len1 = (audio_len * rate).int()
             assert not (torch.any(audio1.isnan()))
-            assert (torch.max(audio_len1) > 0)
+            assert (torch.min(audio_len1) > 0)
             assert (torch.max(audio_len1) == audio1.shape[1]), f'{audio_len1} {audio1.shape}'

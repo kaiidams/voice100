@@ -74,6 +74,7 @@ class AudioAlignCTC(pl.LightningModule):
         try:
             lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
         except:
+            torch.save(packed_lstm_out, '/content/drive/hoge.pt')
             print('****************************')
             print(audio)
             print('****************************')
