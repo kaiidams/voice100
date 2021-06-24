@@ -97,8 +97,7 @@ class AudioAlignCTC(pl.LightningModule):
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
-        print(self.optimizers().state_dict['lr'])
-        self.optimizers().state_dict['lr'] = 0.001
+        self.optimizers().param_groups[0]['lr'] = 0.001
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
         return loss
