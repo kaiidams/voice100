@@ -198,7 +198,7 @@ class AudioToAudioProcessor(nn.Module):
 
 BLANK_IDX = 0
 
-def get_dataset(dataset):
+def get_dataset(dataset: str) -> Dataset:
     chained_ds = None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
@@ -231,7 +231,11 @@ def generate_audio_text_batch(data_batch):
     return (audio_batch, audio_len), (text_batch, text_len)
 
 class ASRDataModule(pl.LightningDataModule):
-    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+
+    def __init__(
+        self, dataset: str, valid_ratio: float, language: str,
+        repeat: int, cache: str, batch_size: int
+        ):
         super().__init__()
         self.dataset = dataset
         self.valid_ratio = valid_ratio
@@ -255,10 +259,10 @@ class ASRDataModule(pl.LightningDataModule):
         os.makedirs(self.cache, exist_ok=True)
         self.train_ds = EncodedCacheDataset(
             train_ds, b'asr', repeat=self.repeat, transform=transform,
-            augment=False, cachedir=self.cache)
+            cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
             valid_ds, b'asr', repeat=1, transform=transform,
-            augment=False, cachedir=self.cache)
+            cachedir=self.cache)
 
     def train_dataloader(self):
         return DataLoader(

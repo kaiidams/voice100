@@ -9,21 +9,24 @@ __all__ = [
     'BatchSpectrogramAugumentation'
 ]
 
+AUGUMENT_RATE = 0.2
+
 class SpectrogramAugumentation(nn.Module):
     def __init__(self):
         super().__init__()
 
+    @torch.no_grad()
     def forward(self, audio):
         assert len(audio.shape) == 2
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             pass # audio = self.timestretch(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.pitchshift(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.timemask(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.freqmask(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.mixnoise(audio)
         return audio        
 
@@ -72,9 +75,9 @@ class BatchSpectrogramAugumentation(nn.Module):
         super().__init__()
         self.do_timestretch = do_timestretch
 
+    @torch.no_grad()
     def forward(self, audio, audio_len):
         assert len(audio.shape) == 3
-        AUGUMENT_RATE = 0.2
 
         if self.do_timestretch and random.random() < AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
@@ -135,5 +138,5 @@ class BatchSpectrogramAugumentation(nn.Module):
     def mixaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
         x = torch.exp(audio) * audio_mask
-        y = torch.cat([x[1:], x[:1]])
-        return torch.log(0.9 * x + 0.1 * y) * audio_mask
+        y = torch.cat([x[1:], x[:1]], axis=0)
+        return torch.log(0.9 * x + 0.1 * y + 1e-15) * audio_mask
