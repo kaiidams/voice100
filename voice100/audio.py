@@ -95,7 +95,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         return audio, audio_len
 
     def timestretch(self, audio, audio_len):
-        rate = 1.0 + random.random() * 0.3
+        rate = 0.5 + random.random()
         i = (torch.arange(int(audio.shape[1] * rate), device=audio.device) / rate).int()
         audio = torch.index_select(audio, 1, i)
         audio_len = (audio_len * rate).int()
