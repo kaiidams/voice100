@@ -70,8 +70,16 @@ class AudioAlignCTC(pl.LightningModule):
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: PackedSequence) -> PackedSequence:
-        lstm_out, _ = self.lstm(audio)
-        lstm_out, lstm_out_len = pad_packed_sequence(lstm_out, batch_first=False)
+        packed_lstm_out, _ = self.lstm(audio)
+        try:
+            lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
+        except:
+            print('****************************')
+            print(audio)
+            print('****************************')
+            print(packed_lstm_out)
+            print('****************************')
+            raise
         return self.dense(lstm_out), lstm_out_len
 
     def _calc_batch_loss(self, batch):

@@ -29,7 +29,7 @@ class SpectrogramAugumentation(nn.Module):
 
     def timestretch(self, audio):
         rate = 1.0 + random.random() * 0.3
-        i = (torch.arange(int(rate * audio.shape[0])) / rate).int()
+        i = (torch.arange(int(audio.shape[0] * rate)) / rate).int()
         return torch.index_select(audio, 0, i)
 
     def pitchshift(self, audio):
@@ -74,33 +74,34 @@ class BatchSpectrogramAugumentation(nn.Module):
 
     def forward(self, audio, audio_len):
         assert len(audio.shape) == 3
+        AUGUMENT_RATE = 1 + 0.2
 
-        if self.do_timestretch and random.random() < 0.2:
+        if self.do_timestretch and random.random() < AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.pitchshift(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.timemask(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.freqmask(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.mixnoise(audio)
-        if random.random() < 0.2:
+        if random.random() < AUGUMENT_RATE:
             audio = self.mixaudio(audio, audio_len)
 
         return audio, audio_len
 
     def timestretch(self, audio, audio_len):
         rate = 1.0 + random.random() * 0.3
-        i = (torch.arange(int(rate * audio.shape[1]), device=audio.device) / rate).int()
+        i = (torch.arange(int(audio.shape[1] * rate), device=audio.device) / rate).int()
         audio = torch.index_select(audio, 1, i)
         audio_len = (audio_len * rate).int()
         return audio, audio_len
 
     def pitchshift(self, audio):
         rate = 1.0 + random.random() * 0.2
-        i = rate * torch.arange(audio.shape[2], device=audio.device)
-        i = torch.clamp(i.int(), 0, audio.shape[2] - 1)
+        i = (torch.arange(audio.shape[2], device=audio.device) * rate).int()
+        i = torch.clamp(i, 0, audio.shape[2] - 1)
         return torch.index_select(audio, 2, i)
 
     def timemask(self, audio):
