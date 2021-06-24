@@ -74,7 +74,7 @@ class BatchSpectrogramAugumentation(nn.Module):
 
     def forward(self, audio, audio_len):
         assert len(audio.shape) == 3
-        AUGUMENT_RATE = 1 + 0.2
+        AUGUMENT_RATE = 0.2
 
         if self.do_timestretch and random.random() < AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
@@ -134,6 +134,6 @@ class BatchSpectrogramAugumentation(nn.Module):
 
     def mixaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
-        x = torch.exp(audio - 1e-6) * audio_mask
+        x = torch.exp(audio) * audio_mask
         y = torch.cat([x[1:], x[:1]])
-        return torch.log(0.9 * x + 0.1 * y + 1e-6) * audio_mask
+        return torch.log(0.9 * x + 0.1 * y) * audio_mask

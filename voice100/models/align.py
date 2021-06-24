@@ -64,7 +64,7 @@ class AudioAlignCTC(pl.LightningModule):
         self.save_hyperparameters()
         self.lstm = nn.LSTM(
             input_size=audio_size, hidden_size=hidden_size,
-            num_layers=num_layers, batch_first=False, dropout=0.2, bidirectional=True)
+            num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
