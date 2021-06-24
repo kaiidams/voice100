@@ -79,8 +79,9 @@ class LibriSpeechDataset(Dataset):
         return audiopath, text
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, transform, repeat=1, augment=False, cachedir=None):
+    def __init__(self, dataset, salt, transform, repeat=1, augment=False, cachedir=None):
         self._dataset = dataset
+        self._salt = salt
         self._cachedir = cachedir
         self._repeat = repeat
         self._augment = augment
@@ -93,7 +94,7 @@ class EncodedCacheDataset(Dataset):
     def __getitem__(self, index):
         orig_index = index // self._repeat
         data = self._dataset[orig_index]
-        h = hashlib.sha1()
+        h = hashlib.sha1(self._salt)
         h.update((data[0] + '@' + data[1]).encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
@@ -253,10 +254,10 @@ class ASRDataModule(pl.LightningDataModule):
 
         os.makedirs(self.cache, exist_ok=True)
         self.train_ds = EncodedCacheDataset(
-            train_ds, repeat=self.repeat, transform=transform,
+            train_ds, b'asr', repeat=self.repeat, transform=transform,
             augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
-            valid_ds, repeat=1, transform=transform,
+            valid_ds, b'asr', repeat=1, transform=transform,
             augment=False, cachedir=self.cache)
 
     def train_dataloader(self):
@@ -316,10 +317,10 @@ class VCDataModule(pl.LightningDataModule):
         os.makedirs(self.cache, exist_ok=True)
 
         self.train_ds = EncodedCacheDataset(
-            train_ds, repeat=self.repeat, transform=transform,
-            augment=True, cachedir=self.cache)
+            train_ds, b'vc', repeat=self.repeat, transform=transform,
+            augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
-            valid_ds, repeat=1, transform=transform,
+            valid_ds, b'vc', repeat=1, transform=transform,
             augment=False, cachedir=self.cache)
 
     def train_dataloader(self):

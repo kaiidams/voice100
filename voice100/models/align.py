@@ -85,7 +85,7 @@ class AudioAlignCTC(pl.LightningModule):
     def _calc_batch_loss(self, batch):
         (audio, audio_len), (text, text_len) = batch
 
-        if self.training:
+        if False and self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
