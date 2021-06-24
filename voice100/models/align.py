@@ -1,10 +1,11 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
+from typing import Tuple
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from torch.nn.utils.rnn import PackedSequence, pack_padded_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from ..audio import BatchSpectrogramAugumentation
 
@@ -69,12 +70,13 @@ class AudioAlignCTC(pl.LightningModule):
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
-    def forward(self, audio: PackedSequence) -> PackedSequence:
-        packed_lstm_out, _ = self.lstm(audio)
+    def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
+        packed_lstm_out, _ = self.lstm(packed_audio)
         try:
             lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
         except:
-            torch.save(packed_lstm_out, 'model/hoge.pt')
+            torch.save(packed_lstm_out, 'model/hoge2.pt')
             print('****************************')
             print(audio)
             print('****************************')
@@ -90,8 +92,7 @@ class AudioAlignCTC(pl.LightningModule):
             audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
-        packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
-        logits, logits_len = self.forward(packed_audio)
+        logits, logits_len = self.forward(audio, audio_len)
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
