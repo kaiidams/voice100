@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 
 from .datasets import ASRDataModule
 from .text import DEFAULT_VOCAB_SIZE
-from .models.asr import AudioToCharCTC
+from .models.align import AudioAlignCTC
 
 MELSPEC_DIM = 64
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
@@ -23,13 +23,13 @@ def cli_main():
     parser.add_argument('--language', default='en', type=str, help='Language')
     parser.add_argument('--export', type=str, help='Export to ONNX')
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioToCharCTC.add_model_specific_args(parser)    
+    parser = AudioAlignCTC.add_model_specific_args(parser)    
     args = parser.parse_args()
     args.valid_ratio = 0.1
     args.dataset_repeat = 5
 
     if args.export:
-        model = AudioToCharCTC.load_from_checkpoint(args.resume_from_checkpoint)
+        model = AudioAlignCTC.load_from_checkpoint(args.resume_from_checkpoint)
         audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
         model.eval()
 
@@ -52,11 +52,11 @@ def cli_main():
             repeat=args.dataset_repeat,
             cache=args.cache,
             batch_size=args.batch_size)
-        model = AudioToCharCTC(
+        model = AudioAlignCTC(
             audio_size=MELSPEC_DIM,
             vocab_size=VOCAB_SIZE,
-            embed_size=args.embed_size,
             hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
             learning_rate=args.learning_rate)
         trainer = pl.Trainer.from_argparse_args(args)
         trainer.fit(model, data)

@@ -14,6 +14,7 @@ from torchaudio.transforms import MelSpectrogram
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
+import hashlib
 
 from .audio import SpectrogramAugumentation
 
@@ -78,13 +79,14 @@ class LibriSpeechDataset(Dataset):
         return audiopath, text
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, transform, repeat=1, augment=False, cachedir=None):
+    def __init__(self, dataset, salt, transform, repeat=1, augment=False, cachedir=None):
         self._dataset = dataset
+        self._salt = salt
         self._cachedir = cachedir
         self._repeat = repeat
         self._augment = augment
         self._transform = transform
-        self._augment = SpectrogramAugumentation()
+        self._spec_augment = SpectrogramAugumentation()
 
     def __len__(self):
         return len(self._dataset) * self._repeat
@@ -92,7 +94,9 @@ class EncodedCacheDataset(Dataset):
     def __getitem__(self, index):
         orig_index = index // self._repeat
         data = self._dataset[orig_index]
-        cachefile = 'encoded_%016x.pt' % (abs(hash(data)))
+        h = hashlib.sha1(self._salt)
+        h.update((data[0] + '@' + data[1]).encode('utf-8'))
+        cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
         encoded_data = None
         if os.path.exists(cachefile):
@@ -108,7 +112,7 @@ class EncodedCacheDataset(Dataset):
                 print(ex)
         if self._augment:
             encoded_audio, encoded_text = encoded_data
-            encoded_audio = self._augment(encoded_audio)
+            encoded_audio = self._spec_augment(encoded_audio)
             return encoded_audio, encoded_text
         return encoded_data
 
@@ -154,10 +158,12 @@ class AudioToCharProcessor(nn.Module):
 
 class AudioToAudioProcessor(nn.Module):
 
-    def __init__(self):
+    def __init__(self, target_sample_rate=22050):
         from voice100.vocoder import WORLDVocoder
+
         super().__init__()
         self.sample_rate = 16000
+        self.target_sample_rate = target_sample_rate
         self.n_fft = 512
         self.win_length = 400
         self.hop_length = 160
@@ -167,25 +173,32 @@ class AudioToAudioProcessor(nn.Module):
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
         ]
-        self._transform = MelSpectrogram(
+        self.target_effects = [
+            ["remix", "1"],
+            ["rate", f"{self.target_sample_rate}"],
+        ]
+        self.transform = MelSpectrogram(
             sample_rate=self.sample_rate,
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        self._vocoder = WORLDVocoder()
+
+        self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        melspec = self._transform(waveform)
-        melspec = torch.transpose(melspec[0, :, :], 0, 1)
-        melspec = torch.log(melspec + self.log_offset)
-        encoded = self._vocoder(waveform[0])
-        return melspec, encoded
+        audio = self.transform(waveform)
+        audio = torch.transpose(audio[0, :, :], 0, 1)
+        audio = torch.log(audio + self.log_offset)
+        
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        target = self._vocoder(waveform[0])
+        return audio, target
 
 BLANK_IDX = 0
 
-def get_dataset(dataset):
+def get_dataset(dataset: str) -> Dataset:
     chained_ds = None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
@@ -213,12 +226,16 @@ def generate_audio_text_batch(data_batch):
         text_batch.append(text_item)
     audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=BLANK_IDX)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
-    return audio_batch, audio_len, text_batch, text_len
+    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
+    return (audio_batch, audio_len), (text_batch, text_len)
 
 class ASRDataModule(pl.LightningDataModule):
-    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+
+    def __init__(
+        self, dataset: str, valid_ratio: float, language: str,
+        repeat: int, cache: str, batch_size: int
+        ):
         super().__init__()
         self.dataset = dataset
         self.valid_ratio = valid_ratio
@@ -240,8 +257,12 @@ class ASRDataModule(pl.LightningDataModule):
         transform = AudioToCharProcessor(self.language)
 
         os.makedirs(self.cache, exist_ok=True)
-        self.train_ds = EncodedCacheDataset(train_ds, repeat=self.repeat, transform=transform, augment=True, cachedir=self.cache)
-        self.valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=self.cache)
+        self.train_ds = EncodedCacheDataset(
+            train_ds, b'asr', repeat=self.repeat, transform=transform,
+            cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(
+            valid_ds, b'asr', repeat=1, transform=transform,
+            cachedir=self.cache)
 
     def train_dataloader(self):
         return DataLoader(
@@ -250,6 +271,7 @@ class ASRDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             collate_fn=generate_audio_text_batch)
+
     def val_dataloader(self):
         return DataLoader(
             self.valid_ds,
@@ -273,32 +295,50 @@ def generate_audio_audio_batch(data_batch):
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
     return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
 
-def get_vc_input_fn(args, num_workers=2):
-    ds = get_dataset(args)
+class VCDataModule(pl.LightningDataModule):
 
-    # Split the dataset
-    total_len = len(ds)
-    valid_len = int(total_len * args.valid_ratio)
-    train_len = total_len - valid_len
-    train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+        super().__init__()
+        self.dataset = dataset
+        self.valid_ratio = valid_ratio
+        self.language = language
+        self.repeat = repeat
+        self.cache = cache
+        self.batch_size = batch_size
+        self.num_workers = 2
 
-    transform = AudioToAudioProcessor()
+    def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset)
 
-    os.makedirs(args.cache, exist_ok=True)
-    train_ds = EncodedCacheDataset(train_ds, repeat=args.repeat, transform=transform, augment=True, cachedir=args.cache)
-    valid_ds = EncodedCacheDataset(valid_ds, repeat=1, transform=transform, augment=False, cachedir=args.cache)
+        # Split the dataset
+        total_len = len(ds)
+        valid_len = int(total_len * self.valid_ratio)
+        train_len = total_len - valid_len
+        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-    train_dataloader = DataLoader(
-        train_ds,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        collate_fn=generate_audio_audio_batch)
-    valid_dataloader = DataLoader(
-        valid_ds,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        collate_fn=generate_audio_audio_batch)
+        transform = AudioToAudioProcessor()
 
-    return train_dataloader, valid_dataloader
+        os.makedirs(self.cache, exist_ok=True)
+
+        self.train_ds = EncodedCacheDataset(
+            train_ds, b'vc', repeat=self.repeat, transform=transform,
+            augment=False, cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(
+            valid_ds, b'vc', repeat=1, transform=transform,
+            augment=False, cachedir=self.cache)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_audio_batch)
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_audio_batch)
