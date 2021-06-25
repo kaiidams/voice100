@@ -4,6 +4,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 """
 
 import os
+from argparse import ArgumentParser
 from glob import glob
 from typing import Optional
 from voice100.text import BasicPhonemizer, CharTokenizer
@@ -279,6 +280,28 @@ class ASRDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             collate_fn=generate_audio_text_batch)
+
+    @staticmethod
+    def add_data_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
+        parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
+        parser.add_argument('--cache', default='./cache', help='Cache directory')
+        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+        parser.add_argument('--language', default='en', type=str, help='Language')
+        parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
+        parser.add_argument('--dataset_repeat', default=5, type=str, help='Multiply training data')
+        return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return ASRDataModule(
+            dataset=args.dataset,
+            valid_ratio=args.valid_ratio,
+            language=args.language,
+            repeat=args.dataset_repeat,
+            cache=args.cache,
+            batch_size=args.batch_size)
 
 def generate_audio_audio_batch(data_batch):
     melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
