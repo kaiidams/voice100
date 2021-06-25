@@ -205,6 +205,9 @@ def get_dataset(dataset: str) -> Dataset:
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
+        elif dataset == 'lj_speech':
+            root = './data/LJSpeech-1.1'
+            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = MetafileDataset(root)
