@@ -19,8 +19,6 @@ def cli_main():
     parser = ASRDataModule.add_data_specific_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)    
     args = parser.parse_args()
-    args.valid_ratio = 0.1
-    args.dataset_repeat = 5
 
     data = ASRDataModule.from_argparse_args(args)
     model = AudioToCharCTC(

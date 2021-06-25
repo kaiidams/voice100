@@ -144,7 +144,7 @@ class AudioToCharProcessor(nn.Module):
             self._phonemizer = JapanesePhonemizer()
         else:
             self._phonemizer = BasicPhonemizer()
-        self._encoder = CharTokenizer()
+        self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
@@ -153,7 +153,7 @@ class AudioToCharProcessor(nn.Module):
         audio = torch.log(audio + self.log_offset)
 
         phoneme = self._phonemizer(text)
-        encoded = self._encoder.encode(phoneme)
+        encoded = self.encoder.encode(phoneme)
 
         return audio, encoded
 
@@ -300,6 +300,53 @@ class ASRDataModule(pl.LightningDataModule):
             valid_ratio=args.valid_ratio,
             language=args.language,
             repeat=args.dataset_repeat,
+            cache=args.cache,
+            batch_size=args.batch_size)
+
+class AlignInferDataModule(pl.LightningDataModule):
+
+    def __init__(
+        self, dataset: str, language: str,
+        cache: str, batch_size: int
+        ):
+        super().__init__()
+        self.dataset = dataset
+        self.language = language
+        self.cache = cache
+        self.batch_size = batch_size
+        self.num_workers = 2
+
+    def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset)
+        self.transform = AudioToCharProcessor(self.language)
+        os.makedirs(self.cache, exist_ok=True)
+        self.infer_ds = EncodedCacheDataset(
+            ds, b'asr', repeat=1, transform=self.transform,
+            cachedir=self.cache)
+
+    def infer_dataloader(self):
+        return DataLoader(
+            self.infer_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=generate_audio_text_batch)
+
+    @staticmethod
+    def add_data_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
+        parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
+        parser.add_argument('--cache', default='./cache', help='Cache directory')
+        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+        parser.add_argument('--language', default='en', type=str, help='Language')
+        return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return AlignInferDataModule(
+            dataset=args.dataset,
+            language=args.language,
             cache=args.cache,
             batch_size=args.batch_size)
 

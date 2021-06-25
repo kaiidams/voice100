@@ -111,6 +111,7 @@ class AudioAlignCTC(pl.LightningModule):
         #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
         return optimizer#{"optimizer": optimizer, "lr_scheduler": scheduler}
 
+    @torch.no_grad()
     def ctc_best_path(self, audio=None, audio_len=None, text=None, text_len=None, logits=None):
         # logits [audio_len, batch_size, vocab_size]
         if logits is None:
