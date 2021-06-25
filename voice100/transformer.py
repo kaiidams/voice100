@@ -1,307 +1,340 @@
-# This file is modified from https://github.com/tensorflow/docs/blob/master/site/en/tutorials/text/transformer.ipynb
+# Copyright 2020 Katsuya Iida. All rights reserved.
 
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import tensorflow as tf
+import torch
+from torch import nn
 import numpy as np
+import math
 
-def get_angles(pos, i, d_model):
-  angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
-  return pos * angle_rates
+# Very low numbers to represent -infinity. We do not actually use -Inf, since we
+# want to be able to multiply these values by zero to get zero. (-Inf * 0 = NaN)
+_NEG_INF_FP32 = -1e9
+_NEG_INF_FP16 = np.finfo(np.float16).min
 
-def positional_encoding(position, d_model):
-  angle_rads = get_angles(np.arange(position)[:, np.newaxis],
-                          np.arange(d_model)[np.newaxis, :],
-                          d_model)
-  
-  # apply sin to even indices in the array; 2i
-  angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-  
-  # apply cos to odd indices in the array; 2i+1
-  angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-    
-  pos_encoding = angle_rads[np.newaxis, ...]
-    
-  return tf.cast(pos_encoding, dtype=tf.float32)
+# Variables
 
-def create_look_ahead_mask(size):
-  mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
-  return mask  # (seq_len, seq_len)
+variable_space = ''
+trainable_variables = {}
 
-def scaled_dot_product_attention(q, k, v, mask):
-  """Calculate the attention weights.
-  q, k, v must have matching leading dimensions.
-  k, v must have matching penultimate dimension, i.e.: seq_len_k = seq_len_v.
-  The mask has different shapes depending on its type(padding or look ahead) 
-  but it must be broadcastable for addition.
-  
+class _VariableScope:
+  def __init__(self, name):
+    self.name = name
+  def __enter__(self):
+    global variable_space
+    self.parent = variable_space
+    if variable_space:
+      variable_space += '/' + self.name
+    else:
+      variable_space = self.name
+  def __exit__(self, a, b, c):
+    global variable_space
+    variable_space = self.parent
+
+def variable_scope(name):
+  return _VariableScope(name)
+
+def get_variable(name):
+  return trainable_variables[variable_space + '/' + name]
+
+def set_variable(name, value):
+  trainable_variables[variable_space + '/' + name] = value
+
+def set_variables(vars):
+  global trainable_variables
+  trainable_variables = {
+    k: torch.nn.Parameter(torch.tensor(v, dtype=torch.float32), requires_grad=False)
+    for k, v in vars.items()
+  }
+
+def list_variables():
+  return [
+    (k, v.shape)
+    for k, v in trainable_variables.items()
+  ]
+
+# Misc
+
+def layer_norm(inputs, epsilon=0.001):
+  with variable_scope('layer_normalization'):
+    mean = torch.mean(inputs, axis=-1)[:, :, None] 
+    var = torch.mean((inputs - mean) ** 2, axis=-1)[:, :, None]
+    norm_inputs = (inputs - mean) / torch.sqrt(var + epsilon)
+    gamma = get_variable('gamma')
+    beta = get_variable('beta')
+    return gamma * norm_inputs + beta
+
+def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activation=None):
+  with variable_scope(name):
+    kernel = get_variable('kernel')
+    y = torch.einsum(subscripts, inputs, kernel)
+    if use_bias:
+      bias = get_variable('bias')
+      y += bias
+    if activation is not None:
+      y = activation(y)
+    return y
+
+# Transformer layers
+
+class EmbeddingSharedWeights(nn.Module):
+  __constants__ = ['vocab_size', 'hidden_size']
+  voacb_size: int
+  hidden_size: int
+
+  def __init__(self, vocab_size, hidden_size):
+    super(EmbeddingSharedWeights, self).__init__()
+    self.vocab_size = vocab_size
+    self.hidden_size = hidden_size
+    self.shared_weights = torch.nn.Parameter(torch.Tensor(vocab_size, hidden_size), requires_grad=False)
+
+  def embedding(self, inputs):
+    embedded_inputs = self.shared_weights[inputs, :]
+    embedded_inputs *= self.hidden_size ** 0.5
+    return embedded_inputs
+
+  def linear(self, inputs):
+    batch_size = -1 # torch.shape(inputs)[0]
+    length = inputs.shape[1]
+    x = torch.reshape(inputs, [-1, self.hidden_size])
+    logits = torch.matmul(x, self.shared_weights.transpose(0, 1))
+    return torch.reshape(logits, [batch_size, length, self.vocab_size])
+
+def get_padding_bias(x, padding_value=0, dtype=torch.float32):
+  neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
+  padding = (x == padding_value).to(dtype)
+  attention_bias = padding * neg_inf
+  attention_bias = attention_bias[:,None,None,:]
+  return attention_bias
+
+def get_decoder_self_attention_bias(length, dtype=torch.float32):
+  neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
+  r = torch.arange(0, length)
+  y = (torch.reshape(r, [-1, 1]) < torch.reshape(r, [1, -1])).to(dtype) * neg_inf
+  return y[None, None, :, :]
+
+def get_decoder_self_attention_bias_v2(length, dtype=torch.float32):
+  """Calculate bias for decoder that maintains model's autoregressive property.
+
+  Creates a tensor that masks out locations that correspond to illegal
+  connections, so prediction at position i cannot draw information from future
+  positions.
+
   Args:
-    q: query shape == (..., seq_len_q, depth)
-    k: key shape == (..., seq_len_k, depth)
-    v: value shape == (..., seq_len_v, depth_v)
-    mask: Float tensor with shape broadcastable 
-          to (..., seq_len_q, seq_len_k). Defaults to None.
-    
+    length: int length of sequences in batch.
+    dtype: The dtype of the return value.
+
   Returns:
-    output, attention_weights
+    float tensor of shape [1, 1, length, length]
   """
+  neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
+  with torch.name_scope("decoder_self_attention_bias"):
+    valid_locs = torch.linalg.band_part(torch.ones([length, length], dtype=dtype),
+                                     -1, 0)
+    valid_locs = torch.reshape(valid_locs, [1, 1, length, length])
+    decoder_bias = neg_inf * (1.0 - valid_locs)
+  return decoder_bias
 
-  matmul_qk = tf.matmul(q, k, transpose_b=True)  # (..., seq_len_q, seq_len_k)
-  
-  # scale matmul_qk
-  dk = tf.cast(tf.shape(k)[-1], tf.float32)
-  scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
+def get_position_encoding(
+    length, hidden_size, min_timescale=1.0, max_timescale=1.0e4):
+  """Return positional encoding.
 
-  # add the mask to the scaled tensor.
-  if mask is not None:
-    scaled_attention_logits += (mask * -1e9)  
+  Calculates the position encoding as a mix of sine and cosine functions with
+  geometrically increasing wavelengths.
+  Defined and formulized in Attention is All You Need, section 3.5.
 
-  # softmax is normalized on the last axis (seq_len_k) so that the scores
-  # add up to 1.
-  attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)  # (..., seq_len_q, seq_len_k)
+  Args:
+    length: Sequence length.
+    hidden_size: Size of the
+    min_timescale: Minimum scale that will be applied at each position
+    max_timescale: Maximum scale that will be applied at each position
 
-  output = tf.matmul(attention_weights, v)  # (..., seq_len_q, depth_v)
+  Returns:
+    Tensor with shape [length, hidden_size]
+  """
+  # We compute the positional encoding in float32 even if the model uses
+  # float16, as many of the ops used, like log and exp, are numerically unstable
+  # in float16.
+  position = torch.arange(0, length).to(torch.float32)
+  num_timescales = hidden_size // 2
+  log_timescale_increment = (
+      math.log(float(max_timescale) / float(min_timescale)) /
+      (num_timescales - 1))
+  inv_timescales = min_timescale * torch.exp(
+      torch.arange(0, num_timescales).to(torch.float32) * -log_timescale_increment)
+  scaled_time = position[:, None] * inv_timescales[None, :]
+  signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], axis=1)
+  return signal
 
-  return output, attention_weights
+def pre_post_processing_wrapper(layer, x, *args):
+  with variable_scope("pre_post_processing_wrapper"):
+    y = layer_norm(x, epsilon=1e-6)
+    y = layer(y, *args)
+    return x + y
 
-class MultiHeadAttention(tf.keras.layers.Layer):
-  def __init__(self, d_model, num_heads):
-    super(MultiHeadAttention, self).__init__()
-    self.num_heads = num_heads
-    self.d_model = d_model
-    
-    assert d_model % self.num_heads == 0
-    
-    self.depth = d_model // self.num_heads
-    
-    self.wq = tf.keras.layers.Dense(d_model)
-    self.wk = tf.keras.layers.Dense(d_model)
-    self.wv = tf.keras.layers.Dense(d_model)
-    
-    self.dense = tf.keras.layers.Dense(d_model)
-        
-  def split_heads(self, x, batch_size):
-    """Split the last dimension into (num_heads, depth).
-    Transpose the result such that the shape is (batch_size, num_heads, seq_len, depth)
-    """
-    x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
-    return tf.transpose(x, perm=[0, 2, 1, 3])
-    
-  def call(self, v, k, q, mask):
-    batch_size = tf.shape(q)[0]
-    
-    q = self.wq(q)  # (batch_size, seq_len, d_model)
-    k = self.wk(k)  # (batch_size, seq_len, d_model)
-    v = self.wv(v)  # (batch_size, seq_len, d_model)
-    
-    q = self.split_heads(q, batch_size)  # (batch_size, num_heads, seq_len_q, depth)
-    k = self.split_heads(k, batch_size)  # (batch_size, num_heads, seq_len_k, depth)
-    v = self.split_heads(v, batch_size)  # (batch_size, num_heads, seq_len_v, depth)
-    
-    # scaled_attention.shape == (batch_size, num_heads, seq_len_q, depth)
-    # attention_weights.shape == (batch_size, num_heads, seq_len_q, seq_len_k)
-    scaled_attention, attention_weights = scaled_dot_product_attention(
-        q, k, v, mask)
-    
-    scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])  # (batch_size, seq_len_q, num_heads, depth)
+def self_attention_layer(query_input, bias, name="self_attention", **args):
+  return attention_layer(query_input, query_input, bias, name=name, **args)
 
-    concat_attention = tf.reshape(scaled_attention, 
-                                  (batch_size, -1, self.d_model))  # (batch_size, seq_len_q, d_model)
+def attention_layer(query_input, source_input, bias, name="attention", hidden_size=512, num_heads=8):
+  with variable_scope(name):
+    query = dense_layer('query', query_input, use_bias=False)
+    key = dense_layer('key', source_input, use_bias=False)
+    value = dense_layer('value', source_input, use_bias=False)
 
-    output = self.dense(concat_attention)  # (batch_size, seq_len_q, d_model)
-        
-    return output, attention_weights
+    depth = (hidden_size // num_heads)
+    query *= depth ** -0.5
 
-def point_wise_feed_forward_network(d_model, dff):
-  return tf.keras.Sequential([
-      tf.keras.layers.Dense(dff, activation='relu'),  # (batch_size, seq_len, dff)
-      tf.keras.layers.Dense(d_model)  # (batch_size, seq_len, d_model)
-  ])
+    logits = torch.einsum("btnh,bfnh->bnft", key, query)
+    if bias is not None:
+      logits += bias
+    weights = torch.softmax(logits, dim=3)
+    attention_output = torch.einsum("bnft,btnh->bfnh", weights, value)
 
-class EncoderLayer(tf.keras.layers.Layer):
-  def __init__(self, d_model, num_heads, dff, rate=0.1):
-    super(EncoderLayer, self).__init__()
+    attention_output = dense_layer('output_transform', attention_output,
+                     subscripts='abcd,cde->abe',
+                     use_bias=False)
+  return attention_output
 
-    self.mha = MultiHeadAttention(d_model, num_heads)
-    self.ffn = point_wise_feed_forward_network(d_model, dff)
+def feed_forward_network(x):
+  with variable_scope("feed_forward_network"):
+    output = dense_layer('filter_layer', x, subscripts='abc,cd->abd', activation=torch.relu)
+    output = dense_layer('output_layer', output, subscripts='abc,cd->abd')
+  return output
 
-    self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-    self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-    
-    self.dropout1 = tf.keras.layers.Dropout(rate)
-    self.dropout2 = tf.keras.layers.Dropout(rate)
-    
-  def call(self, x, training, mask):
+# Transformer
 
-    attn_output, _ = self.mha(x, x, x, mask)  # (batch_size, input_seq_len, d_model)
-    attn_output = self.dropout1(attn_output, training=training)
-    out1 = self.layernorm1(x + attn_output)  # (batch_size, input_seq_len, d_model)
-    
-    ffn_output = self.ffn(out1)  # (batch_size, input_seq_len, d_model)
-    ffn_output = self.dropout2(ffn_output, training=training)
-    out2 = self.layernorm2(out1 + ffn_output)  # (batch_size, input_seq_len, d_model)
-    
-    return out2
+def encoder_stack(encoder_inputs, attention_bias, num_layers=6):
+  with variable_scope('encoder_stack'):
+    for n in range(num_layers):
+      with variable_scope("layer_%d" % n):
+        with variable_scope("self_attention"):
+          encoder_inputs = pre_post_processing_wrapper(
+            self_attention_layer,
+            encoder_inputs,
+            attention_bias)
+        with variable_scope("ffn"):
+          encoder_inputs = pre_post_processing_wrapper(
+            feed_forward_network,
+            encoder_inputs)
 
-class DecoderLayer(tf.keras.layers.Layer):
-  def __init__(self, d_model, num_heads, dff, rate=0.1):
-    super(DecoderLayer, self).__init__()
+    return layer_norm(encoder_inputs, epsilon=1e-6)
 
-    self.mha1 = MultiHeadAttention(d_model, num_heads)
-    self.mha2 = MultiHeadAttention(d_model, num_heads)
+def decoder_stack(decoder_inputs,
+          encoder_outputs,
+          decoder_self_attention_bias,
+          attention_bias,
+          num_layers=6):
+  with variable_scope('decoder_stack'):
+    for n in range(num_layers):
+      with variable_scope("layer_%d" % n):
+        with variable_scope("self_attention"):
+          decoder_inputs = pre_post_processing_wrapper(
+            self_attention_layer,
+            decoder_inputs,
+            decoder_self_attention_bias)
+        with variable_scope("encdec_attention"):
+          decoder_inputs = pre_post_processing_wrapper(
+            attention_layer,
+            decoder_inputs,
+            encoder_outputs,
+            attention_bias)
+        with variable_scope("ffn"):
+          decoder_inputs = pre_post_processing_wrapper(
+            feed_forward_network,
+            decoder_inputs)
 
-    self.ffn = point_wise_feed_forward_network(d_model, dff)
- 
-    self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-    self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-    self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-    
-    self.dropout1 = tf.keras.layers.Dropout(rate)
-    self.dropout2 = tf.keras.layers.Dropout(rate)
-    self.dropout3 = tf.keras.layers.Dropout(rate)
-    
-    
-  def call(self, x, enc_output, training, 
-           look_ahead_mask, padding_mask):
-    # enc_output.shape == (batch_size, input_seq_len, d_model)
+    return layer_norm(decoder_inputs, epsilon=1e-6)
 
-    attn1, attn_weights_block1 = self.mha1(x, x, x, look_ahead_mask)  # (batch_size, target_seq_len, d_model)
-    attn1 = self.dropout1(attn1, training=training)
-    out1 = self.layernorm1(attn1 + x)
-    
-    attn2, attn_weights_block2 = self.mha2(
-        enc_output, enc_output, out1, padding_mask)  # (batch_size, target_seq_len, d_model)
-    attn2 = self.dropout2(attn2, training=training)
-    out2 = self.layernorm2(attn2 + out1)  # (batch_size, target_seq_len, d_model)
-    
-    ffn_output = self.ffn(out2)  # (batch_size, target_seq_len, d_model)
-    ffn_output = self.dropout3(ffn_output, training=training)
-    out3 = self.layernorm3(ffn_output + out2)  # (batch_size, target_seq_len, d_model)
-    
-    return out3, attn_weights_block1, attn_weights_block2
+class TransformerEncoder(nn.Module):
+  def forward(self, inputs, embedded_inputs, hidden_size=512):
+    with variable_scope('encode'):
+      attention_bias = get_padding_bias(inputs, dtype=embedded_inputs.dtype)
+      length = embedded_inputs.shape[1]
+      pos_encoding = get_position_encoding(length, hidden_size)
+      pos_encoding = pos_encoding.to(embedded_inputs.dtype)
+      encoder_inputs = embedded_inputs + pos_encoding
 
-class Encoder(tf.keras.layers.Layer):
-  def __init__(self, num_layers, d_model, num_heads, dff, input_vocab_size,
-               maximum_position_encoding, rate=0.1):
-    super(Encoder, self).__init__()
+      return encoder_stack(encoder_inputs, attention_bias), attention_bias
 
-    self.d_model = d_model
-    self.num_layers = num_layers
-    
-    self.embedding = tf.keras.layers.Embedding(input_vocab_size, d_model)
-    self.pos_encoding = positional_encoding(maximum_position_encoding, 
-                                            self.d_model)
-    
-    
-    self.enc_layers = [EncoderLayer(d_model, num_heads, dff, rate) 
-                       for _ in range(num_layers)]
-  
-    self.dropout = tf.keras.layers.Dropout(rate)
-        
-  def call(self, x, training, mask):
+class TransformerDecoder(nn.Module):
+  def forward(self, embedded_targets, encoder_outputs, attention_bias, hidden_size=512):
+    with variable_scope("decode"):
+      length = embedded_targets.shape[1]
+      pos_encoding = get_position_encoding(length, hidden_size)
+      pos_encoding = pos_encoding.to(embedded_targets.dtype)
+      decoder_inputs = embedded_targets + pos_encoding
 
-    seq_len = tf.shape(x)[1]
-    
-    # adding embedding and position encoding.
-    x = self.embedding(x)  # (batch_size, input_seq_len, d_model)
-    x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
-    x += self.pos_encoding[:, :seq_len, :]
+      decoder_self_attention_bias = get_decoder_self_attention_bias(length, dtype=embedded_targets.dtype)
+      outputs = decoder_stack(
+        decoder_inputs,
+        encoder_outputs,
+        decoder_self_attention_bias,
+        attention_bias)
 
-    x = self.dropout(x, training=training)
-    
-    for i in range(self.num_layers):
-      x = self.enc_layers[i](x, training, mask)
-    
-    return x  # (batch_size, input_seq_len, d_model)
+    return outputs
 
-class Decoder(tf.keras.layers.Layer):
-  def __init__(self, num_layers, d_model, num_heads, dff, target_vocab_size,
-               maximum_position_encoding, rate=0.1):
-    super(Decoder, self).__init__()
+class Transformer(nn.Module):
+  __constants__ = ['vocab_size', 'hidden_size']
 
-    self.d_model = d_model
-    self.num_layers = num_layers
-    
-    self.embedding = tf.keras.layers.Embedding(target_vocab_size, d_model)
-    #self.pre_layer = tf.keras.layers.Dense(d_model, activation='tanh')
-    self.pos_encoding = positional_encoding(maximum_position_encoding, d_model)
-    
-    self.dec_layers = [DecoderLayer(d_model, num_heads, dff, rate) 
-                       for _ in range(num_layers)]
-    self.dropout = tf.keras.layers.Dropout(rate)
-    
-  def call(self, x, enc_output, training, 
-           look_ahead_mask, padding_mask):
-
-    seq_len = tf.shape(x)[1]
-    attention_weights = {}
-    
-    x = self.embedding(x)  # (batch_size, input_seq_len, d_model)
-    #x = self.pre_layer(x)  # (batch_size, target_seq_len, d_model)
-    x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
-    x += self.pos_encoding[:, :seq_len, :]
-    
-    x = self.dropout(x, training=training)
-
-    for i in range(self.num_layers):
-      x, block1, block2 = self.dec_layers[i](x, enc_output, training,
-                                             look_ahead_mask, padding_mask)
-      
-      attention_weights['decoder_layer{}_block1'.format(i+1)] = block1
-      attention_weights['decoder_layer{}_block2'.format(i+1)] = block2
-    
-    # x.shape == (batch_size, target_seq_len, d_model)
-    return x, attention_weights
-
-class Transformer(tf.keras.Model):
-  def __init__(self, num_layers, d_model, num_heads, dff, input_vocab_size, 
-               target_vocab_size, pe_input, pe_target, target_audio_dim, rate=0.1):
+  def __init__(self, arr=None):
     super(Transformer, self).__init__()
+    self.dtype = torch.float32
+    if arr is not None:
+      set_variables(arr)
+      for k, v in trainable_variables.items():
+        if k != 'encode/embedding_shared_weights/embedding_and_softmax/weights':
+          setattr(self, k.replace('/', '_'), v)
 
-    self.encoder = Encoder(num_layers, d_model, num_heads, dff, 
-                           input_vocab_size, pe_input, rate)
+  def forward(self, inputs, targets):
+    attention_bias = get_padding_bias(inputs, dtype=dtype)
+    encoder_outputs = encode(inputs, attention_bias, dtype=dtype)
+    logits = decode(targets, encoder_outputs, attention_bias, dtype=dtype)
+    return logits.argmax(axis=2).to(torch.long)
 
-    self.decoder = Decoder(num_layers, d_model, num_heads, dff, 
-                           target_vocab_size, pe_target, rate)
+class InferTransformer(Transformer):
+  __constants__ = ['vocab_size', 'hidden_size']
 
-    self.final_layer_align = tf.keras.layers.Dense(target_vocab_size)
-    self.final_layer_audio = tf.keras.layers.Dense(target_audio_dim)
+  def __init__(self, arr=None):
+    super(InferTransformer, self).__init__(arr)
+    self.vocab_size = 64003
+    self.hidden_size = 512
+    self.encode = torch.jit.trace(
+      TransformerEncoder(),
+      (torch.ones(size=(1, 1), dtype=torch.long),
+      torch.ones(size=(1, 1, 512), dtype=self.dtype)))
+    self.decode = torch.jit.trace(
+      TransformerDecoder(),
+      (torch.ones(size=(1, 1, 512), dtype=self.dtype),
+      torch.ones(size=(1, 1, 512), dtype=self.dtype),
+      torch.ones(size=(1, 1, 1), dtype=self.dtype)))
+    self.embedding_softmax_layer = torch.jit.trace_module(
+      EmbeddingSharedWeights(self.vocab_size, self.hidden_size),
+      {
+        'embedding': torch.ones(size=(1, 1), dtype=torch.long),
+        'linear': torch.ones(size=(1, 1, 512), dtype=torch.float32),
+      })
+    with torch.no_grad():
+      with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
+        self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights').detach())
 
-  def call(self, inp, tar, training, enc_padding_mask, 
-           look_ahead_mask, dec_padding_mask):
+  def forward(self, inputs, targets):
+    embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
+    encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
+    while (
+      (targets.shape[1] < torch.tensor(20, dtype=torch.long)).to(torch.long) *
+      (targets[0, -1] != torch.tensor(2, dtype=torch.long)).to(torch.long)):
+      embedded_targets = self.embedding_softmax_layer.embedding(targets)
+      decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
+      logits = self.embedding_softmax_layer.linear(decoder_outputs)
 
-    enc_output = self.encoder(inp, training, enc_padding_mask)  # (batch_size, inp_seq_len, d_model)
-    
-    # dec_output.shape == (batch_size, tar_seq_len, d_model)
-    dec_output, attention_weights = self.decoder(
-        tar, enc_output, training, look_ahead_mask, dec_padding_mask)
-    
-    final_output_align = self.final_layer_align(dec_output)  # (batch_size, tar_seq_len, target_vocab_size)
-    final_output_audio = self.final_layer_audio(dec_output)  # (batch_size, tar_seq_len, target_audio_dim)
-    
-    return final_output_align, final_output_audio, attention_weights
+      outputs = logits[:, -1:, :].argmax(dim=2).to(torch.long)
+      targets = torch.cat([
+        targets, outputs
+      ], dim=1)
+    return targets
 
-class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-  def __init__(self, d_model, warmup_steps=4000):
-    super(CustomSchedule, self).__init__()
-    
-    self.d_model = d_model
-    self.d_model = tf.cast(self.d_model, tf.float32)
+def load_model(file):
+  arr = np.load(file)
+  return Transformer(arr)
 
-    self.warmup_steps = warmup_steps
-    
-  def __call__(self, step):
-    arg1 = tf.math.rsqrt(step)
-    arg2 = step * (self.warmup_steps ** -1.5)
-    
-    return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
-
+def load_model2(file):
+  arr = np.load(file)
+  return InferTransformer(arr)
