@@ -5,8 +5,6 @@ from torch import nn
 import numpy as np
 import math
 
-# Very low numbers to represent -infinity. We do not actually use -Inf, since we
-# want to be able to multiply these values by zero to get zero. (-Inf * 0 = NaN)
 _NEG_INF_FP32 = -1e9
 _NEG_INF_FP16 = np.finfo(np.float16).min
 
@@ -98,7 +96,14 @@ class EmbeddingSharedWeights(nn.Module):
         logits = torch.matmul(x, self.shared_weights.transpose(0, 1))
         return torch.reshape(logits, [batch_size, length, self.vocab_size])
 
-def get_padding_bias(x, padding_value=0, dtype=torch.float32):
+def get_padding_bias(x: torch.Tensor, padding_value=0, dtype=torch.float32) -> torch.Tensor:
+    """
+    Args:
+        x: tensor of shape [batch_size, length]
+    Returns:
+        float tensor of shape [batch_size, 1, 1, length]
+    """
+    assert x.dim() == 2
     neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
     padding = (x == padding_value).to(dtype)
     attention_bias = padding * neg_inf
@@ -274,20 +279,32 @@ class TransformerDecoder(nn.Module):
 class Transformer(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, arr=None):
-        super(Transformer, self).__init__()
+    def __init__(self, vocab_size: int, hidden_size: int, arr=None):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
         self.dtype = torch.float32
+        self.encode = TransformerEncoder()
+        self.decode = TransformerDecoder()
+        self.embedding_softmax_layer = EmbeddingSharedWeights(self.vocab_size, self.hidden_size)
         if arr is not None:
             set_variables(arr)
             for k, v in trainable_variables.items():
                 if k != 'encode/embedding_shared_weights/embedding_and_softmax/weights':
                     setattr(self, k.replace('/', '_'), v)
+        with torch.no_grad():
+            with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
+                self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights').detach())
 
     def forward(self, inputs, targets):
-        attention_bias = get_padding_bias(inputs, dtype=dtype)
-        encoder_outputs = encode(inputs, attention_bias, dtype=dtype)
-        logits = decode(targets, encoder_outputs, attention_bias, dtype=dtype)
-        return logits.argmax(axis=2).to(torch.long)
+        embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
+        embedded_targets = self.embedding_softmax_layer.embedding(targets)
+        print(embedded_inputs.shape, embedded_inputs.shape)
+        encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
+        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
+        logits = self.embedding_softmax_layer.linear(decoder_outputs)
+        outputs = logits[:, -1:, :].argmax(dim=2).to(torch.long)
+        return logits, outputs
 
 class InferTransformer(Transformer):
     __constants__ = ['vocab_size', 'hidden_size']
@@ -333,7 +350,7 @@ class InferTransformer(Transformer):
 
 def load_model(file):
     arr = np.load(file)
-    return Transformer(arr)
+    return Transformer(64003, 512, arr)
 
 def load_model2(file):
     arr = np.load(file)
