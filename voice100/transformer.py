@@ -284,16 +284,16 @@ def attention_layer(query_input, source_input, bias, name="attention", hidden_si
 
 class FeedForwardNetwork(nn.Module):
 
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, filter_size):
         super().__init__()
         self.filter_layer = EinSumLinear(
             subscripts='abc,cd->abd',
-            weight_shape=[hidden_size, 2048],
-            bias_shape=[2048])
+            weight_shape=[hidden_size, filter_size],
+            bias_shape=[filter_size])
         self.activation = nn.ReLU()
         self.output_layer = EinSumLinear(
             subscripts='abc,cd->abd',
-            weight_shape=[2048, hidden_size],
+            weight_shape=[filter_size, hidden_size],
             bias_shape=[hidden_size])
 
     def load_numpy_state(self):
@@ -318,11 +318,11 @@ def feed_forward_network(x):
 
 class TransformerEncoderLayer(nn.Module):
 
-    def __init__(self, hidden_size: int):
+    def __init__(self, hidden_size: int, filter_size: int):
         super().__init__()
         self.hidden_size = hidden_size
         self.self_attention = PrePostProcessingWrapper(self_attention_layer, hidden_size)
-        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size), hidden_size)
+        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size), hidden_size)
 
     def load_numpy_state(self):
         with variable_scope("self_attention"):
@@ -339,13 +339,13 @@ class TransformerEncoderLayer(nn.Module):
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int):
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int):
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         layers = []
         for i in range(self.num_layers):
-            layers.append(TransformerEncoderLayer(hidden_size=hidden_size))
+            layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size))
         layers.append(nn.LayerNorm(hidden_size, eps=1e-6))
         self.layers = nn.Sequential(*layers)
 
@@ -427,12 +427,12 @@ class TransformerDecoder(nn.Module):
 class Transformer(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, vocab_size: int, hidden_size: int, num_layers: int, arr=None):
+    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, arr=None):
         super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.dtype = torch.float32
-        self.encode = TransformerEncoder(hidden_size=hidden_size, num_layers=num_layers)
+        self.encode = TransformerEncoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers)
         self.decode = TransformerDecoder(hidden_size=hidden_size, num_layers=num_layers)
         self.embedding_softmax_layer = EmbeddingSharedWeights(self.vocab_size, self.hidden_size)
         if arr is not None:
@@ -501,7 +501,7 @@ class InferTransformer(Transformer):
 
 def load_model(file):
     arr = np.load(file)
-    return Transformer(64003, 512, 6, arr)
+    return Transformer(64003, 512, 2048, 6, arr)
 
 def load_model2(file):
     arr = np.load(file)
