@@ -156,7 +156,7 @@ def get_padding_bias(x: torch.Tensor, padding_value=0, dtype=torch.float32) -> t
 
 def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
     neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
-    r = torch.arange(0, length, device)
+    r = torch.arange(0, length, device=device)
     y = (torch.reshape(r, [-1, 1]) < torch.reshape(r, [1, -1])).to(dtype) * neg_inf
     return y[None, None, :, :]
 
