@@ -21,7 +21,7 @@ class WebMatrixDataset(IterableDataset):
         self.spm_model.load(spm_path)
 
     def __len__(self):
-        return 1000
+        return 3895992 #1000
 
     def __iter__(self):
         with gzip.open(self.tsv_path, 'rt') as f:
@@ -67,7 +67,7 @@ class WebMatrixDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
+        parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
         parser.add_argument('--tsv_path', type=str, default='data/test.tsv.gz', help='Data')
         parser.add_argument('--spm_path', type=str, default='data/test-spm.model', help='SPM')
         return parser
