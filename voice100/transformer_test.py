@@ -81,11 +81,11 @@ class WebMatrixDataModule(pl.LightningDataModule):
         return data
 
 class TranslateModel(pl.LightningModule):
-    def __init__(self, vocab_size, learning_rate):
+    def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.transformer = Transformer(vocab_size, 512, 2048, 6, 8)
-        self.criteria = nn.CrossEntropyLoss()
+        self.transformer = Transformer(vocab_size, hidden_size, filter_size, num_layers, num_headers)
+        self.criteria = nn.CrossEntropyLoss(reduction='none')
         #state = torch.load('test.pt')
         #self.transformer.load_state_dict(state)
 
@@ -93,10 +93,12 @@ class TranslateModel(pl.LightningModule):
         src_ids, tgt_ids = batch
         tgt_in_ids = tgt_ids[:, 1:]
         tgt_out_ids = tgt_ids[:, :-1]
+        tgt_out_mask = (tgt_out_ids != 0).float()
 
         logits = self.transformer(src_ids, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
         loss = self.criteria(logits, tgt_out_ids)
+        loss = torch.sum(loss * tgt_out_mask) / torch.sum(tgt_out_mask)
 
         self.log('train_loss', loss)
         return loss
@@ -114,12 +116,16 @@ class TranslateModel(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--hidden_size', type=int, default=512)
+        parser.add_argument('--filter_size', type=int, default=2048)
+        parser.add_argument('--num_layers', type=int, default=6)
+        parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
@@ -127,6 +133,10 @@ class TranslateModel(pl.LightningModule):
     def from_argparse_args(args):
         return TranslateModel(
             vocab_size=args.vocab_size,
+            hidden_size=args.hidden_size,
+            filter_size=args.filter_size,
+            num_layers=args.num_layers,
+            num_headers=args.num_headers,
             learning_rate=args.learning_rate)
 
 def test():
