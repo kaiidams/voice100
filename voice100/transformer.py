@@ -74,8 +74,8 @@ def layer_norm(inputs, epsilon=0.001):
 
 def load_numpy_state_layer_norm(layer):
     with variable_scope('layer_normalization'):
-        layer.weight[:] = get_variable('gamma')
-        layer.bias[:] = get_variable('beta')
+        layer.weight.copy_(get_variable('gamma'))
+        layer.bias.copy_(get_variable('beta'))
 
 class EinSumLinear(nn.Module):
     def __init__(self, subscripts: str, weight_shape, bias_shape=None,
@@ -105,9 +105,9 @@ class EinSumLinear(nn.Module):
 
 def load_numpy_state_dense_layer(name, layer):
     with variable_scope(name):
-        layer.weight[:] = get_variable('kernel')
+        layer.weight.copy_(get_variable('kernel'))
         if layer.bias is not None:
-            layer.bias[:] = get_variable('bias')
+            layer.bias.copy_(get_variable('bias'))
 
 def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activation=None):
     with variable_scope(name):
