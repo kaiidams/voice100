@@ -5,8 +5,6 @@ from torch import nn
 import numpy as np
 import math
 
-from torch.nn.modules.normalization import LayerNorm
-
 _NEG_INF_FP32 = -1e9
 _NEG_INF_FP16 = np.finfo(np.float16).min
 
@@ -216,7 +214,6 @@ class AttentionLayer(nn.Module):
                 logits += bias
             weights = torch.softmax(logits, dim=3)
             attention_output = torch.einsum('bnft,btnh->bfnh', weights, value)
-            print(attention_output.shape)
 
             attention_output = self.output_transform(attention_output)
 
@@ -382,7 +379,7 @@ class TransformerDecoder(nn.Module):
 class Transformer(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, num_heads: int, arr=None):
+    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, num_heads: int):
         super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
@@ -390,87 +387,42 @@ class Transformer(nn.Module):
         self.encode = TransformerEncoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers, num_heads=num_heads)
         self.decode = TransformerDecoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers, num_heads=num_heads)
         self.embedding_softmax_layer = EmbeddingSharedWeights(self.vocab_size, self.hidden_size)
-        if arr is not None:
-            set_variables(arr)
-            for k, v in trainable_variables.items():
-                if k != 'encode/embedding_shared_weights/embedding_and_softmax/weights':
-                    setattr(self, k.replace('/', '_'), v)
-        with torch.no_grad():
-            with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
-                self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights').detach())
+
+    def load_numpy_state(self):
+        self.encode.load_numpy_state()
+        self.decode.load_numpy_state()
+        with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
+            self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights'))
 
     def forward(self, inputs, targets):
         embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
         embedded_targets = self.embedding_softmax_layer.embedding(targets)
-        print(embedded_inputs.shape, embedded_inputs.shape)
         encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
         decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
         logits = self.embedding_softmax_layer.linear(decoder_outputs)
         outputs = logits[:, -1:, :].argmax(dim=2).to(torch.long)
         return logits, outputs
 
-    def load_numpy_state(self):
-        self.encode.load_numpy_state()
-        self.decode.load_numpy_state()
-
-class InferTransformer(Transformer):
-    __constants__ = ['vocab_size', 'hidden_size']
-
-    def __init__(self, arr=None):
-        super(InferTransformer, self).__init__(arr)
-        self.vocab_size = 64003
-        self.hidden_size = 512
-        self.encode = torch.jit.trace(
-            TransformerEncoder(),
-            (torch.ones(size=(1, 1), dtype=torch.long),
-            torch.ones(size=(1, 1, 512), dtype=self.dtype)))
-        self.decode = torch.jit.trace(
-            TransformerDecoder(),
-            (torch.ones(size=(1, 1, 512), dtype=self.dtype),
-            torch.ones(size=(1, 1, 512), dtype=self.dtype),
-            torch.ones(size=(1, 1, 1), dtype=self.dtype)))
-        self.embedding_softmax_layer = torch.jit.trace_module(
-            EmbeddingSharedWeights(self.vocab_size, self.hidden_size),
-            {
-                'embedding': torch.ones(size=(1, 1), dtype=torch.long),
-                'linear': torch.ones(size=(1, 1, 512), dtype=torch.float32),
-            })
-        with torch.no_grad():
-            with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
-                self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights').detach())
-
-    def forward(self, inputs, targets):
-        embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
-        encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
-        while (
-            (targets.shape[1] < torch.tensor(20, dtype=torch.long)).to(torch.long) *
-            (targets[0, -1] != torch.tensor(2, dtype=torch.long)).to(torch.long)):
-            embedded_targets = self.embedding_softmax_layer.embedding(targets)
-            decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
-            logits = self.embedding_softmax_layer.linear(decoder_outputs)
-
-            outputs = logits[:, -1:, :].argmax(dim=2).to(torch.long)
-            targets = torch.cat([
-                targets, outputs
-            ], dim=1)
-        return targets
-
 def load_model(file):
     arr = np.load(file)
-    return Transformer(64003, 512, 2048, 6, 8, arr)
-
-def load_model2(file):
-    arr = np.load(file)
-    return InferTransformer(arr)
+    set_variables(arr)
+    return Transformer(64003, 512, 2048, 6, 8)
 
 def main():
-    model_file = '/home/kaiida/data/brokenegg/brokenegg.npz'
-    vocab_file = '/home/kaiida/data/brokenegg/brokenegg.en-es-ja.spm64k.model'
-    model = load_model(model_file)
-    for n in model.state_dict().keys():
-        print(n)
-    with torch.no_grad():
-        model.load_numpy_state()
+    if False:
+        model_file = '/home/kaiida/data/brokenegg/brokenegg.npz'
+        vocab_file = '/home/kaiida/data/brokenegg/brokenegg.en-es-ja.spm64k.model'
+        model = load_model(model_file)
+        for n in model.state_dict().keys():
+            print(n)
+        with torch.no_grad():
+            model.load_numpy_state()
+        torch.save(model.state_dict(), 'brokenegg.pt')
+    else:
+        model = Transformer(64003, 512, 2048, 6, 8)
+        state = torch.load('brokenegg.pt')
+        model.load_state_dict(state)
+
     inputs = torch.tensor([[  393,  1244,  1268, 21851,    37,     8,  1174, 12024,  1396, 22667,
             157,   116,  1389,    11,  5662, 13199,    45, 27204,    19,  3811,
              16,  3369, 18380, 34191,     3,     1,     0,     0,     0]], dtype=torch.long)
@@ -486,4 +438,5 @@ def main():
     print(mse)
     print(targets[0, -1] == 10160)
 
-main()
+if __name__ == '__main__':
+    main()
