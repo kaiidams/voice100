@@ -259,6 +259,58 @@ def pre_post_processing_wrapper(layer, x, *args):
         y = layer(y, *args)
         return x + y
 
+class AttentionLayer(nn.Module):
+
+    def __init__(self, hidden_size, num_heads):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.query_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
+        self.key_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
+        self.value_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
+        self.output_transform = EinSumLinear(subscripts='abcd,cde->abe', weight_shape=[num_heads, hidden_size // num_heads, hidden_size])
+
+    def load_numpy_state(self):
+        with variable_scope('attention'):
+            load_numpy_state_dense_layer('query', self.query_layer)
+            load_numpy_state_dense_layer('key', self.key_layer)
+            load_numpy_state_dense_layer('value', self.value_layer)
+            load_numpy_state_dense_layer('output_transform', self.output_transform)
+
+    def forward(self, query_input, source_input, bias):
+        self.attention_layer(query_input, source_input, bias, 'attention')
+
+    def attention_layer(self, query_input, source_input, bias, name):
+        with variable_scope(name):
+            query = self.query_layer(query_input)
+            key = self.key_layer(source_input)
+            value = self.value_layer(source_input)
+
+            depth = (self.hidden_size // self.num_heads)
+            query *= depth ** -0.5
+
+            logits = torch.einsum('btnh,bfnh->bnft', key, query)
+            if bias is not None:
+                logits += bias
+            weights = torch.softmax(logits, dim=3)
+            attention_output = torch.einsum('bnft,btnh->bfnh', weights, value)
+            print(attention_output.shape)
+
+            attention_output = self.output_transform(attention_output)
+
+        return attention_output
+
+class SelfAttentionLayer(AttentionLayer):
+    def load_numpy_state(self):
+        with variable_scope('self_attention'):
+            load_numpy_state_dense_layer('query', self.query_layer)
+            load_numpy_state_dense_layer('key', self.key_layer)
+            load_numpy_state_dense_layer('value', self.value_layer)
+            load_numpy_state_dense_layer('output_transform', self.output_transform)
+
+    def forward(self, query_input, bias, **args):
+        return self.attention_layer(query_input, query_input, bias, name='self_attention', **args)
+
 def self_attention_layer(query_input, bias, name="self_attention", **args):
     return attention_layer(query_input, query_input, bias, name=name, **args)
 
@@ -318,10 +370,10 @@ def feed_forward_network(x):
 
 class TransformerEncoderLayer(nn.Module):
 
-    def __init__(self, hidden_size: int, filter_size: int):
+    def __init__(self, hidden_size: int, filter_size: int, num_heads: int):
         super().__init__()
         self.hidden_size = hidden_size
-        self.self_attention = PrePostProcessingWrapper(self_attention_layer, hidden_size)
+        self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads), hidden_size)
         self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size), hidden_size)
 
     def load_numpy_state(self):
@@ -339,13 +391,13 @@ class TransformerEncoderLayer(nn.Module):
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int):
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int):
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         layers = []
         for i in range(self.num_layers):
-            layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size))
+            layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
         layers.append(nn.LayerNorm(hidden_size, eps=1e-6))
         self.layers = nn.Sequential(*layers)
 
@@ -427,12 +479,12 @@ class TransformerDecoder(nn.Module):
 class Transformer(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, arr=None):
+    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, num_heads: int, arr=None):
         super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.dtype = torch.float32
-        self.encode = TransformerEncoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers)
+        self.encode = TransformerEncoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers, num_heads=num_heads)
         self.decode = TransformerDecoder(hidden_size=hidden_size, num_layers=num_layers)
         self.embedding_softmax_layer = EmbeddingSharedWeights(self.vocab_size, self.hidden_size)
         if arr is not None:
@@ -501,7 +553,7 @@ class InferTransformer(Transformer):
 
 def load_model(file):
     arr = np.load(file)
-    return Transformer(64003, 512, 2048, 6, arr)
+    return Transformer(64003, 512, 2048, 6, 8, arr)
 
 def load_model2(file):
     arr = np.load(file)
