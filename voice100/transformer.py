@@ -2,8 +2,11 @@
 
 import torch
 from torch import nn
+from torch.nn import init
 import numpy as np
 import math
+
+__all__ = ["Transformer"]
 
 _NEG_INF_FP32 = -1e9
 _NEG_INF_FP16 = np.finfo(np.float16).min
@@ -66,25 +69,34 @@ def load_numpy_state_layer_norm(layer):
         layer.weight.copy_(get_variable('gamma'))
         layer.bias.copy_(get_variable('beta'))
 
-class EinSumLinear(nn.Module):
-    def __init__(self, subscripts: str, weight_shape, bias_shape=None,
+class EinsumLinear(nn.Module):
+    def __init__(self, subscripts: str, in_shape, out_shape, use_bias=False,
         device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.subscripts = subscripts
-        self.weight = nn.Parameter(torch.empty(weight_shape, **factory_kwargs))
-        if bias_shape is not None:
-            self.bias = nn.Parameter(torch.empty(bias_shape, **factory_kwargs))
+        self.in_shape = in_shape
+        self.out_shape = out_shape
+        self.use_bias = use_bias
+        self.weight = nn.Parameter(torch.empty(in_shape + out_shape, **factory_kwargs))
+        if use_bias:
+            self.bias = nn.Parameter(torch.empty(out_shape, **factory_kwargs))
         else:
             self.bias = None
-        #self.reset_parameters()
+        self.reset_parameters()
+
+    def _calc_fan_in_out(self, gain):
+        fan_in = 1
+        for x in self.in_shape: fan_in *= x
+        fan_out = 1
+        for x in self.out_shape: fan_out *= x
+        return gain * math.sqrt(6 / (fan_in + fan_out))
 
     def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            init.uniform_(self.bias, -bound, bound)
+        a = self._calc_fan_in_out(math.sqrt(2))
+        nn.init.normal_(self.weight, mean=0, std=a)
+        if self.use_bias:
+            nn.init.normal_(self.bias, mean=0, std=a)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         y = torch.einsum(self.subscripts, input, self.weight)
@@ -110,6 +122,11 @@ class EmbeddingSharedWeights(nn.Module):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.shared_weights = torch.nn.Parameter(torch.Tensor(vocab_size, hidden_size), requires_grad=False)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        a = 1 / math.sqrt(self.hidden_size)
+        nn.init.normal_(self.shared_weights, mean=0, std=a)
 
     def embedding(self, inputs):
         embedded_inputs = self.shared_weights[inputs, :]
@@ -185,10 +202,11 @@ class AttentionLayer(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.query_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
-        self.key_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
-        self.value_layer = EinSumLinear(subscripts='abc,cde->abde', weight_shape=[hidden_size, num_heads, hidden_size // num_heads])
-        self.output_transform = EinSumLinear(subscripts='abcd,cde->abe', weight_shape=[num_heads, hidden_size // num_heads, hidden_size])
+        depth = hidden_size // num_heads
+        self.query_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
+        self.key_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
+        self.value_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
+        self.output_transform = EinsumLinear(subscripts='abcd,cde->abe', in_shape=[num_heads, depth], out_shape=[hidden_size])
 
     def load_numpy_state(self):
         with variable_scope('attention'):
@@ -234,15 +252,17 @@ class FeedForwardNetwork(nn.Module):
 
     def __init__(self, hidden_size, filter_size):
         super().__init__()
-        self.filter_layer = EinSumLinear(
+        self.filter_layer = EinsumLinear(
             subscripts='abc,cd->abd',
-            weight_shape=[hidden_size, filter_size],
-            bias_shape=[filter_size])
+            in_shape=[hidden_size],
+            out_shape=[filter_size],
+            use_bias=True)
         self.activation = nn.ReLU()
-        self.output_layer = EinSumLinear(
+        self.output_layer = EinsumLinear(
             subscripts='abc,cd->abd',
-            weight_shape=[filter_size, hidden_size],
-            bias_shape=[hidden_size])
+            in_shape=[filter_size],
+            out_shape=[hidden_size],
+            use_bias=True)
 
     def load_numpy_state(self):
         with variable_scope("feed_forward_network"):
@@ -400,43 +420,9 @@ class Transformer(nn.Module):
         encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
         decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
         logits = self.embedding_softmax_layer.linear(decoder_outputs)
-        outputs = logits[:, -1:, :].argmax(dim=2).to(torch.long)
-        return logits, outputs
+        return logits
 
 def load_model(file):
     arr = np.load(file)
     set_variables(arr)
     return Transformer(64003, 512, 2048, 6, 8)
-
-def main():
-    if False:
-        model_file = '/home/kaiida/data/brokenegg/brokenegg.npz'
-        vocab_file = '/home/kaiida/data/brokenegg/brokenegg.en-es-ja.spm64k.model'
-        model = load_model(model_file)
-        for n in model.state_dict().keys():
-            print(n)
-        with torch.no_grad():
-            model.load_numpy_state()
-        torch.save(model.state_dict(), 'brokenegg.pt')
-    else:
-        model = Transformer(64003, 512, 2048, 6, 8)
-        state = torch.load('brokenegg.pt')
-        model.load_state_dict(state)
-
-    inputs = torch.tensor([[  393,  1244,  1268, 21851,    37,     8,  1174, 12024,  1396, 22667,
-            157,   116,  1389,    11,  5662, 13199,    45, 27204,    19,  3811,
-             16,  3369, 18380, 34191,     3,     1,     0,     0,     0]], dtype=torch.long)
-    targets = torch.tensor([[64002,     6, 32588, 31560,    20,  1461, 10160, 10971,    28,  3361,
-          2889,  1461]], dtype=torch.long)
-    with torch.no_grad():
-        logits, outputs = model(inputs, targets)
-        targets = torch.cat([targets, outputs], axis=1)
-    print(outputs)
-    print(targets)
-    logits_ = torch.load('/home/kaiida/data/brokenegg/brokenegg_test.pt')
-    mse = torch.square(logits_ - logits).mean().item()
-    print(mse)
-    print(targets[0, -1] == 10160)
-
-if __name__ == '__main__':
-    main()
