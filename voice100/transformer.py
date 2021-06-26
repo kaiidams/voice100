@@ -154,26 +154,26 @@ def get_padding_bias(x: torch.Tensor, padding_value=0, dtype=torch.float32) -> t
     attention_bias = attention_bias[:,None,None,:]
     return attention_bias
 
-def get_decoder_self_attention_bias(length, dtype=torch.float32):
+def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
     neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
-    r = torch.arange(0, length)
+    r = torch.arange(0, length, device)
     y = (torch.reshape(r, [-1, 1]) < torch.reshape(r, [1, -1])).to(dtype) * neg_inf
     return y[None, None, :, :]
 
 def get_position_encoding(
-        length, hidden_size, min_timescale=1.0, max_timescale=1.0e4):
+        length, hidden_size, device, min_timescale=1.0, max_timescale=1.0e4):
     """Return positional encoding.
 
     Returns:
         Tensor with shape [length, hidden_size]
     """
-    position = torch.arange(0, length).to(torch.float32)
+    position = torch.arange(0, length, device=device, dtype=torch.float32)
     num_timescales = hidden_size // 2
     log_timescale_increment = (
             math.log(float(max_timescale) / float(min_timescale)) /
             (num_timescales - 1))
     inv_timescales = min_timescale * torch.exp(
-            torch.arange(0, num_timescales).to(torch.float32) * -log_timescale_increment)
+            torch.arange(0, num_timescales, device=device, dtype=torch.float32) * -log_timescale_increment)
     scaled_time = position[:, None] * inv_timescales[None, :]
     signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], axis=1)
     return signal
@@ -321,7 +321,7 @@ class TransformerEncoder(nn.Module):
     def forward(self, inputs, embedded_inputs):
         attention_bias = get_padding_bias(inputs, dtype=embedded_inputs.dtype)
         length = embedded_inputs.shape[1]
-        pos_encoding = get_position_encoding(length, self.hidden_size)
+        pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
         pos_encoding = pos_encoding.to(embedded_inputs.dtype)
         encoder_inputs = embedded_inputs + pos_encoding
         return self.encoder_stack(encoder_inputs, attention_bias), attention_bias
@@ -377,11 +377,12 @@ class TransformerDecoder(nn.Module):
 
     def forward(self, embedded_targets, encoder_outputs, attention_bias):
         length = embedded_targets.shape[1]
-        pos_encoding = get_position_encoding(length, self.hidden_size)
+        pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_targets.device)
         pos_encoding = pos_encoding.to(embedded_targets.dtype)
         decoder_inputs = embedded_targets + pos_encoding
 
-        decoder_self_attention_bias = get_decoder_self_attention_bias(length, dtype=embedded_targets.dtype)
+        decoder_self_attention_bias = get_decoder_self_attention_bias(
+            length, device=embedded_targets.device, dtype=embedded_targets.dtype)
         return self.decoder_stack(
             decoder_inputs,
             encoder_outputs,
