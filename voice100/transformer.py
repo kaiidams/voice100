@@ -180,10 +180,11 @@ def get_position_encoding(
 
 class PrePostProcessingWrapper(nn.Module):
 
-    def __init__(self, layer, hidden_size):
+    def __init__(self, layer, hidden_size: int, dropout: float = 0.1):
         super().__init__()
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
         self.layer = layer
+        self.dropout = nn.Dropout(dropout, inplace=True)
 
     def load_numpy_state(self):
         with variable_scope("pre_post_processing_wrapper"):
@@ -194,11 +195,12 @@ class PrePostProcessingWrapper(nn.Module):
     def forward(self, x, *args):
         y = self.layer_norm(x)
         y = self.layer(y, *args)
+        y = self.dropout(y)
         return x + y
 
 class AttentionLayer(nn.Module):
 
-    def __init__(self, hidden_size, num_heads):
+    def __init__(self, hidden_size: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
@@ -206,6 +208,7 @@ class AttentionLayer(nn.Module):
         self.query_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
         self.key_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
         self.value_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
+        self.dropout = nn.Dropout(dropout, inplace=False)
         self.output_transform = EinsumLinear(subscripts='abcd,cde->abe', in_shape=[num_heads, depth], out_shape=[hidden_size])
 
     def load_numpy_state(self):
@@ -231,6 +234,7 @@ class AttentionLayer(nn.Module):
             if bias is not None:
                 logits += bias
             weights = torch.softmax(logits, dim=3)
+            weights = self.dropout(weights)
             attention_output = torch.einsum('bnft,btnh->bfnh', weights, value)
 
             attention_output = self.output_transform(attention_output)
@@ -299,7 +303,7 @@ class TransformerEncoderLayer(nn.Module):
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int):
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
@@ -307,6 +311,7 @@ class TransformerEncoder(nn.Module):
         for i in range(self.num_layers):
             layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
         self.layers = nn.ModuleList(layers)
+        self.dropout = nn.Dropout(dropout, inplace=True)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
 
     def load_numpy_state(self):
@@ -323,7 +328,7 @@ class TransformerEncoder(nn.Module):
         length = embedded_inputs.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
         pos_encoding = pos_encoding.to(embedded_inputs.dtype)
-        encoder_inputs = embedded_inputs + pos_encoding
+        encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
         return self.encoder_stack(encoder_inputs, attention_bias), attention_bias
 
     def encoder_stack(self, encoder_inputs, attention_bias):
@@ -357,13 +362,14 @@ class TransformerDecoderLayer(nn.Module):
 
 class TransformerDecoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int):
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.layers = nn.ModuleList()
         for i in range(self.num_layers):
             self.layers.append(TransformerDecoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
+        self.dropout = nn.Dropout(dropout, inplace=True)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
 
     def load_numpy_state(self):
@@ -379,7 +385,7 @@ class TransformerDecoder(nn.Module):
         length = embedded_targets.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_targets.device)
         pos_encoding = pos_encoding.to(embedded_targets.dtype)
-        decoder_inputs = embedded_targets + pos_encoding
+        decoder_inputs = self.dropout(embedded_targets + pos_encoding)
 
         decoder_self_attention_bias = get_decoder_self_attention_bias(
             length, device=embedded_targets.device, dtype=embedded_targets.dtype)
