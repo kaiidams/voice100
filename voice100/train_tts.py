@@ -82,8 +82,13 @@ class CharToAudioModel(pl.LightningModule):
             betas=(0.9, 0.98),
             weight_decay=0.0001)
         scheduler = CustomSchedule(optimizer, d_model=self.hparams.hidden_size)
-        self.sss = scheduler
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        lr_dict = {
+            "scheduler": scheduler,
+            "interval": "step",
+            "frequency": 1,
+            "name": "CustomSchedule",
+        }
+        return {"optimizer": optimizer, "lr_scheduler": lr_dict}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
