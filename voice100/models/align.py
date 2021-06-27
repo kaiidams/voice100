@@ -80,6 +80,7 @@ class AudioAlignCTC(pl.LightningModule):
         # audio: [batch_size, audio_len, audio_size]
         x = torch.transpose(audio, 1, 2)
         x = self.conv(x)
+        x = torch.relu(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
         x = torch.transpose(x, 1, 2)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
