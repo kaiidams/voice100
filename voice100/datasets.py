@@ -282,6 +282,15 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
             chained_ds += ds
     return chained_ds
 
+def get_transform(task, language):
+    if task == 'asr':
+        transform = AudioToCharProcessor(language)
+    elif task == 'tts':
+        transform = CharToAudioProcessor(language)
+    else:
+        raise ValueError('Unknown task')
+    return transform
+
 def get_collate_fn(task):
     if task == 'asr':
         collate_fn = generate_audio_text_batch
@@ -350,78 +359,6 @@ def fix_aligntext_len(aligntext, aligntext_len):
     else:
         return aligntext
 
-class ASRDataModule(pl.LightningDataModule):
-
-    def __init__(
-        self, dataset: str, valid_ratio: float, language: str,
-        repeat: int, cache: str, batch_size: int
-        ):
-        super().__init__()
-        self.dataset = dataset
-        self.valid_ratio = valid_ratio
-        self.language = language
-        self.repeat = repeat
-        self.cache = cache
-        self.batch_size = batch_size
-        self.num_workers = 2
-
-    def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset)
-
-        # Split the dataset
-        total_len = len(ds)
-        valid_len = int(total_len * self.valid_ratio)
-        train_len = total_len - valid_len
-        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
-
-        transform = AudioToCharProcessor(self.language)
-
-        os.makedirs(self.cache, exist_ok=True)
-        self.train_ds = EncodedCacheDataset(
-            train_ds, b'asr', repeat=self.repeat, transform=transform,
-            cachedir=self.cache)
-        self.valid_ds = EncodedCacheDataset(
-            valid_ds, b'asr', repeat=1, transform=transform,
-            cachedir=self.cache)
-
-    def train_dataloader(self):
-        return DataLoader(
-            self.train_ds,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            collate_fn=generate_audio_text_batch)
-
-    def val_dataloader(self):
-        return DataLoader(
-            self.valid_ds,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            collate_fn=generate_audio_text_batch)
-
-    @staticmethod
-    def add_data_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
-        parser.add_argument('--cache', default='./cache', help='Cache directory')
-        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
-        parser.add_argument('--language', default='en', type=str, help='Language')
-        parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
-        parser.add_argument('--dataset_repeat', default=5, type=str, help='Multiply training data')
-        return parser
-
-    @staticmethod
-    def from_argparse_args(args):
-        return ASRDataModule(
-            dataset=args.dataset,
-            valid_ratio=args.valid_ratio,
-            language=args.language,
-            repeat=args.dataset_repeat,
-            cache=args.cache,
-            batch_size=args.batch_size)
-
 class AlignInferDataModule(pl.LightningDataModule):
 
     def __init__(
@@ -486,8 +423,9 @@ def generate_audio_audio_batch(data_batch):
 
 class AudioTextDataModule(pl.LightningDataModule):
 
-    def __init__(self, dataset: str, task: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
+    def __init__(self, task: str, dataset: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
         super().__init__()
+        self.task = task
         self.dataset = dataset
         self.valid_ratio = valid_ratio
         self.language = language
@@ -495,10 +433,12 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.cache = cache
         self.batch_size = batch_size
         self.num_workers = 2
-        self.collate_fn = get_collate_fn(task)
+        self.cache_salt = self.task.encode('utf-8')
+        self.collate_fn = get_collate_fn(self.task)
+        self.transform = get_transform(self.task, self.language)
 
     def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset, needalign=True)
+        ds = get_dataset(self.dataset, needalign=self.task == 'tts')
 
         # Split the dataset
         total_len = len(ds)
@@ -506,15 +446,13 @@ class AudioTextDataModule(pl.LightningDataModule):
         train_len = total_len - valid_len
         train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-        transform = CharToAudioProcessor(self.language)
-
         os.makedirs(self.cache, exist_ok=True)
 
         self.train_ds = EncodedCacheDataset(
-            train_ds, b'tts', repeat=self.repeat, transform=transform,
+            train_ds, self.cache_salt, repeat=self.repeat, transform=self.transform,
             augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
-            valid_ds, b'tts', repeat=1, transform=transform,
+            valid_ds, self.cache_salt, repeat=1, transform=self.transform,
             augment=False, cachedir=self.cache)
 
     def train_dataloader(self):
@@ -536,6 +474,7 @@ class AudioTextDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--task', type=str, help='Task')
         parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
         parser.add_argument('--dataset', default='lj_speech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')
@@ -549,8 +488,8 @@ class AudioTextDataModule(pl.LightningDataModule):
     def from_argparse_args(args):
         args.vocab_size = DEFAULT_VOCAB_SIZE
         return AudioTextDataModule(
+            task=args.task,
             dataset=args.dataset,
-            task='tts',
             valid_ratio=args.valid_ratio,
             language=args.language,
             repeat=args.dataset_repeat,

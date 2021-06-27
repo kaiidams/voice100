@@ -7,7 +7,12 @@ from torch import nn
 import pytorch_lightning as pl
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
+from ..text import DEFAULT_VOCAB_SIZE
 from ..audio import BatchSpectrogramAugumentation
+
+MELSPEC_DIM = 64
+VOCAB_SIZE = DEFAULT_VOCAB_SIZE
+assert VOCAB_SIZE == 29
 
 __all__ = [
     'AudioAlignCTC',
@@ -140,3 +145,12 @@ class AudioAlignCTC(pl.LightningModule):
         parser.add_argument('--hidden_size', type=float, default=128)
         parser.add_argument('--num_layers', type=int, default=2)
         return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return AudioAlignCTC(
+            audio_size=MELSPEC_DIM,
+            vocab_size=VOCAB_SIZE,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            learning_rate=args.learning_rate)
