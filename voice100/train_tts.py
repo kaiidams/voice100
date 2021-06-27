@@ -28,9 +28,10 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         x = min(arg1, arg2) / math.sqrt(self.d_model)
         global sss
         sss = x
-        print(x)
-        return [group['lr'] * x
-                for group in self.optimizer.param_groups]
+        return [base_lr * x
+                for base_lr in self.base_lrs]
+        #return [group['lr'] * x
+        #        for group in self.optimizer.param_groups]
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
@@ -59,7 +60,7 @@ class CharToAudioModel(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        if batch_idx % 100 == 0:
+        if batch_idx % 1000 == 0:
             print('ssss', sss)
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
