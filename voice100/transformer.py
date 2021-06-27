@@ -6,7 +6,7 @@ from torch.nn import init
 import numpy as np
 import math
 
-__all__ = ["Transformer"]
+__all__ = ["Transformer", "Translation"]
 
 _NEG_INF_FP32 = -1e9
 _NEG_INF_FP16 = np.finfo(np.float16).min
@@ -251,13 +251,12 @@ class TransformerEncoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_inputs, embedded_inputs_length):
-        attention_bias = get_padding_bias(embedded_inputs, embedded_inputs_length)
+    def forward(self, embedded_inputs, attention_bias):
         length = embedded_inputs.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
         pos_encoding = pos_encoding.to(embedded_inputs.dtype)
         encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
-        return self.encoder_stack(encoder_inputs, attention_bias), attention_bias
+        return self.encoder_stack(encoder_inputs, attention_bias)
 
     def encoder_stack(self, encoder_inputs, attention_bias):
         for layer in self.layers:
@@ -338,14 +337,13 @@ class TransformerDecoder(nn.Module):
         return self.layer_norm(x)
 
 class Transformer(nn.Module):
-    __constants__ = ['vocab_size', 'hidden_size']
+    __constants__ = ['hidden_size']
 
     def __init__(
-        self, vocab_size: int, hidden_size: int, filter_size: int,
+        self, hidden_size: int, filter_size: int,
         num_layers: int, num_heads: int, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.encode = TransformerEncoder(
             hidden_size=hidden_size, filter_size=filter_size,
@@ -353,19 +351,44 @@ class Transformer(nn.Module):
         self.decode = TransformerDecoder(
             hidden_size=hidden_size, filter_size=filter_size,
             num_layers=num_layers, num_heads=num_heads, **factory_kwargs)
-        self.embedding = nn.Embedding(vocab_size, hidden_size, **factory_kwargs)
 
     def load_numpy_state(self):
         self.encode.load_numpy_state()
         self.decode.load_numpy_state()
+
+    def forward(self, embedded_inputs, inputs_len, embedded_targets):
+        attention_bias = get_padding_bias(embedded_inputs, inputs_len)
+        encoder_outputs = self.encode(embedded_inputs, attention_bias)
+        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
+        return decoder_outputs
+
+class Translation(nn.Module):
+    __constants__ = ['vocab_size', 'hidden_size']
+
+    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int,
+        num_layers: int, num_heads: int, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.transformer = Transformer(
+            hidden_size=hidden_size,
+            filter_size=filter_size,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            **factory_kwargs)
+        self.embedding = nn.Embedding(
+            vocab_size, hidden_size, **factory_kwargs)
+
+    def load_numpy_state(self):
+        self.transformer.load_numpy_state()
         with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
             self.embedding.weight[:] = get_variable('weights')
 
     def forward(self, inputs, inputs_len, targets):
         embedded_inputs = self.embedding(inputs) * self.hidden_size ** 0.5
         embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
-        encoder_outputs, attention_bias = self.encode(embedded_inputs, inputs_len)
-        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
+        decoder_outputs = self.transformer(embedded_inputs, inputs_len, embedded_targets)
 
         batch_size = -1 # torch.shape(inputs)[0]
         length = decoder_outputs.shape[1]
@@ -377,5 +400,5 @@ def load_model(file, device=None, dtype=None):
     factory_kwargs = {'device': device, 'dtype': dtype}
     arr = np.load(file)
     set_variables(arr)
-    transformer = Transformer(64003, 512, 2048, 6, 8)
+    transformer = Translation(64003, 512, 2048, 6, 8, **factory_kwargs)
     return transformer
