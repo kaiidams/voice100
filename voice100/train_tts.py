@@ -119,6 +119,7 @@ def cli_main():
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)    
     parser.add_argument('--test', action='store_true', default=False)
+    parser.set_defaults(task='asr')
     args = parser.parse_args()
 
     data = AudioTextDataModule.from_argparse_args(args)
@@ -148,6 +149,8 @@ def test(args, data, model):
         tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
         #print(text.shape, text_len.shape, tgt_in.shape)
         for i in tqdm(range(200)):
+            print(text.shape, text_len.shape)
+            hoge
             logits = model.forward(text.cuda(), text_len.cuda(), tgt_in.cuda())
             tgt_out = logits.argmax(axis=-1)
             if False:
