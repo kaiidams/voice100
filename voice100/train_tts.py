@@ -58,10 +58,10 @@ class CharToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
-        parser.add_argument('--filter_size', type=int, default=1024)
-        parser.add_argument('--num_layers', type=int, default=3)
-        parser.add_argument('--num_headers', type=int, default=4)
+        parser.add_argument('--hidden_size', type=int, default=512)
+        parser.add_argument('--filter_size', type=int, default=2048)
+        parser.add_argument('--num_layers', type=int, default=4)
+        parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parser
 
@@ -88,7 +88,7 @@ def cli_main():
     model = CharToAudioModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
 
-    if False:
+    if True:
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         test(data, model)
         os.exit()
@@ -100,19 +100,27 @@ def test(data, model):
     tokenizer = CharTokenizer()
     model.eval()
     data.setup()
+    from tqdm import tqdm
     for batch in data.train_dataloader():
         (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
         print('===')
         tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
         #print(text.shape, text_len.shape, tgt_in.shape)
-        for i in range(10):
+        for i in tqdm(range(200)):
             logits = model.forward(text, text_len, tgt_in)
             tgt_out = logits.argmax(axis=-1)
-            for j in range(text.shape[0]):
-                print(tokenizer.decode(text[j, :]))
-                print(tokenizer.decode(aligntext[j, :]))
-                print(tokenizer.decode(tgt_out[j, :]))
+            if False:
+                for j in range(text.shape[0]):
+                    print(tokenizer.decode(text[j, :]))
+                    print(tokenizer.decode(aligntext[j, :]))
+                    print(tokenizer.decode(tgt_out[j, :]))
             tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+        if True:
+            for j in range(text.shape[0]):
+                print('---')
+                print('S:', tokenizer.decode(text[j, :]))
+                print('T:', tokenizer.decode(aligntext[j, :]))
+                print('H:', tokenizer.decode(tgt_out[j, :]))
         hoge
         if True:
             for i in range(f0.shape[0]):
