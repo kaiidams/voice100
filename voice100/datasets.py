@@ -178,7 +178,7 @@ class AudioToCharProcessor(nn.Module):
 class CharToAudioProcessor(nn.Module):
 
     def __init__(self, phonemizer: str, target_sample_rate: int = 22050):
-        from voice100.vocoder import WORLDVocoder
+        #from voice100.vocoder import WORLDVocoder
 
         super().__init__()
         self.sample_rate = 16000
@@ -193,7 +193,7 @@ class CharToAudioProcessor(nn.Module):
             ["rate", f"{self.target_sample_rate}"],
         ]
 
-        self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
+        #self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
         if phonemizer == 'ja':
             from .japanese import JapanesePhonemizer
@@ -203,8 +203,11 @@ class CharToAudioProcessor(nn.Module):
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text, aligntext):
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        f0, logspc, codeap = self._vocoder(waveform[0])
+        #waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        #f0, logspc, codeap = self._vocoder(waveform[0])
+        f0 = torch.zeros(aligntext.shape, dtype=torch.float32)
+        logspc = torch.zeros(aligntext.shape + [257], dtype=torch.float32)
+        codeap = torch.zeros(aligntext.shape + [2], dtype=torch.float32)
 
         text = self.encoder.encode(self._phonemizer(text))
         aligntext = self.encoder.encode(aligntext)
