@@ -2,7 +2,7 @@
 
 from argparse import ArgumentParser
 from typing import Optional
-from .transformer import Transformer
+from .transformer import Translation
 import pytorch_lightning as pl
 import torch
 from torch import nn
@@ -12,7 +12,7 @@ class CharToAudioModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.transformer = Transformer(vocab_size, hidden_size, filter_size, num_layers, num_headers)
+        self.transformer = Translation(vocab_size, hidden_size, filter_size, num_layers, num_headers)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
