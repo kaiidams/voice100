@@ -59,15 +59,14 @@ class CharToAudioModel(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-
-        if batch_idx % 10 == 0:
+        if batch_idx % 100 == 0:
             print('ssss', sss)
-
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
+        print('ssss', sss)
         loss = self._calc_batch_loss(batch)
         self.log('val_loss', loss)
 
