@@ -68,15 +68,21 @@ class AudioAlignCTC(pl.LightningModule):
     def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
+        self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
         self.lstm = nn.LSTM(
-            input_size=audio_size, hidden_size=hidden_size,
+            input_size=hidden_size, hidden_size=hidden_size,
             num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        packed_audio = pack_padded_sequence(audio, audio_len.cpu(), batch_first=True, enforce_sorted=False)
+        # audio: [batch_size, audio_len, audio_size]
+        x = torch.transpose(audio, 1, 2)
+        x = self.conv(x)
+        x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
+        x = torch.transpose(x, 1, 2)
+        packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
         return self.dense(lstm_out), lstm_out_len
