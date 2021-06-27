@@ -88,7 +88,7 @@ def cli_main():
     model = CharToAudioModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
 
-    if True:
+    if False:
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         test(data, model)
         os.exit()
