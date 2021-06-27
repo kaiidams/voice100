@@ -26,7 +26,7 @@ class CharToAudioModel(pl.LightningModule):
         src_ids_len = text_len
         tgt_in_ids = aligntext[:, :-1]
         tgt_out_ids = aligntext[:, 1:]
-        tgt_out_mask = (torch.arange(tgt_out_ids.shape[1], device=tgt_out_ids.device)[:, None] < f0_len - 1).float()
+        tgt_out_mask = (torch.arange(tgt_out_ids.shape[1], device=tgt_out_ids.device)[:, None] < f0_len[None, :] - 1).float()
 
         logits = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
