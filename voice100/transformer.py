@@ -69,47 +69,6 @@ def load_numpy_state_layer_norm(layer):
         layer.weight.copy_(get_variable('gamma'))
         layer.bias.copy_(get_variable('beta'))
 
-class EinsumLinear(nn.Module):
-    def __init__(self, subscripts: str, in_shape, out_shape, use_bias=False,
-        device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super().__init__()
-        self.subscripts = subscripts
-        self.in_shape = in_shape
-        self.out_shape = out_shape
-        self.use_bias = use_bias
-        self.weight = nn.Parameter(torch.empty(in_shape + out_shape, **factory_kwargs))
-        if use_bias:
-            self.bias = nn.Parameter(torch.empty(out_shape, **factory_kwargs))
-        else:
-            self.bias = None
-        self.reset_parameters()
-
-    def _calc_fan_in_out(self, gain):
-        fan_in = 1
-        for x in self.in_shape: fan_in *= x
-        fan_out = 1
-        for x in self.out_shape: fan_out *= x
-        return gain * math.sqrt(6 / (fan_in + fan_out))
-
-    def reset_parameters(self) -> None:
-        a = self._calc_fan_in_out(math.sqrt(2))
-        nn.init.normal_(self.weight, mean=0, std=a)
-        if self.use_bias:
-            nn.init.normal_(self.bias, mean=0, std=a)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        y = torch.einsum(self.subscripts, input, self.weight)
-        if self.bias is not None:
-            y += self.bias
-        return y
-
-def load_numpy_state_dense_layer(name, layer):
-    with variable_scope(name):
-        layer.weight.copy_(get_variable('kernel'))
-        if layer.bias is not None:
-            layer.bias.copy_(get_variable('bias'))
-
 # Transformer layers
 
 class EmbeddingSharedWeights(nn.Module):
@@ -252,33 +211,22 @@ class SelfAttentionLayer(AttentionLayer):
         #print(x.shape)
         return x
 
-class FeedForwardNetwork(nn.Module):
+class FeedForwardNetwork(nn.Sequential):
 
     def __init__(self, hidden_size, filter_size):
-        super().__init__()
-        self.filter_layer = EinsumLinear(
-            subscripts='abc,cd->abd',
-            in_shape=[hidden_size],
-            out_shape=[filter_size],
-            use_bias=True)
-        self.activation = nn.ReLU()
-        self.output_layer = EinsumLinear(
-            subscripts='abc,cd->abd',
-            in_shape=[filter_size],
-            out_shape=[hidden_size],
-            use_bias=True)
+        super().__init__(
+            nn.Linear(hidden_size, filter_size, bias=True),
+            nn.ReLU(),
+            nn.Linear(filter_size, hidden_size, bias=True))
 
     def load_numpy_state(self):
         with variable_scope("feed_forward_network"):
-            load_numpy_state_dense_layer('filter_layer', self.filter_layer)
-            load_numpy_state_dense_layer('output_layer', self.output_layer)
-
-    def forward(self, input):
-        with variable_scope("feed_forward_network"):
-            x = self.filter_layer(input)
-            x = self.activation(x)
-            x = self.output_layer(x)
-            return x
+            with variable_scope("filter_layer"):
+                self[0].weight[:] = get_variable('kernel').T
+                self[0].bias[:] = get_variable('bias').T
+            with variable_scope("output_layer"):
+                self[2].weight[:] = get_variable('kernel').T
+                self[2].bias[:] = get_variable('bias').T
 
 # Transformer
 
