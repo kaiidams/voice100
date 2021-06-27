@@ -210,7 +210,7 @@ class CharToAudioProcessor(nn.Module):
         aligntext = self.encoder.encode(aligntext)
 
         f0 = torch.zeros(aligntext.shape, dtype=torch.float32)
-        logspc = torch.zeros(list(aligntext.shape) + [257], dtype=torch.float32)
+        logspc = torch.zeros(list(aligntext.shape) + [513], dtype=torch.float32)
         codeap = torch.zeros(list(aligntext.shape) + [2], dtype=torch.float32)
 
         return (f0, logspc, codeap, aligntext), text

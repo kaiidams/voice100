@@ -8,23 +8,27 @@ import torch
 from torch import nn
 from .datasets import AudioTextDataModule
 
-class TranslateModel(pl.LightningModule):
+class CharToAudioModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
         self.transformer = Transformer(vocab_size, hidden_size, filter_size, num_layers, num_headers)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
+    
+    def forward(self, src_ids, src_ids_len, tgt_in_ids):
+        logits = self.transformer(src_ids, src_ids_len, tgt_in_ids)
+        return logits
 
     def _calc_batch_loss(self, batch):
         (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
 
         src_ids = text
         src_ids_len = text_len
-        tgt_in_ids = aligntext[:, 1:]
-        tgt_out_ids = aligntext[:, :-1]
-        tgt_out_mask = (tgt_out_ids != 0).float()
+        tgt_in_ids = aligntext[:, :-1]
+        tgt_out_ids = aligntext[:, 1:]
+        tgt_out_mask = (torch.arange(tgt_out_ids.shape[1], device=tgt_out_ids.device)[:, None] < f0_len - 1).float()
 
-        logits = self.transformer(src_ids, src_ids_len, tgt_in_ids)
+        logits = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
         loss = self.criteria(logits, tgt_out_ids)
         loss = torch.sum(loss * tgt_out_mask) / torch.sum(tgt_out_mask)
@@ -63,7 +67,7 @@ class TranslateModel(pl.LightningModule):
 
     @staticmethod
     def from_argparse_args(args):
-        return TranslateModel(
+        return CharToAudioModel(
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
             filter_size=args.filter_size,
@@ -77,20 +81,40 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
-    parser = TranslateModel.add_model_specific_args(parser)    
+    parser = CharToAudioModel.add_model_specific_args(parser)    
     args = parser.parse_args()
 
     data = AudioTextDataModule.from_argparse_args(args)
-    model = TranslateModel.from_argparse_args(args)
+    model = CharToAudioModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
 
     if False:
-        from .text import CharTokenizer
-        tokenizer = CharTokenizer()
-        data.setup()
-        for batch in data.train_dataloader():
-            (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
-            print('===')
+        model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
+        test(data, model)
+        os.exit()
+
+    trainer.fit(model, data)
+
+def test(data, model):
+    from .text import CharTokenizer
+    tokenizer = CharTokenizer()
+    model.eval()
+    data.setup()
+    for batch in data.train_dataloader():
+        (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
+        print('===')
+        tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
+        #print(text.shape, text_len.shape, tgt_in.shape)
+        for i in range(10):
+            logits = model.forward(text, text_len, tgt_in)
+            tgt_out = logits.argmax(axis=-1)
+            for j in range(text.shape[0]):
+                print(tokenizer.decode(text[j, :]))
+                print(tokenizer.decode(aligntext[j, :]))
+                print(tokenizer.decode(tgt_out[j, :]))
+            tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+        hoge
+        if True:
             for i in range(f0.shape[0]):
                 print('---')
                 x = aligntext[i, :f0_len[i]]
@@ -100,10 +124,7 @@ def cli_main():
                 x = text[i, :text_len[i]]
                 x = tokenizer.decode(x)
                 print(x)
-        os.exit()
 
-    trainer.fit(model, data)
 
 if __name__ == '__main__':
-    #test()
     cli_main()

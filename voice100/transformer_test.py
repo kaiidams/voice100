@@ -91,8 +91,8 @@ class TranslateModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         src_ids, tgt_ids = batch
-        tgt_in_ids = tgt_ids[:, 1:]
-        tgt_out_ids = tgt_ids[:, :-1]
+        tgt_in_ids = tgt_ids[:, :-1]
+        tgt_out_ids = tgt_ids[:, 1:]
         tgt_out_mask = (tgt_out_ids != 0).float()
 
         logits = self.transformer(src_ids, tgt_in_ids)
