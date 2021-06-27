@@ -21,6 +21,10 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         self.warmup_steps = warmup_steps
         super(CustomSchedule, self).__init__(optimizer)
 
+    def xxxstep(self, *args, **kwargs):
+        super().step(*args, **kwargs)
+        print(self._step_count)
+
     def get_lr(self):
         step = self._step_count
         arg1 = 1 / math.sqrt(step)
@@ -28,6 +32,7 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         x = min(arg1, arg2) / math.sqrt(self.d_model)
         global sss
         sss = x
+        print('get_lr', self._step_count, sss)
         return [base_lr * x
                 for base_lr in self.base_lrs]
         #return [group['lr'] * x
@@ -60,7 +65,7 @@ class CharToAudioModel(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        if batch_idx % 1000 == 0:
+        if batch_idx % 1 == 0:
             print('ssss', sss)
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
@@ -117,15 +122,17 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)    
+    parser.add_argument('--test', action='store_true', default=False)
     args = parser.parse_args()
 
     data = AudioTextDataModule.from_argparse_args(args)
     model = CharToAudioModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
 
-    if False:
+    if args.test:
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         test(data, model)
+        import os
         os.exit()
 
     trainer.fit(model, data)
