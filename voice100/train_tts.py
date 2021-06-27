@@ -139,7 +139,6 @@ def test(args, data, model):
     if args.gpus > 0:
         print('cuda')
         model.cuda()
-        data.cuda()
     model.eval()
     data.setup()
     from tqdm import tqdm
@@ -149,7 +148,7 @@ def test(args, data, model):
         tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
         #print(text.shape, text_len.shape, tgt_in.shape)
         for i in tqdm(range(200)):
-            logits = model.forward(text, text_len, tgt_in)
+            logits = model.forward(text.cuda(), text_len.cuda(), tgt_in.cuda())
             tgt_out = logits.argmax(axis=-1)
             if False:
                 for j in range(text.shape[0]):
