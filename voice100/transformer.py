@@ -140,16 +140,18 @@ class EmbeddingSharedWeights(nn.Module):
         logits = torch.matmul(x, self.shared_weights.transpose(0, 1))
         return torch.reshape(logits, [batch_size, length, self.vocab_size])
 
-def get_padding_bias(x: torch.Tensor, padding_value=0, dtype=torch.float32) -> torch.Tensor:
+def get_padding_bias(x: torch.Tensor, length: torch.Tensor, padding_value=0) -> torch.Tensor:
     """
     Args:
-        x: tensor of shape [batch_size, length]
+        x: tensor of shape [batch_size, length, embed_size]
+        length: tensor of shape [batch_size]
     Returns:
         float tensor of shape [batch_size, 1, 1, length]
     """
-    assert x.dim() == 2
-    neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
-    padding = (x == padding_value).to(dtype)
+    assert x.dim() == 3
+    assert length.dim() == 1
+    neg_inf = _NEG_INF_FP16 if x.dtype == torch.float16 else _NEG_INF_FP32
+    padding = (torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]).float()
     attention_bias = padding * neg_inf
     attention_bias = attention_bias[:,None,None,:]
     return attention_bias
@@ -323,8 +325,8 @@ class TransformerEncoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, inputs, embedded_inputs):
-        attention_bias = get_padding_bias(inputs, dtype=embedded_inputs.dtype)
+    def forward(self, embedded_inputs, embedded_inputs_length):
+        attention_bias = get_padding_bias(embedded_inputs, embedded_inputs_length)
         length = embedded_inputs.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
         pos_encoding = pos_encoding.to(embedded_inputs.dtype)
@@ -421,10 +423,10 @@ class Transformer(nn.Module):
         with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
             self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights'))
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, inputs_len, targets):
         embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
         embedded_targets = self.embedding_softmax_layer.embedding(targets)
-        encoder_outputs, attention_bias = self.encode(inputs, embedded_inputs)
+        encoder_outputs, attention_bias = self.encode(embedded_inputs, inputs_len)
         decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
         logits = self.embedding_softmax_layer.linear(decoder_outputs)
         return logits

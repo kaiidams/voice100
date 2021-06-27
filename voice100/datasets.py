@@ -7,6 +7,7 @@ import os
 from argparse import ArgumentParser
 from glob import glob
 from typing import Optional
+from .text import DEFAULT_VOCAB_SIZE
 from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
 from torch import nn
@@ -26,7 +27,10 @@ class MetafileDataset(Dataset):
         root (str): Root directory of the dataset.
     """
     
-    def __init__(self, root: str, metafile='validated.tsv', sep='|', header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'):
+    def __init__(
+        self, root: str, metafile='validated.tsv', alignfile: str = None, sep='|',
+        header=True, idcol=1, textcol=2, aligncol=0, wavsdir='wavs', ext='.wav'
+        ) -> None:
         self._root = root
         self._data = []
         self._sep = sep
@@ -42,6 +46,16 @@ class MetafileDataset(Dataset):
                 audioid = parts[self._idcol]
                 text = parts[self._textcol]
                 self._data.append((audioid, text))
+        if alignfile:
+            self._aligntexts = []
+            with open(os.path.join(root, alignfile)) as f:
+                for line in f:
+                    parts = line.rstrip('\r\n').split(self._sep)
+                    aligntext = parts[aligncol]
+                    self._aligntexts.append(aligntext)
+            assert len(self._aligntexts) == len(self._data)
+        else:
+            self._aligntexts = None
 
     def __len__(self):
         return len(self._data)
@@ -49,7 +63,11 @@ class MetafileDataset(Dataset):
     def __getitem__(self, index):
         audioid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, audioid + self._ext)
-        return audiopath, text
+        if self._aligntexts is not None:
+            aligntext = self._aligntexts[index]
+            return audiopath, text, aligntext
+        else:
+            return audiopath, text
 
 class LibriSpeechDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with transcript files,
@@ -157,6 +175,42 @@ class AudioToCharProcessor(nn.Module):
 
         return audio, encoded
 
+class CharToAudioProcessor(nn.Module):
+
+    def __init__(self, phonemizer: str, target_sample_rate: int = 22050):
+        from voice100.vocoder import WORLDVocoder
+
+        super().__init__()
+        self.sample_rate = 16000
+        self.target_sample_rate = target_sample_rate
+        self.n_fft = 512
+        self.win_length = 400
+        self.hop_length = 160
+        self.n_mels = 64
+        self.log_offset = 1e-6
+        self.target_effects = [
+            ["remix", "1"],
+            ["rate", f"{self.target_sample_rate}"],
+        ]
+
+        self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
+
+        if phonemizer == 'ja':
+            from .japanese import JapanesePhonemizer
+            self._phonemizer = JapanesePhonemizer()
+        else:
+            self._phonemizer = BasicPhonemizer()
+        self.encoder = CharTokenizer()
+
+    def forward(self, audiopath, text, aligntext):
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        f0, logspc, codeap = self._vocoder(waveform[0])
+
+        text = self.encoder.encode(self._phonemizer(text))
+        aligntext = self.encoder.encode(aligntext)
+
+        return (f0, logspc, codeap, aligntext), text
+
 class AudioToAudioProcessor(nn.Module):
 
     def __init__(self, target_sample_rate=22050):
@@ -199,7 +253,7 @@ class AudioToAudioProcessor(nn.Module):
 
 BLANK_IDX = 0
 
-def get_dataset(dataset: str) -> Dataset:
+def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     chained_ds = None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
@@ -207,7 +261,8 @@ def get_dataset(dataset: str) -> Dataset:
             ds = LibriSpeechDataset(root)
         elif dataset == 'lj_speech':
             root = './data/LJSpeech-1.1'
-            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=False, idcol=0, ext='.flac')
+            alignfile = 'aligndata.csv' if needalign else None
+            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = MetafileDataset(root)
@@ -223,6 +278,15 @@ def get_dataset(dataset: str) -> Dataset:
             chained_ds += ds
     return chained_ds
 
+def get_collate_fn(task):
+    if task == 'asr':
+        collate_fn = generate_audio_text_batch
+    elif task == 'tts':
+        collate_fn = generate_audio_text_align_batch
+    else:
+        raise ValueError('Unknown task')
+    return collate_fn
+
 def generate_audio_text_batch(data_batch):
     audio_batch, text_batch = [], []
     for audio_item, text_item in data_batch:
@@ -233,6 +297,54 @@ def generate_audio_text_batch(data_batch):
     audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return (audio_batch, audio_len), (text_batch, text_len)
+
+def generate_audio_text_align_batch(data_batch):
+    f0_batch, spec_batch, codeap_batch, aligntext_batch, text_batch = [], [], [], [], []
+    for (f0_item, spec_item, codeap_item, aligntext_item), text_item  in data_batch:
+        f0_batch.append(f0_item)
+        spec_batch.append(spec_item)
+        codeap_batch.append(codeap_item)
+        aligntext_item = fix_aligntext_len(aligntext_item, len(f0_item))
+        aligntext_batch.append(aligntext_item)
+        text_batch.append(text_item)
+
+    f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
+    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+
+    f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
+    spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
+    codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
+    aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
+
+    return (f0_batch, f0_len, spec_batch, codeap_batch, aligntext_batch), (text_batch, text_len)
+
+def generate_audio_text_align_batch_(data_batch):
+    audio_batch, text_batch, aligntext_batch = [], [], []
+    for audio_item, text_item, aligntext_item in data_batch:
+        audio_batch.append(audio_item)
+        text_batch.append(text_item)
+        aligntext_batch.append(aligntext_item)
+    audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
+    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
+    return (audio_batch, audio_len), (text_batch, text_len)
+
+def fix_aligntext_len(aligntext, aligntext_len):
+    if aligntext.shape[0] > aligntext_len:
+        print('warning')
+        return aligntext[:aligntext_len]
+    elif aligntext.shape[0] < aligntext_len:
+        print('warning')
+        return torch.cat([
+            aligntext,
+            torch.zeros(
+                aligntext_len - aligntext.shape[0],
+                dtype=aligntext.dtype, device=aligntext.device)
+        ])
+    else:
+        return aligntext
 
 class ASRDataModule(pl.LightningDataModule):
 
@@ -368,9 +480,82 @@ def generate_audio_audio_batch(data_batch):
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
     return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
 
+class AudioTextDataModule(pl.LightningDataModule):
+
+    def __init__(self, dataset: str, task: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
+        super().__init__()
+        self.dataset = dataset
+        self.valid_ratio = valid_ratio
+        self.language = language
+        self.repeat = repeat
+        self.cache = cache
+        self.batch_size = batch_size
+        self.num_workers = 2
+        self.collate_fn = get_collate_fn(task)
+
+    def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset, needalign=True)
+
+        # Split the dataset
+        total_len = len(ds)
+        valid_len = int(total_len * self.valid_ratio)
+        train_len = total_len - valid_len
+        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+
+        transform = CharToAudioProcessor(self.language)
+
+        os.makedirs(self.cache, exist_ok=True)
+
+        self.train_ds = EncodedCacheDataset(
+            train_ds, b'tts', repeat=self.repeat, transform=transform,
+            augment=False, cachedir=self.cache)
+        self.valid_ds = EncodedCacheDataset(
+            valid_ds, b'tts', repeat=1, transform=transform,
+            augment=False, cachedir=self.cache)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    @staticmethod
+    def add_data_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
+        parser.add_argument('--dataset', default='lj_speech', help='Dataset to use')
+        parser.add_argument('--cache', default='./cache', help='Cache directory')
+        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
+        parser.add_argument('--language', default='en', type=str, help='Language')
+        parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
+        parser.add_argument('--dataset_repeat', default=5, type=str, help='Multiply training data')
+        return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        args.vocab_size = DEFAULT_VOCAB_SIZE
+        return AudioTextDataModule(
+            dataset=args.dataset,
+            task='tts',
+            valid_ratio=args.valid_ratio,
+            language=args.language,
+            repeat=args.dataset_repeat,
+            cache=args.cache,
+            batch_size=args.batch_size)
+
 class VCDataModule(pl.LightningDataModule):
 
-    def __init__(self, dataset, valid_ratio, language, repeat, cache, batch_size):
+    def __init__(self, dataset: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
         super().__init__()
         self.dataset = dataset
         self.valid_ratio = valid_ratio
