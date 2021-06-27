@@ -173,7 +173,7 @@ class SelfAttentionLayer(AttentionLayer):
 
     def forward(self, query_input, bias, **args):
         #print(bias.shape)
-        if bias.shape[2] != 1:
+        if bias.shape[0] == 1:
             x = bias[0, 0, :, :] != 0
             #print(x.int())
             x, _ = self.layer(query_input, query_input, query_input, need_weights=False, attn_mask=bias[0, 0, :, :] != 0)
