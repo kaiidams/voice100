@@ -381,6 +381,11 @@ class Translation(nn.Module):
             **factory_kwargs)
         self.embedding = nn.Embedding(
             vocab_size, hidden_size, **factory_kwargs)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        a = 1 / math.sqrt(self.hidden_size)
+        nn.init.normal_(self.embedding.weight, mean=0, std=a)
 
     def load_numpy_state(self):
         self.transformer.load_numpy_state()

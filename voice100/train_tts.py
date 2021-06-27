@@ -1,12 +1,36 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
+from ssl import SSLSocket
 from typing import Optional
 from .transformer import Translation
 import pytorch_lightning as pl
 import torch
 from torch import nn
+from torch import optim
 from .datasets import AudioTextDataModule
+import math
+
+sss = 0
+
+class CustomSchedule(optim.lr_scheduler._LRScheduler):
+
+    def __init__(self, optimizer, d_model: int, warmup_steps: int = 4000):
+        self.optimizer = optimizer
+        self.d_model = d_model
+        self.warmup_steps = warmup_steps
+        super(CustomSchedule, self).__init__(optimizer)
+
+    def get_lr(self):
+        step = self._step_count
+        arg1 = 1 / math.sqrt(step)
+        arg2 = step * (self.warmup_steps ** -1.5)
+        x = min(arg1, arg2) / math.sqrt(self.d_model)
+        global sss
+        sss = x
+        print(x)
+        return [group['lr'] * x
+                for group in self.optimizer.param_groups]
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
@@ -35,6 +59,10 @@ class CharToAudioModel(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
+
+        if batch_idx % 10 == 0:
+            print('ssss', sss)
+
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
         return loss
@@ -53,7 +81,8 @@ class CharToAudioModel(pl.LightningModule):
             lr=self.hparams.learning_rate,
             betas=(0.9, 0.98),
             weight_decay=0.0001)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+        scheduler = CustomSchedule(optimizer, d_model=self.hparams.hidden_size)
+        self.sss = scheduler
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
