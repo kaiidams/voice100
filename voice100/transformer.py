@@ -117,11 +117,12 @@ class EmbeddingSharedWeights(nn.Module):
     voacb_size: int
     hidden_size: int
 
-    def __init__(self, vocab_size, hidden_size):
+    def __init__(self, vocab_size, hidden_size, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super(EmbeddingSharedWeights, self).__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.shared_weights = torch.nn.Parameter(torch.Tensor(vocab_size, hidden_size), requires_grad=False)
+        self.shared_weights = nn.Parameter(torch.empty((vocab_size, hidden_size), **factory_kwargs))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -140,6 +141,7 @@ class EmbeddingSharedWeights(nn.Module):
         logits = torch.matmul(x, self.shared_weights.transpose(0, 1))
         return torch.reshape(logits, [batch_size, length, self.vocab_size])
 
+@torch.no_grad()
 def get_padding_bias(x: torch.Tensor, length: torch.Tensor, padding_value=0) -> torch.Tensor:
     """
     Args:
@@ -156,12 +158,14 @@ def get_padding_bias(x: torch.Tensor, length: torch.Tensor, padding_value=0) -> 
     attention_bias = attention_bias[:,None,None,:]
     return attention_bias
 
+@torch.no_grad()
 def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
     neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
     r = torch.arange(0, length, device=device)
     y = (torch.reshape(r, [-1, 1]) < torch.reshape(r, [1, -1])).to(dtype) * neg_inf
     return y[None, None, :, :]
 
+@torch.no_grad()
 def get_position_encoding(
         length, hidden_size, device, min_timescale=1.0, max_timescale=1.0e4):
     """Return positional encoding.

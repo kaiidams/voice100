@@ -140,7 +140,8 @@ class TranslateModel(pl.LightningModule):
             learning_rate=args.learning_rate)
 
 def test():
-    if False:
+    if True:
+        from .transformer import load_model
         model_file = '/home/kaiida/data/brokenegg/brokenegg.npz'
         vocab_file = '/home/kaiida/data/brokenegg/brokenegg.en-es-ja.spm64k.model'
         model = load_model(model_file)
@@ -157,10 +158,13 @@ def test():
     inputs = torch.tensor([[  393,  1244,  1268, 21851,    37,     8,  1174, 12024,  1396, 22667,
             157,   116,  1389,    11,  5662, 13199,    45, 27204,    19,  3811,
              16,  3369, 18380, 34191,     3,     1,     0,     0,     0]], dtype=torch.long)
+    inputs_len = torch.tensor([inputs.shape[1] - 3], dtype=torch.int32)
     targets = torch.tensor([[64002,     6, 32588, 31560,    20,  1461, 10160, 10971,    28,  3361,
           2889,  1461]], dtype=torch.long)
+    model.eval()
     with torch.no_grad():
-        logits, outputs = model(inputs, targets)
+        logits = model(inputs, inputs_len, targets)
+        outputs = logits.argmax(axis=-1)
         targets = torch.cat([targets, outputs], axis=1)
     print(outputs)
     print(targets)
@@ -190,5 +194,5 @@ def cli_main():
     trainer.fit(model, data)
 
 if __name__ == '__main__':
-    #test()
-    cli_main()
+    test()
+    #cli_main()
