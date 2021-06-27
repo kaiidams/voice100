@@ -131,15 +131,18 @@ def cli_main():
 
     if args.test:
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
-        test(data, model)
+        test(args, data, model)
         import os
         os.exit()
 
     trainer.fit(model, data)
 
-def test(data, model):
+def test(args, data, model):
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
+    if args.gpus > 0:
+        model.cuda()
+        data.cuda()
     model.eval()
     data.setup()
     from tqdm import tqdm
@@ -163,7 +166,7 @@ def test(data, model):
                 print('S:', tokenizer.decode(text[j, :]))
                 print('T:', tokenizer.decode(aligntext[j, :]))
                 print('H:', tokenizer.decode(tgt_out[j, :]))
-        hoge
+        break
         if True:
             for i in range(f0.shape[0]):
                 print('---')
@@ -174,7 +177,6 @@ def test(data, model):
                 x = text[i, :text_len[i]]
                 x = tokenizer.decode(x)
                 print(x)
-
 
 if __name__ == '__main__':
     cli_main()
