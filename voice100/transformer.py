@@ -206,57 +206,51 @@ class PrePostProcessingWrapper(nn.Module):
 
 class AttentionLayer(nn.Module):
 
-    def __init__(self, hidden_size: int, num_heads: int, dropout: float = 0.1):
+    def __init__(self, hidden_size: int, num_heads: int, dropout: float = 0.1, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        self.hidden_size = hidden_size
-        self.num_heads = num_heads
-        depth = hidden_size // num_heads
-        self.query_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
-        self.key_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
-        self.value_layer = EinsumLinear(subscripts='abc,cde->abde', in_shape=[hidden_size], out_shape=[num_heads, depth])
-        self.dropout = nn.Dropout(dropout, inplace=False)
-        self.output_transform = EinsumLinear(subscripts='abcd,cde->abe', in_shape=[num_heads, depth], out_shape=[hidden_size])
+        self.layer = nn.MultiheadAttention(
+            embed_dim=hidden_size, num_heads=num_heads, dropout=dropout,
+            bias=False, batch_first=True, **factory_kwargs)
 
     def load_numpy_state(self):
         with variable_scope('attention'):
-            load_numpy_state_dense_layer('query', self.query_layer)
-            load_numpy_state_dense_layer('key', self.key_layer)
-            load_numpy_state_dense_layer('value', self.value_layer)
-            load_numpy_state_dense_layer('output_transform', self.output_transform)
+            x = get_variable('query/kernel')
+            print(x.shape)
+            self.layer.in_proj_weight[:512, :] = get_variable('query/kernel').reshape([512, 512]).T
+            self.layer.in_proj_weight[512:1024, :] = get_variable('key/kernel').reshape([512, 512]).T
+            self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
+            x = get_variable('output_transform/kernel')
+            print(x.shape)
+            self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
     def forward(self, query_input, source_input, bias):
-        return self.attention_layer(query_input, source_input, bias, 'attention')
-
-    def attention_layer(self, query_input, source_input, bias, name):
-        with variable_scope(name):
-            query = self.query_layer(query_input)
-            key = self.key_layer(source_input)
-            value = self.value_layer(source_input)
-
-            depth = (self.hidden_size // self.num_heads)
-            query *= depth ** -0.5
-
-            logits = torch.einsum('btnh,bfnh->bnft', key, query)
-            if bias is not None:
-                logits += bias
-            weights = torch.softmax(logits, dim=3)
-            weights = self.dropout(weights)
-            attention_output = torch.einsum('bnft,btnh->bfnh', weights, value)
-
-            attention_output = self.output_transform(attention_output)
-
-        return attention_output
+        x = bias[:, 0, 0, :] == 0
+        print(x)
+        #print(bias.shape)
+        x, _ = self.layer(query_input, source_input, source_input, key_padding_mask=bias[:, 0, 0, :] != 0)
+        return x
 
 class SelfAttentionLayer(AttentionLayer):
     def load_numpy_state(self):
         with variable_scope('self_attention'):
-            load_numpy_state_dense_layer('query', self.query_layer)
-            load_numpy_state_dense_layer('key', self.key_layer)
-            load_numpy_state_dense_layer('value', self.value_layer)
-            load_numpy_state_dense_layer('output_transform', self.output_transform)
+            self.layer.in_proj_weight[:512, :] = get_variable('query/kernel').reshape([512, 512]).T
+            self.layer.in_proj_weight[512:1024, :] = get_variable('key/kernel').reshape([512, 512]).T
+            self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
+            self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
     def forward(self, query_input, bias, **args):
-        return self.attention_layer(query_input, query_input, bias, name='self_attention', **args)
+        print(bias.shape)
+        if bias.shape[2] != 1:
+            x = bias[0, 0, :, :] != 0
+            print(x.int())
+            x, _ = self.layer(query_input, query_input, query_input, need_weights=False, attn_mask=bias[0, 0, :, :] != 0)
+        else:
+            x = bias[:, 0, 0, :] == 0
+            print(x)
+            x, _ = self.layer(query_input, query_input, query_input, need_weights=False, key_padding_mask=bias[:, 0, 0, :] != 0)
+        #print(x.shape)
+        return x
 
 class FeedForwardNetwork(nn.Module):
 
