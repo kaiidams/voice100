@@ -71,35 +71,6 @@ def load_numpy_state_layer_norm(layer):
 
 # Transformer layers
 
-class EmbeddingSharedWeights(nn.Module):
-    __constants__ = ['vocab_size', 'hidden_size']
-    voacb_size: int
-    hidden_size: int
-
-    def __init__(self, vocab_size, hidden_size, device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super(EmbeddingSharedWeights, self).__init__()
-        self.vocab_size = vocab_size
-        self.hidden_size = hidden_size
-        self.shared_weights = nn.Parameter(torch.empty((vocab_size, hidden_size), **factory_kwargs))
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        a = 1 / math.sqrt(self.hidden_size)
-        nn.init.normal_(self.shared_weights, mean=0, std=a)
-
-    def embedding(self, inputs):
-        embedded_inputs = self.shared_weights[inputs, :]
-        embedded_inputs *= self.hidden_size ** 0.5
-        return embedded_inputs
-
-    def linear(self, inputs):
-        batch_size = -1 # torch.shape(inputs)[0]
-        length = inputs.shape[1]
-        x = torch.reshape(inputs, [-1, self.hidden_size])
-        logits = torch.matmul(x, self.shared_weights.transpose(0, 1))
-        return torch.reshape(logits, [batch_size, length, self.vocab_size])
-
 @torch.no_grad()
 def get_padding_bias(x: torch.Tensor, length: torch.Tensor, padding_value=0) -> torch.Tensor:
     """
@@ -145,9 +116,11 @@ def get_position_encoding(
 
 class PrePostProcessingWrapper(nn.Module):
 
-    def __init__(self, layer, hidden_size: int, dropout: float = 0.1):
+    def __init__(self, layer, hidden_size: int, dropout: float = 0.1,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6, **factory_kwargs)
         self.layer = layer
         self.dropout = nn.Dropout(dropout, inplace=True)
 
@@ -157,9 +130,9 @@ class PrePostProcessingWrapper(nn.Module):
             if isinstance(self.layer, nn.Module):
                 self.layer.load_numpy_state()
 
-    def forward(self, x, *args):
+    def forward(self, x, *args, **kwargs):
         y = self.layer_norm(x)
-        y = self.layer(y, *args)
+        y = self.layer(y, *args, **kwargs)
         y = self.dropout(y)
         return x + y
 
@@ -213,11 +186,13 @@ class SelfAttentionLayer(AttentionLayer):
 
 class FeedForwardNetwork(nn.Sequential):
 
-    def __init__(self, hidden_size, filter_size):
+    def __init__(self, hidden_size, filter_size,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__(
-            nn.Linear(hidden_size, filter_size, bias=True),
+            nn.Linear(hidden_size, filter_size, bias=True, **factory_kwargs),
             nn.ReLU(),
-            nn.Linear(filter_size, hidden_size, bias=True))
+            nn.Linear(filter_size, hidden_size, bias=True, **factory_kwargs))
 
     def load_numpy_state(self):
         with variable_scope("feed_forward_network"):
@@ -232,7 +207,9 @@ class FeedForwardNetwork(nn.Sequential):
 
 class TransformerEncoderLayer(nn.Module):
 
-    def __init__(self, hidden_size: int, filter_size: int, num_heads: int):
+    def __init__(self, hidden_size: int, filter_size: int, num_heads: int,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.hidden_size = hidden_size
         self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads), hidden_size)
@@ -251,7 +228,10 @@ class TransformerEncoderLayer(nn.Module):
 
 class TransformerEncoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1):
+    def __init__(
+        self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
@@ -260,7 +240,7 @@ class TransformerEncoder(nn.Module):
             layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
         self.layers = nn.ModuleList(layers)
         self.dropout = nn.Dropout(dropout, inplace=True)
-        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6, **factory_kwargs)
 
     def load_numpy_state(self):
         with variable_scope("encode"):
@@ -286,7 +266,9 @@ class TransformerEncoder(nn.Module):
 
 class TransformerDecoderLayer(nn.Module):
 
-    def __init__(self, hidden_size: int, filter_size: int, num_heads: int):
+    def __init__(self, hidden_size: int, filter_size: int, num_heads: int,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.hidden_size = hidden_size
         self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads), hidden_size)
@@ -310,15 +292,19 @@ class TransformerDecoderLayer(nn.Module):
 
 class TransformerDecoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1):
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1,
+        device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.layers = nn.ModuleList()
         for i in range(self.num_layers):
-            self.layers.append(TransformerDecoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
+            self.layers.append(
+                TransformerDecoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads,
+                    **factory_kwargs))
         self.dropout = nn.Dropout(dropout, inplace=True)
-        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6, **factory_kwargs)
 
     def load_numpy_state(self):
         with variable_scope("decode"):
@@ -354,30 +340,42 @@ class TransformerDecoder(nn.Module):
 class Transformer(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int, num_layers: int, num_heads: int):
+    def __init__(
+        self, vocab_size: int, hidden_size: int, filter_size: int,
+        num_layers: int, num_heads: int, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.dtype = torch.float32
-        self.encode = TransformerEncoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers, num_heads=num_heads)
-        self.decode = TransformerDecoder(hidden_size=hidden_size, filter_size=filter_size, num_layers=num_layers, num_heads=num_heads)
-        self.embedding_softmax_layer = EmbeddingSharedWeights(self.vocab_size, self.hidden_size)
+        self.encode = TransformerEncoder(
+            hidden_size=hidden_size, filter_size=filter_size,
+            num_layers=num_layers, num_heads=num_heads, **factory_kwargs)
+        self.decode = TransformerDecoder(
+            hidden_size=hidden_size, filter_size=filter_size,
+            num_layers=num_layers, num_heads=num_heads, **factory_kwargs)
+        self.embedding = nn.Embedding(vocab_size, hidden_size, **factory_kwargs)
 
     def load_numpy_state(self):
         self.encode.load_numpy_state()
         self.decode.load_numpy_state()
         with variable_scope('encode/embedding_shared_weights/embedding_and_softmax'):
-            self.embedding_softmax_layer.shared_weights.copy_(get_variable('weights'))
+            self.embedding.weight[:] = get_variable('weights')
 
     def forward(self, inputs, inputs_len, targets):
-        embedded_inputs = self.embedding_softmax_layer.embedding(inputs)
-        embedded_targets = self.embedding_softmax_layer.embedding(targets)
+        embedded_inputs = self.embedding(inputs) * self.hidden_size ** 0.5
+        embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
         encoder_outputs, attention_bias = self.encode(embedded_inputs, inputs_len)
         decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
-        logits = self.embedding_softmax_layer.linear(decoder_outputs)
-        return logits
 
-def load_model(file):
+        batch_size = -1 # torch.shape(inputs)[0]
+        length = decoder_outputs.shape[1]
+        x = torch.reshape(decoder_outputs, [-1, self.hidden_size])
+        logits = torch.matmul(x, self.embedding.weight.transpose(0, 1))
+        return torch.reshape(logits, [batch_size, length, self.vocab_size])
+
+def load_model(file, device=None, dtype=None):
+    factory_kwargs = {'device': device, 'dtype': dtype}
     arr = np.load(file)
     set_variables(arr)
-    return Transformer(64003, 512, 2048, 6, 8)
+    transformer = Transformer(64003, 512, 2048, 6, 8)
+    return transformer
