@@ -119,7 +119,7 @@ def cli_main():
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)    
     parser.add_argument('--test', action='store_true', default=False)
-    parser.set_defaults(task='asr')
+    parser.set_defaults(task='tts')
     args = parser.parse_args()
 
     data = AudioTextDataModule.from_argparse_args(args)
