@@ -365,20 +365,29 @@ class Transformer(nn.Module):
 class Translation(nn.Module):
     __constants__ = ['vocab_size', 'hidden_size']
 
-    def __init__(self, vocab_size: int, hidden_size: int, filter_size: int,
+    def __init__(self, native: bool, vocab_size: int, hidden_size: int, filter_size: int,
         num_layers: int, num_heads: int, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.transformer = nn.Transformer(
-            d_model=hidden_size,
-            dim_feedforward=filter_size,
-            num_encoder_layers=num_layers,
-            num_decoder_layers=num_layers,
-            nhead=num_heads,
-            batch_first=True,
-            **factory_kwargs)
+        self.native = native
+        if self.native:
+            self.transformer = nn.Transformer(
+                d_model=hidden_size,
+                dim_feedforward=filter_size,
+                num_encoder_layers=num_layers,
+                num_decoder_layers=num_layers,
+                nhead=num_heads,
+                batch_first=True,
+                **factory_kwargs)
+        else:
+            self.transformer = Transformer(
+                hidden_size=hidden_size,
+                filter_size=filter_size,
+                num_layers=num_layers,
+                num_heads=num_heads,
+                **factory_kwargs)
         self.embedding = nn.Embedding(
             vocab_size, hidden_size, **factory_kwargs)
         self.reset_parameters()
@@ -395,12 +404,15 @@ class Translation(nn.Module):
     def forward(self, inputs, inputs_len, targets):
         embedded_inputs = self.embedding(inputs) * self.hidden_size ** 0.5
         embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
-        src_key_padding_mask = get_padding_bias(embedded_inputs, inputs_len)
-        decoder_self_attention_bias = get_decoder_self_attention_bias(
-            embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
-        decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
-            tgt_mask=decoder_self_attention_bias[0, 0, :, :] != 0,
-            src_key_padding_mask=src_key_padding_mask[:, 0, 0, :] != 0)
+        if self.native:
+            src_key_padding_mask = get_padding_bias(embedded_inputs, inputs_len)
+            decoder_self_attention_bias = get_decoder_self_attention_bias(
+                embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
+            decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
+                tgt_mask=decoder_self_attention_bias[0, 0, :, :] != 0,
+                src_key_padding_mask=src_key_padding_mask[:, 0, 0, :] != 0)
+        else:
+            decoder_outputs = self.transformer(embedded_inputs, inputs_len, embedded_targets)
 
         batch_size = -1 # torch.shape(inputs)[0]
         length = decoder_outputs.shape[1]

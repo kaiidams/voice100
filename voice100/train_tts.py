@@ -39,10 +39,10 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         #        for group in self.optimizer.param_groups]
 
 class CharToAudioModel(pl.LightningModule):
-    def __init__(self, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
+    def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.transformer = Translation(vocab_size, hidden_size, filter_size, num_layers, num_headers)
+        self.transformer = Translation(native, vocab_size, hidden_size, filter_size, num_layers, num_headers)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
@@ -103,11 +103,13 @@ class CharToAudioModel(pl.LightningModule):
         parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
+        parser.add_argument('--native', action='store_true')
         return parser
 
     @staticmethod
     def from_argparse_args(args):
         return CharToAudioModel(
+            native=args.native,
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
             filter_size=args.filter_size,
@@ -141,6 +143,7 @@ def test(args, data, model):
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
     if args.gpus > 0:
+        print('cuda')
         model.cuda()
         data.cuda()
     model.eval()
