@@ -21,10 +21,6 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         self.warmup_steps = warmup_steps
         super(CustomSchedule, self).__init__(optimizer)
 
-    def xxxstep(self, *args, **kwargs):
-        super().step(*args, **kwargs)
-        print(self._step_count)
-
     def get_lr(self):
         step = self._step_count
         arg1 = 1 / math.sqrt(step)
@@ -32,7 +28,6 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         x = min(arg1, arg2) / math.sqrt(self.d_model)
         global sss
         sss = x
-        print('get_lr', self._step_count, sss)
         return [base_lr * x
                 for base_lr in self.base_lrs]
         #return [group['lr'] * x
@@ -72,7 +67,6 @@ class CharToAudioModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        print('ssss', sss)
         loss = self._calc_batch_loss(batch)
         self.log('val_loss', loss)
 
