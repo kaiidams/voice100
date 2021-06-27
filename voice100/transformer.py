@@ -148,17 +148,17 @@ class AttentionLayer(nn.Module):
     def load_numpy_state(self):
         with variable_scope('attention'):
             x = get_variable('query/kernel')
-            print(x.shape)
+            #print(x.shape)
             self.layer.in_proj_weight[:512, :] = get_variable('query/kernel').reshape([512, 512]).T
             self.layer.in_proj_weight[512:1024, :] = get_variable('key/kernel').reshape([512, 512]).T
             self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
             x = get_variable('output_transform/kernel')
-            print(x.shape)
+            #print(x.shape)
             self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
     def forward(self, query_input, source_input, bias):
         x = bias[:, 0, 0, :] == 0
-        print(x)
+        #print(x)
         #print(bias.shape)
         x, _ = self.layer(query_input, source_input, source_input, key_padding_mask=bias[:, 0, 0, :] != 0)
         return x
@@ -172,14 +172,14 @@ class SelfAttentionLayer(AttentionLayer):
             self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
     def forward(self, query_input, bias, **args):
-        print(bias.shape)
+        #print(bias.shape)
         if bias.shape[2] != 1:
             x = bias[0, 0, :, :] != 0
-            print(x.int())
+            #print(x.int())
             x, _ = self.layer(query_input, query_input, query_input, need_weights=False, attn_mask=bias[0, 0, :, :] != 0)
         else:
             x = bias[:, 0, 0, :] == 0
-            print(x)
+            #print(x)
             x, _ = self.layer(query_input, query_input, query_input, need_weights=False, key_padding_mask=bias[:, 0, 0, :] != 0)
         #print(x.shape)
         return x
