@@ -394,8 +394,8 @@ class Translation(nn.Module):
         decoder_self_attention_bias = get_decoder_self_attention_bias(
             embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
         decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
-            tgt_mask=decoder_self_attention_bias[0, 0, :, :],
-            src_key_padding_mask=src_key_padding_mask[:, 0, 0, :])
+            tgt_mask=decoder_self_attention_bias[0, 0, :, :] != 0,
+            src_key_padding_mask=src_key_padding_mask[:, 0, 0, :] != 0)
 
         batch_size = -1 # torch.shape(inputs)[0]
         length = decoder_outputs.shape[1]

@@ -51,7 +51,8 @@ class CharToAudioModel(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.learning_rate,
-            weight_decay=0.00004)
+            betas=(0.9, 0.98),
+            weight_decay=0.0001)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
@@ -62,7 +63,7 @@ class CharToAudioModel(pl.LightningModule):
         parser.add_argument('--filter_size', type=int, default=1024)
         parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--learning_rate', type=float, default=5e-4)
         return parser
 
     @staticmethod
