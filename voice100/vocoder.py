@@ -4,10 +4,21 @@ import numpy as np
 import pyworld
 import torch
 from torch import nn
+from typing import Tuple
 
+__all__ = [
+    "WORLDVocoder",
+    ]
+    
 class WORLDVocoder(nn.Module):
 
-    def __init__(self, sample_rate=16000, frame_period=10.0, n_fft=None):
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        frame_period: int = 10.0,
+        n_fft: int = None,
+        log_offset: float = 1e-15
+        ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_period = frame_period
@@ -18,12 +29,18 @@ class WORLDVocoder(nn.Module):
         elif sample_rate == 22050:
             self.codeap_dim = 2
             if self.n_fft is None: self.n_fft = 1024
-        self.log_offset = 1e-15
+        else:
+            raise ValueError("Unsupported sample rate")
+        self.log_offset = log_offset
 
-    def forward(self, waveform):
+    def forward(self, waveform: torch.Tensor):
         return self.encode(waveform)
 
-    def encode(self, waveform, f0_floor=80, f0_ceil=400):
+    def encode(
+        self,
+        waveform: torch.Tensor,
+        f0_floor: float = 80.0, f0_ceil: float = 400.0
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         waveform = waveform.numpy().astype(np.double)
         f0, time_axis = pyworld.dio(waveform, self.sample_rate, f0_floor=f0_floor,
             f0_ceil=f0_ceil, frame_period=self.frame_period)
@@ -38,7 +55,9 @@ class WORLDVocoder(nn.Module):
             torch.from_numpy(codeap.astype(np.float32))
         )
 
-    def decode(self, f0, logspc, codeap):
+    def decode(
+        self, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
+        ) -> torch.Tensor:
         f0 = f0.numpy().astype(np.double)
         logspc = logspc.numpy().astype(np.double)
         codeap = codeap.numpy().astype(np.double)
@@ -46,7 +65,3 @@ class WORLDVocoder(nn.Module):
         ap = pyworld.decode_aperiodicity(codeap, self.sample_rate, self.n_fft)
         waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
         return waveform
-
-__all__ = [
-    "WORLDVocoder",
-    ]

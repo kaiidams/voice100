@@ -137,15 +137,23 @@ class EncodedCacheDataset(Dataset):
 
 class AudioToCharProcessor(nn.Module):
 
-    def __init__(self, phonemizer):
+    def __init__(
+        self,
+        language: str,
+        sample_rate: int = 16000,
+        n_fft: int = 512,
+        win_length: int = 400,
+        hop_length: int = 160,
+        n_mels: int = 64,
+        log_offset: float = 1e-6
+        ):
         super().__init__()
-        self.sample_rate = 16000
-        self.n_fft = 512
-        self.win_length = 400
-        self.hop_length = 160
-        self.n_mels = 64
-        self.n_mfcc = 20
-        self.log_offset = 1e-6
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
+        self.n_mels = n_mels
+        self.log_offset = log_offset
         self.effects = [
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
@@ -157,7 +165,7 @@ class AudioToCharProcessor(nn.Module):
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        if phonemizer == 'ja':
+        if language == 'ja':
             from .japanese import JapanesePhonemizer
             self._phonemizer = JapanesePhonemizer()
         else:
@@ -284,9 +292,9 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
 
 def get_transform(task, language):
     if task == 'asr':
-        transform = AudioToCharProcessor(language)
+        transform = AudioToCharProcessor(language=language)
     elif task == 'tts':
-        transform = CharToAudioProcessor(language)
+        transform = CharToAudioProcessor(language=language)
     else:
         raise ValueError('Unknown task')
     return transform
