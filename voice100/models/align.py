@@ -124,7 +124,11 @@ class AudioAlignCTC(pl.LightningModule):
         return optimizer#{"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @torch.no_grad()
-    def ctc_best_path(self, audio=None, audio_len=None, text=None, text_len=None, logits=None):
+    def ctc_best_path(
+        self, audio: torch.Tensor = None,
+        audio_len: torch.Tensor = None, text: torch.Tensor = None,
+        text_len: torch.Tensor = None, logits: torch.Tensor = None
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # logits [audio_len, batch_size, vocab_size]
         if logits is None:
             logits, logits_len = self.forward(audio, audio_len)
@@ -133,7 +137,7 @@ class AudioAlignCTC(pl.LightningModule):
         path = []
         score = []
         for i in range(logits.shape[1]):
-            one_logits_len = logits_len[i].cpu().numpy()
+            one_logits_len = logits_len[i].cpu().item()
             one_logits = logits[:one_logits_len, i, :].cpu().numpy()
             one_text_len = text_len[i].cpu().numpy()
             one_text = text[i, :one_text_len].cpu().numpy()
@@ -143,7 +147,7 @@ class AudioAlignCTC(pl.LightningModule):
             path.append(torch.from_numpy(one_path))
         score = torch.tensor(one_path, dtype=torch.float32)
         path = pad_sequence(path, batch_first=True, padding_value=0)
-        return score, path
+        return score, path, logits_len
 
     @staticmethod
     def add_model_specific_args(parent_parser):

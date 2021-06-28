@@ -374,18 +374,21 @@ class AlignInferDataModule(pl.LightningDataModule):
         cache: str, batch_size: int
         ):
         super().__init__()
+        self.task = 'asr'
         self.dataset = dataset
         self.language = language
         self.cache = cache
+        self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
+        self.collate_fn = get_collate_fn(self.task)
+        self.transform = get_transform(self.task, self.language)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset)
-        self.transform = AudioToCharProcessor(self.language)
         os.makedirs(self.cache, exist_ok=True)
         self.infer_ds = EncodedCacheDataset(
-            ds, b'asr', repeat=1, transform=self.transform,
+            ds, self.cache_salt, repeat=1, transform=self.transform,
             cachedir=self.cache)
 
     def infer_dataloader(self):
@@ -394,13 +397,13 @@ class AlignInferDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=generate_audio_text_batch)
+            collate_fn=self.collate_fn)
 
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='librispeech', help='Dataset to use')
+        parser.add_argument('--dataset', default='lj_speech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
         parser.add_argument('--language', default='en', type=str, help='Language')
@@ -439,9 +442,9 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.language = language
         self.repeat = repeat
         self.cache = cache
+        self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
-        self.cache_salt = self.task.encode('utf-8')
         self.collate_fn = get_collate_fn(self.task)
         self.transform = get_transform(self.task, self.language)
 
