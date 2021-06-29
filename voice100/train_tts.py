@@ -234,14 +234,14 @@ def test(args, data, model):
     data.setup()
     from tqdm import tqdm
     for batch in data.train_dataloader():
-        (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
+        (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         print('===')
         tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
         #print(text.shape, text_len.shape, tgt_in.shape)
         for i in tqdm(range(200)):
             #print(text.shape, text_len.shape)
             #hoge
-            logits = model.forward(text.cuda(), text_len.cuda(), tgt_in.cuda())
+            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text.cuda(), text_len.cuda(), tgt_in.cuda())
             tgt_out = logits.argmax(axis=-1)
             if False:
                 for j in range(text.shape[0]):
