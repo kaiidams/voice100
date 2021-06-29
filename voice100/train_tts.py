@@ -253,7 +253,7 @@ def test(args, data, model):
                     print(tokenizer.decode(text[j, :]))
                     print(tokenizer.decode(aligntext[j, :]))
                     print(tokenizer.decode(tgt_out[j, :]))
-            tgt_in = torch.cat([tgt_in.cuda(), tgt_out[:, -1:]], axis=1)
+            tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
         if True:
             for j in range(text.shape[0]):
                 print('---')
