@@ -22,14 +22,14 @@ def cli_main():
     with open(args.output, 'w') as f:
         for idx, batch in enumerate(tqdm(data.infer_dataloader())):
             (audio, audio_len), (text, text_len) = batch
-            score, path = model.ctc_best_path(audio, audio_len, text, text_len)
+            score, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
             file = os.path.join(args.cache, 'align-%d.pt' % idx)
             torch.save({
-                'score': score, 'path': path, 'path_len': audio_len
+                'score': score, 'path': path, 'path_len': path_len
             }, file)
         
             for i in range(path.shape[0]):
-                raw_text = encoder.decode(path[i, :audio_len[i]])
+                raw_text = encoder.decode(path[i, :path_len[i]])
                 f.write(raw_text + '\n')
 
 if __name__ == '__main__':
