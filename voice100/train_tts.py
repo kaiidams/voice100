@@ -1,7 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from ssl import SSLSocket
 from typing import Optional
 from .transformer import Translation
 import pytorch_lightning as pl
@@ -12,6 +11,22 @@ from .datasets import AudioTextDataModule
 import math
 
 sss = 0
+
+class VoiceDecoder(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_size=256):
+        from .models.asr import InvertedResidual
+        super().__init__()
+        half_hidden_size = hidden_size // 2
+        self.layers = nn.Sequential(
+            InvertedResidual(in_channels, hidden_size, kernel_size=65, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=17),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
+            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
+
+    def forward(self, x):
+        return self.layers(x)
 
 class CustomSchedule(optim.lr_scheduler._LRScheduler):
 
@@ -30,48 +45,123 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         sss = x
         return [base_lr * x
                 for base_lr in self.base_lrs]
-        #return [group['lr'] * x
-        #        for group in self.optimizer.param_groups]
+
+def adjust_size(x, y):
+    if x.shape[1] > y.shape[1]:
+        return x[:, :y.shape[1]], y
+    if x.shape[1] < y.shape[1]:
+        return x, y[:, :x.shape[1]]
+    return x, y
+
+
+class WORLDLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
+        self.l1_loss = nn.L1Loss(reduction='none')
+
+    def forward(self, length, hasf0_hat, f0, logspc, codeap, hasf0, f0_target, logspc_target, codeap_target):
+
+        hasf0_hat, hasf0 = adjust_size(hasf0_hat, hasf0)
+        f0, f0_target = adjust_size(f0, f0_target)
+        logspc, logspc_target = adjust_size(logspc, logspc_target)
+        codeap, codeap_target = adjust_size(codeap, codeap_target)
+
+        weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
+        hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
+        f0_loss = self.l1_loss(f0, f0_target) * hasf0 * weights
+        logspec_loss = torch.mean(self.l1_loss(logspc, logspc_target), axis=2) * weights
+        codeap_loss = torch.mean(self.l1_loss(codeap, codeap_target), axis=2) * weights
+        weights_sum = torch.sum(weights)
+        hasf0_loss = torch.sum(hasf0_loss) / weights_sum
+        f0_loss = torch.sum(f0_loss) / weights_sum
+        logspec_loss = torch.sum(logspec_loss) / weights_sum
+        codeap_loss = torch.sum(codeap_loss) / weights_sum
+        return hasf0_loss, f0_loss, logspec_loss, codeap_loss
+
+def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None] - 1).to(x.dtype)
+
+def normalize_world_components(f0, logspc, codeap):
+    # 124.72452458429298 28.127268439734607
+    # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
+    f0 = (f0 - 124.72452458429298) / 28.127268439734607
+    #f0 = (f0 - 79.45929) / 61.937077
+    logspc = (logspc + 8.509372) / 1.786831
+    codeap = (codeap + 2.3349452) / 2.5427816
+    return f0, logspc, codeap
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
+        self.vocab_size = vocab_size
+        self.hasf0_size = 1
+        self.f0_size = 1
+        self.logspc_size = 513
+        self.codeap_size = 2
         self.transformer = Translation(native, vocab_size, hidden_size, filter_size, num_layers, num_headers)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
+        self.world_criteria = WORLDLoss()
+        self.world_decoder = VoiceDecoder(hidden_size, self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size)
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
-        logits = self.transformer(src_ids, src_ids_len, tgt_in_ids)
-        return logits
+        logits, dec_out = self.transformer(src_ids, src_ids_len, tgt_in_ids)
+        dec_out = torch.transpose(dec_out, 1, 2)
+        world_out = self.world_decoder(dec_out)
+        world_out = torch.transpose(world_out, 1, 2)
+        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
+            self.hasf0_size,
+            self.f0_size,
+            self.logspc_size,
+            self.codeap_size
+        ], dim=2)
+        hasf0_hat = hasf0_hat[:, :, 0]
+        f0_hat = f0_hat[:, :, 0]
+        return logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat
 
     def _calc_batch_loss(self, batch):
-        (f0, f0_len, spec, codeap, aligntext), (text, text_len) = batch
+        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        hasf0 = (f0 >= 30.0).to(torch.float32)
+        f0, logspc, codeap = normalize_world_components(f0, logspc, codeap)
 
         src_ids = text
         src_ids_len = text_len
         tgt_in_ids = aligntext[:, :-1]
         tgt_out_ids = aligntext[:, 1:]
-        tgt_out_mask = (torch.arange(tgt_out_ids.shape[1], device=tgt_out_ids.device)[None, :] < f0_len[:, None] - 1).float()
-
-        logits = self.forward(src_ids, src_ids_len, tgt_in_ids)
+        tgt_out_mask = get_padding_mask(tgt_out_ids, aligntext_len - 1)
+        logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
-        loss = self.criteria(logits, tgt_out_ids)
-        loss = torch.sum(loss * tgt_out_mask) / torch.sum(tgt_out_mask)
-        return loss
+        align_loss = self.criteria(logits, tgt_out_ids)
+        align_loss = torch.sum(align_loss * tgt_out_mask) / torch.sum(tgt_out_mask)
+
+        hasf0_loss, f0_loss, logspec_loss, codeap_loss = self.world_criteria(
+            f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
+
+        return align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss
 
     def training_step(self, batch, batch_idx):
         if batch_idx % 1000 == 0:
             print('ssss', sss)
-        loss = self._calc_batch_loss(batch)
-        self.log('train_loss', loss)
+        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
+
+        self.log('train_align_loss', align_loss)
+        self.log('train_hasf0_loss', hasf0_loss)
+        self.log('train_f0_loss', f0_loss)
+        self.log('train_logspc_loss', logspec_loss)
+        self.log('train_codeap_loss', codeap_loss)
+
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
+        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
+        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
         self.log('test_loss', loss)
 
     def configure_optimizers(self):

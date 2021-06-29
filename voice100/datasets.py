@@ -20,6 +20,8 @@ import hashlib
 
 from .audio import SpectrogramAugumentation
 
+BLANK_IDX = 0
+
 class MetafileDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with TSV metafile,
     like LJ Speech Corpus and Mozilla Common Voice.
@@ -181,39 +183,37 @@ class AudioToCharProcessor(nn.Module):
 
 class CharToAudioProcessor(nn.Module):
 
-    def __init__(self, language: str, target_sample_rate: int = 22050):
-        #from voice100.vocoder import WORLDVocoder
-
+    def __init__(
+        self,
+        language: str,
+        sample_rate: int = 22050
+        ):
+        from voice100.vocoder import WORLDVocoder
         super().__init__()
-        self.sample_rate = 16000
-        self.target_sample_rate = target_sample_rate
-        self.n_fft = 512
-        self.win_length = 400
-        self.hop_length = 160
-        self.n_mels = 64
-        self.log_offset = 1e-6
+        self.sample_rate = sample_rate
         self.target_effects = [
             ["remix", "1"],
-            ["rate", f"{self.target_sample_rate}"],
+            ["rate", f"{self.sample_rate}"],
         ]
 
         self._phonemizer = get_phonemizer(language)
-        #self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
-
+        self._vocoder = WORLDVocoder(sample_rate=self.sample_rate)
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text, aligntext):
-        #waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        #f0, logspc, codeap = self._vocoder(waveform[0])
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        f0, logspc, codeap = self._vocoder(waveform[0])
 
         text = self.encoder.encode(self._phonemizer(text))
         aligntext = self.encoder.encode(aligntext)
 
-        f0 = torch.zeros(aligntext.shape, dtype=torch.float32)
-        logspc = torch.zeros(list(aligntext.shape) + [513], dtype=torch.float32)
-        codeap = torch.zeros(list(aligntext.shape) + [2], dtype=torch.float32)
+        if False:
+            f0_len = aligntext.shape[0] * 2 - 1
+            f0 = torch.zeros([f0_len], dtype=torch.float32)
+            logspc = torch.zeros([f0_len, 513], dtype=torch.float32)
+            codeap = torch.zeros([f0_len, 2], dtype=torch.float32)
 
-        return (f0, logspc, codeap, aligntext), text
+        return (f0, logspc, codeap), text, aligntext
 
 class AudioToAudioProcessor(nn.Module):
 
@@ -255,8 +255,6 @@ class AudioToAudioProcessor(nn.Module):
         target = self._vocoder(waveform[0])
         return audio, target
 
-BLANK_IDX = 0
-
 def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     chained_ds = None
     for dataset in dataset.split(','):
@@ -292,11 +290,13 @@ def get_transform(task: str, language: str):
     return transform
 
 def get_phonemizer(language: str):
-    if language == 'ja':
+    if language == 'en':
+        return BasicPhonemizer()
+    elif language == 'ja':
         from .japanese import JapanesePhonemizer
         return JapanesePhonemizer()
     else:
-        return BasicPhonemizer()
+        raise ValueError(f"Unsupported language {language}")
 
 def get_collate_fn(task):
     if task == 'asr':
@@ -320,24 +320,24 @@ def generate_audio_text_batch(data_batch):
 
 def generate_audio_text_align_batch(data_batch):
     f0_batch, spec_batch, codeap_batch, aligntext_batch, text_batch = [], [], [], [], []
-    for (f0_item, spec_item, codeap_item, aligntext_item), text_item  in data_batch:
+    for (f0_item, spec_item, codeap_item), text_item, aligntext_item in data_batch:
         f0_batch.append(f0_item)
         spec_batch.append(spec_item)
         codeap_batch.append(codeap_item)
-        aligntext_item = fix_aligntext_len(aligntext_item, len(f0_item))
-        aligntext_batch.append(aligntext_item)
         text_batch.append(text_item)
+        aligntext_batch.append(aligntext_item)
 
     f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+    aligntext_len = torch.tensor([len(x) for x in aligntext_batch], dtype=torch.int32)
 
     f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
     spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
-    aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=0)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
+    aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=BLANK_IDX)
 
-    return (f0_batch, f0_len, spec_batch, codeap_batch, aligntext_batch), (text_batch, text_len)
+    return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (aligntext_batch, aligntext_len)
 
 def generate_audio_text_align_batch_(data_batch):
     audio_batch, text_batch, aligntext_batch = [], [], []
@@ -350,21 +350,6 @@ def generate_audio_text_align_batch_(data_batch):
     audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return (audio_batch, audio_len), (text_batch, text_len)
-
-def fix_aligntext_len(aligntext, aligntext_len):
-    if aligntext.shape[0] > aligntext_len:
-        print('warning')
-        return aligntext[:aligntext_len]
-    elif aligntext.shape[0] < aligntext_len:
-        print('warning')
-        return torch.cat([
-            aligntext,
-            torch.zeros(
-                aligntext_len - aligntext.shape[0],
-                dtype=aligntext.dtype, device=aligntext.device)
-        ])
-    else:
-        return aligntext
 
 class AlignInferDataModule(pl.LightningDataModule):
 

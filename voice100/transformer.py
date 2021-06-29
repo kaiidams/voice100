@@ -418,7 +418,9 @@ class Translation(nn.Module):
         length = decoder_outputs.shape[1]
         x = torch.reshape(decoder_outputs, [-1, self.hidden_size])
         logits = torch.matmul(x, self.embedding.weight.transpose(0, 1))
-        return torch.reshape(logits, [batch_size, length, self.vocab_size])
+        return (
+            torch.reshape(logits, [batch_size, length, self.vocab_size]),
+            torch.reshape(decoder_outputs, [batch_size, length, self.hidden_size]))
 
 def load_model(file, device=None, dtype=None):
     factory_kwargs = {'device': device, 'dtype': dtype}
