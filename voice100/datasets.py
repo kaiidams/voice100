@@ -165,11 +165,7 @@ class AudioToCharProcessor(nn.Module):
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        if language == 'ja':
-            from .japanese import JapanesePhonemizer
-            self._phonemizer = JapanesePhonemizer()
-        else:
-            self._phonemizer = BasicPhonemizer()
+        self._phonemizer = get_phonemizer(language)
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text):
@@ -185,7 +181,7 @@ class AudioToCharProcessor(nn.Module):
 
 class CharToAudioProcessor(nn.Module):
 
-    def __init__(self, phonemizer: str, target_sample_rate: int = 22050):
+    def __init__(self, language: str, target_sample_rate: int = 22050):
         #from voice100.vocoder import WORLDVocoder
 
         super().__init__()
@@ -201,13 +197,9 @@ class CharToAudioProcessor(nn.Module):
             ["rate", f"{self.target_sample_rate}"],
         ]
 
+        self._phonemizer = get_phonemizer(language)
         #self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
-        if phonemizer == 'ja':
-            from .japanese import JapanesePhonemizer
-            self._phonemizer = JapanesePhonemizer()
-        else:
-            self._phonemizer = BasicPhonemizer()
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text, aligntext):
@@ -290,7 +282,7 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
             chained_ds += ds
     return chained_ds
 
-def get_transform(task, language):
+def get_transform(task: str, language: str):
     if task == 'asr':
         transform = AudioToCharProcessor(language=language)
     elif task == 'tts':
@@ -298,6 +290,13 @@ def get_transform(task, language):
     else:
         raise ValueError('Unknown task')
     return transform
+
+def get_phonemizer(language: str):
+    if language == 'ja':
+        from .japanese import JapanesePhonemizer
+        return JapanesePhonemizer()
+    else:
+        return BasicPhonemizer()
 
 def get_collate_fn(task):
     if task == 'asr':
