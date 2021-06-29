@@ -227,7 +227,7 @@ def cli_main():
 def test(args, data, model):
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
-    if args.gpus > 0:
+    if args.gpus and args.gpus > 0:
         print('cuda')
         model.cuda()
     model.eval()
