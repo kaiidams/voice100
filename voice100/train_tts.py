@@ -208,7 +208,6 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)    
-    parser.add_argument('--test', action='store_true', default=False)
     parser.set_defaults(task='tts')
     args = parser.parse_args()
 
@@ -216,7 +215,8 @@ def cli_main():
     model = CharToAudioModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
 
-    if args.test:
+    if args.infer:
+        assert args.resume_from_checkpoint
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         test(args, data, model)
         import os

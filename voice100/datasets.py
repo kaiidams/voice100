@@ -186,9 +186,9 @@ class CharToAudioProcessor(nn.Module):
     def __init__(
         self,
         language: str,
-        sample_rate: int = 22050
+        sample_rate: int = 22050,
+        infer: bool = False
         ):
-        from voice100.vocoder import WORLDVocoder
         super().__init__()
         self.sample_rate = sample_rate
         self.target_effects = [
@@ -197,17 +197,21 @@ class CharToAudioProcessor(nn.Module):
         ]
 
         self._phonemizer = get_phonemizer(language)
-        self._vocoder = WORLDVocoder(sample_rate=self.sample_rate)
+        if infer:
+            self._vocoder = None
+        else:
+            from voice100.vocoder import WORLDVocoder
+            self._vocoder = WORLDVocoder(sample_rate=self.sample_rate)
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text, aligntext):
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        f0, logspc, codeap = self._vocoder(waveform[0])
-
         text = self.encoder.encode(self._phonemizer(text))
         aligntext = self.encoder.encode(aligntext)
 
-        if False:
+        if self._vocoder is not None:
+            waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+            f0, logspc, codeap = self._vocoder(waveform[0])
+        else:
             f0_len = aligntext.shape[0] * 2 - 1
             f0 = torch.zeros([f0_len], dtype=torch.float32)
             logspc = torch.zeros([f0_len, 513], dtype=torch.float32)
@@ -280,11 +284,11 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
             chained_ds += ds
     return chained_ds
 
-def get_transform(task: str, language: str):
+def get_transform(task: str, language: str, infer: bool = False):
     if task == 'asr':
         transform = AudioToCharProcessor(language=language)
     elif task == 'tts':
-        transform = CharToAudioProcessor(language=language)
+        transform = CharToAudioProcessor(language=language, infer=infer)
     else:
         raise ValueError('Unknown task')
     return transform
@@ -418,7 +422,10 @@ def generate_audio_audio_batch(data_batch):
 
 class AudioTextDataModule(pl.LightningDataModule):
 
-    def __init__(self, task: str, dataset: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
+    def __init__(
+        self, task: str, dataset: str, valid_ratio: float,
+        language: str, repeat: int, cache: str,
+        batch_size: int, infer: bool):
         super().__init__()
         self.task = task
         self.dataset = dataset
@@ -430,7 +437,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.language)
+        self.transform = get_transform(self.task, self.language, infer)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset, needalign=self.task == 'tts')
@@ -477,6 +484,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         parser.add_argument('--language', default='en', type=str, help='Language')
         parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
         parser.add_argument('--dataset_repeat', default=5, type=str, help='Multiply training data')
+        parser.add_argument('--infer', action='store_true', help='Inference')
         return parser
 
     @staticmethod
@@ -489,7 +497,8 @@ class AudioTextDataModule(pl.LightningDataModule):
             language=args.language,
             repeat=args.dataset_repeat,
             cache=args.cache,
-            batch_size=args.batch_size)
+            batch_size=args.batch_size,
+            infer=args.infer)
 
 class VCDataModule(pl.LightningDataModule):
 
