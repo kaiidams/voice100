@@ -227,7 +227,8 @@ def cli_main():
 def test(args, data, model):
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
-    if args.gpus and args.gpus > 0:
+    use_cuda = args.gpus and args.gpus > 0
+    if use_cuda:
         print('cuda')
         model.cuda()
     model.eval()
@@ -241,7 +242,11 @@ def test(args, data, model):
         for i in tqdm(range(200)):
             #print(text.shape, text_len.shape)
             #hoge
-            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text.cuda(), text_len.cuda(), tgt_in.cuda())
+            if use_cuda:
+                text = text.cuda()
+                text_len = text_len.cuda()
+                tgt_in = tgt_in.cuda()
+            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
             tgt_out = logits.argmax(axis=-1)
             if False:
                 for j in range(text.shape[0]):
