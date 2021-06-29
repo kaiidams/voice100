@@ -264,7 +264,7 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
         elif dataset == 'lj_speech':
             root = './data/LJSpeech-1.1'
             alignfile = 'aligndata.csv' if needalign else None
-            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
+            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.wav')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = MetafileDataset(root)
