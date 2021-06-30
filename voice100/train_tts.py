@@ -91,6 +91,14 @@ def normalize_world_components(f0, logspc, codeap):
     codeap = (codeap + 2.3349452) / 2.5427816
     return f0, logspc, codeap
 
+def unnormalize_world_components(f0, logspc, codeap):
+    # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
+    f0 = f0 * 28.127268439734607 + 124.72452458429298
+    #f0 = f0 * 61.937077 + 79.45929
+    logspc = logspc * 1.786831 - 8.509372
+    codeap = codeap * 2.5427816e+00 - 2.3349452e+00
+    return f0, logspc, codeap
+
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
@@ -218,11 +226,43 @@ def cli_main():
     if args.infer:
         assert args.resume_from_checkpoint
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
-        test(args, data, model)
+        infer_force_align(args, data, model)
         import os
         os.exit()
 
     trainer.fit(model, data)
+
+def infer_force_align(args, data, model):
+    from .text import CharTokenizer
+    tokenizer = CharTokenizer()
+    use_cuda = args.gpus and args.gpus > 0
+    if use_cuda:
+        print('cuda')
+        model.cuda()
+    model.eval()
+    data.setup()
+    from tqdm import tqdm
+    for batch in data.train_dataloader():
+        (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        print('===')
+        tgt_in = aligntext
+        if use_cuda:
+            text = text.cuda()
+            text_len = text_len.cuda()
+            tgt_in = tgt_in.cuda()
+        if True:
+            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            f0_hat
+            unnormalize_world_components(f0)
+        else:
+            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+        tgt_out = logits.argmax(axis=-1)
+        tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+        for j in range(text.shape[0]):
+            print('---')
+            print('S:', tokenizer.decode(text[j, :]))
+            print('T:', tokenizer.decode(aligntext[j, :]))
+            print('H:', tokenizer.decode(tgt_out[j, :]))
 
 def test(args, data, model):
     from .text import CharTokenizer
@@ -246,7 +286,10 @@ def test(args, data, model):
                 text = text.cuda()
                 text_len = text_len.cuda()
                 tgt_in = tgt_in.cuda()
-            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            if True:
+                logits = model.forward(text, text_len, tgt_in)
+            else:
+                logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
             tgt_out = logits.argmax(axis=-1)
             if False:
                 for j in range(text.shape[0]):
