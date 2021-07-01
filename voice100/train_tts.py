@@ -326,12 +326,12 @@ def calc_stat(args):
             f0_sqrsum += torch.sum(f0 ** 2 * f0mask)
             f0_count += torch.sum(f0mask)
 
-            logspc_sum += torch.sum(logspc * mask)
-            logspc_sqrsum += torch.mean(logspc ** 2 * mask, axis=2)
+            logspc_sum += torch.sum(torch.sum(logspc * mask[:, :, None], axis=1), axis=0)
+            logspc_sqrsum += torch.sum(torch.sum(logspc ** 2 * mask[:, :, None], axis=1), axis=0)
             logspc_count += torch.sum(mask)
 
-            codeap_sum += torch.sum(codeap * mask)
-            codeap_sqrsum += torch.mean(codeap ** 2 * mask, axis=2)
+            codeap_sum += torch.sum(torch.sum(codeap * mask[:, :, None], axis=1), axis=0)
+            codeap_sqrsum += torch.sum(torch.sum(codeap ** 2 * mask[:, :, None], axis=1), axis=0)
 
             if batch_idx % 10 == 0:
                 codeap_count = logspc_count
