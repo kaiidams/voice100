@@ -56,22 +56,22 @@ def adjust_size(x, y):
 class WORLDNorm(nn.Module):
     def __init__(self, logspc_size: int, codeap_size: int):
         super().__init__()
-        self.f0_weight = nn.Parameter(
+        self.f0_std = nn.Parameter(
             torch.ones([1], dtype=torch.float32),
             requires_grad=False)
-        self.f0_bias = nn.Parameter(
+        self.f0_mean = nn.Parameter(
             torch.zeros([1], dtype=torch.float32),
             requires_grad=False)
-        self.logspc_weight = nn.Parameter(
+        self.logspc_std = nn.Parameter(
             torch.ones([logspc_size], dtype=torch.float32),
             requires_grad=False)
-        self.logspc_bias = nn.Parameter(
+        self.logspc_mean = nn.Parameter(
             torch.zeros([logspc_size], dtype=torch.float32),
             requires_grad=False)
-        self.codeap_weight = nn.Parameter(
+        self.codeap_std = nn.Parameter(
             torch.ones([codeap_size], dtype=torch.float32),
             requires_grad=False)
-        self.codeap_bias = nn.Parameter(
+        self.codeap_mean = nn.Parameter(
             torch.zeros([codeap_size], dtype=torch.float32),
             requires_grad=False)
 
@@ -80,16 +80,16 @@ class WORLDNorm(nn.Module):
 
     @torch.no_grad()
     def normalize(self, f0, logspc, codeap):
-        f0 = (f0 - self.f0_bias) / self.f0_weight
-        logspc = (logspc - self.logspc_bias) / self.logspc_weight
-        codeap = (codeap - self.codeap_bias) / self.codeap_weight
+        f0 = (f0 - self.f0_mean) / self.f0_std
+        logspc = (logspc - self.logspc_mean) / self.logspc_std
+        codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, logspc, codeap
 
     @torch.no_grad()
     def unnormalize(self, f0, logspc, codeap):
-        f0 = self.f0_weight * f0 + self.f0_bias 
-        logspc = self.logspc_weight * logspc + self.logspc_bias
-        codeap = self.codeap_weight * codeap + self.codeap_bias
+        f0 = self.f0_std * f0 + self.f0_mean 
+        logspc = self.logspc_std * logspc + self.logspc_mean
+        codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, logspc, codeap
 
 class WORLDLoss(nn.Module):
@@ -336,14 +336,14 @@ def calc_stat(args):
             if batch_idx % 10 == 0:
                 codeap_count = logspc_count
                 state_dict = {
-                    'f0_bias': f0_sum / f0_count,
-                    'f0_weight': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
-                    'logspc_bias': logspc_sum / logspc_count,
-                    'logspc_weight': torch.sqrt((logspc_sqrsum / logspc_count) - (logspc_sum / logspc_count) ** 2),
-                    'codeap_bias': codeap_sum / codeap_count,
-                    'codeap_weight': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
+                    'f0_mean': f0_sum / f0_count,
+                    'f0_std': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
+                    'logspc_mean': logspc_sum / logspc_count,
+                    'logspc_std': torch.sqrt((logspc_sqrsum / logspc_count) - (logspc_sum / logspc_count) ** 2),
+                    'codeap_mean': codeap_sum / codeap_count,
+                    'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
                 }
-                print(state_dict)
+                print('saving...')
                 torch.save(state_dict, 'world_stat.pt')
 
 def test(args, data, model):
