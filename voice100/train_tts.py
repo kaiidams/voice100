@@ -53,6 +53,44 @@ def adjust_size(x, y):
         return x, y[:, :x.shape[1]]
     return x, y
 
+class WORLDNorm(nn.Module):
+    def __init__(self, logspc_size: int, codeap_size: int):
+        super().__init__()
+        self.f0_weight = nn.Parameter(
+            torch.ones([1], dtype=torch.float32),
+            requires_grad=False)
+        self.f0_bias = nn.Parameter(
+            torch.zeros([1], dtype=torch.float32),
+            requires_grad=False)
+        self.logspc_weight = nn.Parameter(
+            torch.ones([logspc_size], dtype=torch.float32),
+            requires_grad=False)
+        self.logspc_bias = nn.Parameter(
+            torch.zeros([logspc_size], dtype=torch.float32),
+            requires_grad=False)
+        self.codeap_weight = nn.Parameter(
+            torch.ones([codeap_size], dtype=torch.float32),
+            requires_grad=False)
+        self.codeap_bias = nn.Parameter(
+            torch.zeros([codeap_size], dtype=torch.float32),
+            requires_grad=False)
+
+    def forward(self, f0, logspc, codeap):
+        return self.normalize(f0, logspc, codeap)
+
+    @torch.no_grad()
+    def normalize(self, f0, logspc, codeap):
+        f0 = (f0 - self.f0_bias) / self.f0_weight
+        logspc = (logspc - self.logspc_bias) / self.logspc_weight
+        codeap = (codeap - self.codeap_bias) / self.codeap_weight
+        return f0, logspc, codeap
+
+    @torch.no_grad()
+    def unnormalize(self, f0, logspc, codeap):
+        f0 = self.f0_weight * f0 + self.f0_bias 
+        logspc = self.logspc_weight * logspc + self.logspc_bias
+        codeap = self.codeap_weight * codeap + self.codeap_bias
+        return f0, logspc, codeap
 
 class WORLDLoss(nn.Module):
     def __init__(self):
@@ -79,6 +117,7 @@ class WORLDLoss(nn.Module):
         codeap_loss = torch.sum(codeap_loss) / weights_sum
         return hasf0_loss, f0_loss, logspec_loss, codeap_loss
 
+@torch.no_grad()
 def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None] - 1).to(x.dtype)
 
@@ -215,22 +254,23 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
-    parser = CharToAudioModel.add_model_specific_args(parser)    
+    parser = CharToAudioModel.add_model_specific_args(parser)
+    parser.add_argument('--calc_stat', action='store_true', help='Calculate WORLD statistics')
     parser.set_defaults(task='tts')
     args = parser.parse_args()
 
-    data = AudioTextDataModule.from_argparse_args(args)
-    model = CharToAudioModel.from_argparse_args(args)
-    trainer = pl.Trainer.from_argparse_args(args)
-
-    if args.infer:
+    if args.calc_stat:
+        calc_stat(args)
+    elif args.infer:
         assert args.resume_from_checkpoint
+        data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         infer_force_align(args, data, model)
-        import os
-        os.exit()
-
-    trainer.fit(model, data)
+    else:
+        data = AudioTextDataModule.from_argparse_args(args)
+        model = CharToAudioModel.from_argparse_args(args)
+        trainer = pl.Trainer.from_argparse_args(args)
+        trainer.fit(model, data)
 
 def infer_force_align(args, data, model):
     from .text import CharTokenizer
@@ -263,6 +303,48 @@ def infer_force_align(args, data, model):
             print('S:', tokenizer.decode(text[j, :]))
             print('T:', tokenizer.decode(aligntext[j, :]))
             print('H:', tokenizer.decode(tgt_out[j, :]))
+
+def calc_stat(args):
+    from tqdm import tqdm
+    data = AudioTextDataModule.from_argparse_args(args)
+    data.setup()
+    f0_sum = torch.zeros(1, dtype=torch.double)
+    logspc_sum = torch.zeros(513, dtype=torch.double)
+    codeap_sum = torch.zeros(2, dtype=torch.double)
+    f0_sqrsum = torch.zeros(1, dtype=torch.double)
+    logspc_sqrsum = torch.zeros(513, dtype=torch.double)
+    codeap_sqrsum = torch.zeros(2, dtype=torch.double)
+    f0_count = 0
+    logspc_count = 0
+    for batch_idx, batch in enumerate(tqdm(data.train_dataloader())):
+        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        with torch.no_grad():
+            mask = get_padding_mask(f0, f0_len)
+            f0mask = (f0 > 30.0).float() * mask
+
+            f0_sum += torch.sum(f0 * f0mask)
+            f0_sqrsum += torch.sum(f0 ** 2 * f0mask)
+            f0_count += torch.sum(f0mask)
+
+            logspc_sum += torch.sum(logspc * mask)
+            logspc_sqrsum += torch.mean(logspc ** 2 * mask, axis=2)
+            logspc_count += torch.sum(mask)
+
+            codeap_sum += torch.sum(codeap * mask)
+            codeap_sqrsum += torch.mean(codeap ** 2 * mask, axis=2)
+
+            if batch_idx % 10 == 0:
+                codeap_count = logspc_count
+                state_dict = {
+                    'f0_bias': f0_sum / f0_count,
+                    'f0_weight': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
+                    'logspc_bias': logspc_sum / logspc_count,
+                    'logspc_weight': torch.sqrt((logspc_sqrsum / logspc_count) - (logspc_sum / logspc_count) ** 2),
+                    'codeap_bias': codeap_sum / codeap_count,
+                    'codeap_weight': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
+                }
+                print(state_dict)
+                torch.save(state_dict, 'world_stat.pt')
 
 def test(args, data, model):
     from .text import CharTokenizer
