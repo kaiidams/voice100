@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Optional
+from typing import Optional, Tuple
 from .transformer import Translation
 import pytorch_lightning as pl
 import torch
@@ -79,14 +79,18 @@ class WORLDNorm(nn.Module):
         return self.normalize(f0, logspc, codeap)
 
     @torch.no_grad()
-    def normalize(self, f0, logspc, codeap):
+    def normalize(
+        self, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
         logspc = (logspc - self.logspc_mean) / self.logspc_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, logspc, codeap
 
     @torch.no_grad()
-    def unnormalize(self, f0, logspc, codeap):
+    def unnormalize(
+        self, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean 
         logspc = self.logspc_std * logspc + self.logspc_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
@@ -121,23 +125,6 @@ class WORLDLoss(nn.Module):
 def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None] - 1).to(x.dtype)
 
-def normalize_world_components(f0, logspc, codeap):
-    # 124.72452458429298 28.127268439734607
-    # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-    f0 = (f0 - 124.72452458429298) / 28.127268439734607
-    #f0 = (f0 - 79.45929) / 61.937077
-    logspc = (logspc + 8.509372) / 1.786831
-    codeap = (codeap + 2.3349452) / 2.5427816
-    return f0, logspc, codeap
-
-def unnormalize_world_components(f0, logspc, codeap):
-    # [ 79.45929   -8.509372  -2.3349452 61.937077   1.786831   2.5427816]
-    f0 = f0 * 28.127268439734607 + 124.72452458429298
-    #f0 = f0 * 61.937077 + 79.45929
-    logspc = logspc * 1.786831 - 8.509372
-    codeap = codeap * 2.5427816e+00 - 2.3349452e+00
-    return f0, logspc, codeap
-
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
@@ -148,9 +135,11 @@ class CharToAudioModel(pl.LightningModule):
         self.logspc_size = 513
         self.codeap_size = 2
         self.transformer = Translation(native, vocab_size, hidden_size, filter_size, num_layers, num_headers)
-        self.criteria = nn.CrossEntropyLoss(reduction='none')
-        self.world_criteria = WORLDLoss()
         self.world_decoder = VoiceDecoder(hidden_size, self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size)
+        self.criteria = nn.CrossEntropyLoss(reduction='none')
+        self.world_norm = WORLDNorm(self.logspc_size, self.codeap_size)
+        self.world_criteria = WORLDLoss()
+        self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
         logits, dec_out = self.transformer(src_ids, src_ids_len, tgt_in_ids)
@@ -170,7 +159,7 @@ class CharToAudioModel(pl.LightningModule):
     def _calc_batch_loss(self, batch):
         (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
-        f0, logspc, codeap = normalize_world_components(f0, logspc, codeap)
+        f0, logspc, codeap = self.world_norm.normalize(f0, logspc, codeap)
 
         src_ids = text
         src_ids_len = text_len
@@ -231,7 +220,7 @@ class CharToAudioModel(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=256)
         parser.add_argument('--filter_size', type=int, default=1024)
-        parser.add_argument('--num_layers', type=int, default=4)
+        parser.add_argument('--num_layers', type=int, default=6)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
         parser.add_argument('--native', action='store_true')
@@ -272,7 +261,7 @@ def cli_main():
         trainer = pl.Trainer.from_argparse_args(args)
         trainer.fit(model, data)
 
-def infer_force_align(args, data, model):
+def infer_force_align(args, data, model: CharToAudioModel):
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
     use_cuda = args.gpus and args.gpus > 0
@@ -293,7 +282,7 @@ def infer_force_align(args, data, model):
         if True:
             logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
             f0_hat
-            unnormalize_world_components(f0)
+            f0_hat, logspc_hat, codeap_hat = model.world_norm.unnormalize(f0_hat, logspc_hat, codeap_hat)
         else:
             logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
         tgt_out = logits.argmax(axis=-1)
