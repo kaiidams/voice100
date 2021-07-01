@@ -265,7 +265,7 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
-        elif dataset == 'lj_speech':
+        elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
             alignfile = 'aligndata.csv' if needalign else None
             ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
@@ -391,7 +391,7 @@ class AlignInferDataModule(pl.LightningDataModule):
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='lj_speech', help='Dataset to use')
+        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
         parser.add_argument('--language', default='en', type=str, help='Language')
@@ -478,7 +478,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--task', type=str, help='Task')
         parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='lj_speech', help='Dataset to use')
+        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
         parser.add_argument('--language', default='en', type=str, help='Language')
