@@ -268,7 +268,7 @@ def cli_main():
     else:
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.from_argparse_args(args)
-        checkpoint_callback = ModelCheckpoint()
+        checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, period=10)
         from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
         monitor_callback = LearningRateMonitor()
         trainer = pl.Trainer.from_argparse_args(

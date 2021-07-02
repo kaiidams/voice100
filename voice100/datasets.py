@@ -483,7 +483,6 @@ class AudioTextDataModule(pl.LightningDataModule):
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
         parser.add_argument('--language', default='en', type=str, help='Language')
         parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
-        parser.add_argument('--dataset_repeat', default=5, type=str, help='Multiply training data')
         parser.add_argument('--infer', action='store_true', help='Inference')
         return parser
 
