@@ -46,7 +46,7 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         #print(self._step_count)
         #for base_lr in self.base_lrs:
         #    print(base_lr)
-        return [base_lr * x
+        return [base_lr * x / 10
                 for base_lr in self.base_lrs]
 
 def adjust_size(x, y):
