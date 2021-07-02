@@ -205,6 +205,7 @@ class CharToAudioModel(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             betas=(0.9, 0.98),
+            eps=1e-9,
             weight_decay=0.0001)
         scheduler = CustomSchedule(optimizer, d_model=self.hparams.hidden_size)
         lr_dict = {
