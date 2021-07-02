@@ -123,7 +123,7 @@ class WORLDLoss(nn.Module):
 
 @torch.no_grad()
 def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None] - 1).to(x.dtype)
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
@@ -359,7 +359,7 @@ def infer2(args):
         print('===')
         tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
         #print(text.shape, text_len.shape, tgt_in.shape)
-        for i in tqdm(range(200)):
+        for i in tqdm(range(50)):
             #print(text.shape, text_len.shape)
             #hoge
             if use_cuda:
@@ -379,7 +379,7 @@ def infer2(args):
                 print('---')
                 print('S:', tokenizer.decode(text[j, :]))
                 print('T:', tokenizer.decode(aligntext[j, :]))
-                print('H:', tokenizer.decode(tgt_out[j, :]))
+                print('H:', tokenizer.decode(tgt_in[j, :]))
         break
         if True:
             for i in range(f0.shape[0]):
