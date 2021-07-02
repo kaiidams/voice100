@@ -424,7 +424,7 @@ class AudioTextDataModule(pl.LightningDataModule):
 
     def __init__(
         self, task: str, dataset: str, valid_ratio: float,
-        language: str, repeat: int, cache: str,
+        language: str, cache: str,
         batch_size: int, infer: bool):
         super().__init__()
         self.task = task
