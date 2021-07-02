@@ -245,6 +245,7 @@ def cli_main():
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)
     parser.add_argument('--calc_stat', action='store_true', help='Calculate WORLD statistics')
+    parser.add_argument('--infer2', action='store_true', help='')
     parser.set_defaults(task='tts')
     args = parser.parse_args()
 
@@ -255,6 +256,8 @@ def cli_main():
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
         infer_force_align(args, data, model)
+    elif args.infer2:
+        infer2(args)
     else:
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.from_argparse_args(args)
@@ -335,7 +338,12 @@ def calc_stat(args):
                 print('saving...')
                 torch.save(state_dict, 'world_stat.pt')
 
-def test(args, data, model):
+def infer2(args):
+
+    assert args.resume_from_checkpoint
+    data = AudioTextDataModule.from_argparse_args(args)
+    model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
+
     from .text import CharTokenizer
     tokenizer = CharTokenizer()
     use_cuda = args.gpus and args.gpus > 0
@@ -357,10 +365,7 @@ def test(args, data, model):
                 text = text.cuda()
                 text_len = text_len.cuda()
                 tgt_in = tgt_in.cuda()
-            if True:
-                logits = model.forward(text, text_len, tgt_in)
-            else:
-                logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
             tgt_out = logits.argmax(axis=-1)
             if False:
                 for j in range(text.shape[0]):
