@@ -450,10 +450,10 @@ class AudioTextDataModule(pl.LightningDataModule):
         os.makedirs(self.cache, exist_ok=True)
 
         self.train_ds = EncodedCacheDataset(
-            train_ds, self.cache_salt, repeat=self.repeat, transform=self.transform,
+            train_ds, self.cache_salt, transform=self.transform,
             augment=False, cachedir=self.cache)
         self.valid_ds = EncodedCacheDataset(
-            valid_ds, self.cache_salt, repeat=1, transform=self.transform,
+            valid_ds, self.cache_salt, transform=self.transform,
             augment=False, cachedir=self.cache)
 
     def train_dataloader(self):
