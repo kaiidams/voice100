@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from typing import Optional, Tuple
 from .transformer import Translation
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
 from torch import optim
@@ -267,7 +268,12 @@ def cli_main():
     else:
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.from_argparse_args(args)
-        trainer = pl.Trainer.from_argparse_args(args)
+        checkpoint_callback = ModelCheckpoint()
+        from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
+        monitor_callback = LearningRateMonitor()
+        trainer = pl.Trainer.from_argparse_args(
+            args,
+            callbacks=[monitor_callback, checkpoint_callback])
         trainer.fit(model, data)
 
 def infer_force_align(args, data, model: CharToAudioModel):
