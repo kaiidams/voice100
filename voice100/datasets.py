@@ -431,7 +431,6 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.dataset = dataset
         self.valid_ratio = valid_ratio
         self.language = language
-        self.repeat = repeat
         self.cache = cache
         self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
@@ -494,7 +493,6 @@ class AudioTextDataModule(pl.LightningDataModule):
             dataset=args.dataset,
             valid_ratio=args.valid_ratio,
             language=args.language,
-            repeat=args.dataset_repeat,
             cache=args.cache,
             batch_size=args.batch_size,
             infer=args.infer)
