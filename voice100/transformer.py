@@ -156,11 +156,8 @@ class AttentionLayer(nn.Module):
             #print(x.shape)
             self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
-    def forward(self, query_input, source_input, bias):
-        x = bias[:, 0, 0, :] == 0
-        #print(x)
-        #print(bias.shape)
-        x, _ = self.layer(query_input, source_input, source_input, key_padding_mask=bias[:, 0, 0, :] != 0)
+    def forward(self, query_input, source_input, key_padding_mask):
+        x, _ = self.layer(query_input, source_input, source_input, key_padding_mask=key_padding_mask)
         return x
 
 class SelfAttentionLayer(AttentionLayer):
@@ -171,17 +168,10 @@ class SelfAttentionLayer(AttentionLayer):
             self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
             self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
-    def forward(self, query_input, bias, **args):
-        #print(bias.shape)
-        if bias.shape[0] == 1:
-            x = bias[0, 0, :, :] != 0
-            #print(x.int())
-            x, _ = self.layer(query_input, query_input, query_input, need_weights=False, attn_mask=bias[0, 0, :, :] != 0)
-        else:
-            x = bias[:, 0, 0, :] == 0
-            #print(x)
-            x, _ = self.layer(query_input, query_input, query_input, need_weights=False, key_padding_mask=bias[:, 0, 0, :] != 0)
-        #print(x.shape)
+    def forward(self, query_input, key_padding_mask=None, attn_mask=None, **args):
+        x, _ = self.layer(
+            query_input, query_input, query_input, need_weights=False,
+            key_padding_mask=key_padding_mask, attn_mask=attn_mask)
         return x
 
 class FeedForwardNetwork(nn.Sequential):
@@ -221,8 +211,8 @@ class TransformerEncoderLayer(nn.Module):
         with variable_scope("ffn"):
             self.ffn.load_numpy_state()
 
-    def forward(self, inputs, attention_bias):
-        x = self.self_attention(inputs, attention_bias)
+    def forward(self, inputs, key_padding_mask):
+        x = self.self_attention(inputs, key_padding_mask=key_padding_mask)
         x = self.ffn(x)
         return x
 
@@ -251,16 +241,16 @@ class TransformerEncoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_inputs, attention_bias):
+    def forward(self, embedded_inputs, key_padding_mask):
         length = embedded_inputs.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
         pos_encoding = pos_encoding.to(embedded_inputs.dtype)
         encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
-        return self.encoder_stack(encoder_inputs, attention_bias)
+        return self.encoder_stack(encoder_inputs, key_padding_mask)
 
-    def encoder_stack(self, encoder_inputs, attention_bias):
+    def encoder_stack(self, encoder_inputs, key_padding_mask):
         for layer in self.layers:
-            encoder_inputs = layer(encoder_inputs, attention_bias)
+            encoder_inputs = layer(encoder_inputs, key_padding_mask)
         return self.layer_norm(encoder_inputs)
 
 class TransformerDecoderLayer(nn.Module):
@@ -283,9 +273,11 @@ class TransformerDecoderLayer(nn.Module):
             self.ffn.load_numpy_state()
 
     def forward(self, decoder_inputs, encoder_outputs,
-        decoder_self_attention_bias, attention_bias):
-        x = self.self_attention(decoder_inputs, decoder_self_attention_bias)
-        x = self.encdec_attention(x, encoder_outputs, attention_bias)
+        decoder_self_attention_mask, key_padding_mask):
+        x = self.self_attention(
+            decoder_inputs, bias=None,
+            attn_mask=decoder_self_attention_mask)
+        x = self.encdec_attention(x, encoder_outputs, key_padding_mask=key_padding_mask)
         x = self.ffn(x)
         return x
 
@@ -314,7 +306,7 @@ class TransformerDecoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_targets, encoder_outputs, attention_bias):
+    def forward(self, embedded_targets, encoder_outputs, attention_mask):
         length = embedded_targets.shape[1]
         pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_targets.device)
         pos_encoding = pos_encoding.to(embedded_targets.dtype)
@@ -322,11 +314,13 @@ class TransformerDecoder(nn.Module):
 
         decoder_self_attention_bias = get_decoder_self_attention_bias(
             length, device=embedded_targets.device, dtype=embedded_targets.dtype)
+        decoder_self_attention_mask = decoder_self_attention_bias[0, 0, :, :] != 0.0
+        #print(attention_mask.shape, decoder_self_attention_bias.shape)
         return self.decoder_stack(
             decoder_inputs,
             encoder_outputs,
-            decoder_self_attention_bias,
-            attention_bias)
+            decoder_self_attention_mask,
+            attention_mask)
 
     def decoder_stack(
         self, decoder_inputs, encoder_outputs, decoder_self_attention_bias, attention_bias
@@ -358,8 +352,9 @@ class Transformer(nn.Module):
 
     def forward(self, embedded_inputs, inputs_len, embedded_targets):
         attention_bias = get_padding_bias(embedded_inputs, inputs_len)
-        encoder_outputs = self.encode(embedded_inputs, attention_bias)
-        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_bias)
+        attention_mask = attention_bias[:, 0, 0, :] != 0.0
+        encoder_outputs = self.encode(embedded_inputs, attention_mask)
+        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_mask)
         return decoder_outputs
 
 class Translation(nn.Module):

@@ -37,12 +37,14 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         super(CustomSchedule, self).__init__(optimizer)
 
     def get_lr(self):
-        step = self._step_count
+        step = self._step_count * 16 / (37000 / 100)
         arg1 = 1 / math.sqrt(step)
         arg2 = step * (self.warmup_steps ** -1.5)
         x = min(arg1, arg2) / math.sqrt(self.d_model)
         global sss
         sss = x
+        #for base_lr in self.base_lrs:
+        #    print(base_lr)
         return [base_lr * x
                 for base_lr in self.base_lrs]
 
@@ -169,6 +171,7 @@ class CharToAudioModel(pl.LightningModule):
         logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
         align_loss = self.criteria(logits, tgt_out_ids)
+        #print(tgt_out_mask)
         align_loss = torch.sum(align_loss * tgt_out_mask) / torch.sum(tgt_out_mask)
 
         hasf0_loss, f0_loss, logspec_loss, codeap_loss = self.world_criteria(
@@ -368,8 +371,10 @@ def infer2(args):
                     text_len = text_len.cuda()
                     tgt_in = tgt_in.cuda()            
                 logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+                logits[:, :, 0] = -5.0
+                logits[:, :, 1] = -5.0
                 tgt_out = logits.argmax(axis=-1)
-                print(logits[0, -1, :].numpy())
+                #print(logits[0, -1, :].numpy())
                 if False:
                     for j in range(text.shape[0]):
                         print(tokenizer.decode(text[j, :]))
