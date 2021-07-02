@@ -357,23 +357,25 @@ def infer2(args):
     for batch in data.train_dataloader():
         (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         print('===')
-        tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
-        #print(text.shape, text_len.shape, tgt_in.shape)
-        for i in tqdm(range(50)):
-            #print(text.shape, text_len.shape)
-            #hoge
-            if use_cuda:
-                text = text.cuda()
-                text_len = text_len.cuda()
-                tgt_in = tgt_in.cuda()
-            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
-            tgt_out = logits.argmax(axis=-1)
-            if False:
-                for j in range(text.shape[0]):
-                    print(tokenizer.decode(text[j, :]))
-                    print(tokenizer.decode(aligntext[j, :]))
-                    print(tokenizer.decode(tgt_out[j, :]))
-            tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+        with torch.no_grad():
+            tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
+            #print(text.shape, text_len.shape, tgt_in.shape)
+            for i in tqdm(range(50)):
+                #print(text.shape, text_len.shape)
+                #hoge
+                if use_cuda:
+                    text = text.cuda()
+                    text_len = text_len.cuda()
+                    tgt_in = tgt_in.cuda()            
+                logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+                tgt_out = logits.argmax(axis=-1)
+                print(logits[0, -1, :].numpy())
+                if False:
+                    for j in range(text.shape[0]):
+                        print(tokenizer.decode(text[j, :]))
+                        print(tokenizer.decode(aligntext[j, :]))
+                        print(tokenizer.decode(tgt_out[j, :]))
+                tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
         if True:
             for j in range(text.shape[0]):
                 print('---')
