@@ -191,6 +191,7 @@ class CharToAudioModel(pl.LightningModule):
         self.log('train_f0_loss', f0_loss)
         self.log('train_logspc_loss', logspec_loss)
         self.log('train_codeap_loss', codeap_loss)
+        self.log('train_loss', loss)
 
         return loss
 
@@ -209,8 +210,8 @@ class CharToAudioModel(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             betas=(0.9, 0.98),
-            eps=1e-9,
-            weight_decay=0.0001)
+            eps=1e-9)#,
+            #weight_decay=0.0001)
         scheduler = CustomSchedule(optimizer, d_model=self.hparams.hidden_size)
         lr_dict = {
             "scheduler": scheduler,
