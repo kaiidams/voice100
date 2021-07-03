@@ -159,8 +159,9 @@ class CharToAudioModel(pl.LightningModule):
         dec_out = torch.reshape(decoder_outputs, [batch_size, length, self.hidden_size])
 
         logits = self.out_proj(dec_out)
-        logits = torch.transpose(logits, 1, 2)
-        world_out = self.world_out_proj(dec_out)
+
+        world_out = self.world_out_proj(torch.transpose(dec_out, 1, 2))
+        world_out = torch.transpose(world_out, 1, 2)
         hasf0_hat, f0_hat, mcep_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
