@@ -332,7 +332,7 @@ def calc_stat(args):
     data.setup()
 
     spec_size = 25
-    codeap_size = 2
+    codeap_size = 1
 
     f0_sum = torch.zeros(1, dtype=torch.double)
     spec_sum = torch.zeros(spec_size, dtype=torch.double)
