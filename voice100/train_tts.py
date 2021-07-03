@@ -152,12 +152,15 @@ class CharToAudioModel(pl.LightningModule):
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
         embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
         embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-        dec_out = self.transformer(embedded_inputs, src_ids_len, embedded_targets)
-        dec_out = torch.transpose(dec_out, 1, 2)
+        decoder_outputs = self.transformer(embedded_inputs, src_ids_len, embedded_targets)
+
+        batch_size = -1 # torch.shape(inputs)[0]
+        length = decoder_outputs.shape[1]
+        dec_out = torch.reshape(decoder_outputs, [batch_size, length, self.hidden_size])
+
         logits = self.out_proj(dec_out)
         logits = torch.transpose(logits, 1, 2)
         world_out = self.world_out_proj(dec_out)
-        world_out = torch.transpose(world_out, 1, 2)
         hasf0_hat, f0_hat, mcep_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
