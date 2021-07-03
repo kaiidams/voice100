@@ -78,19 +78,19 @@ class WORLDVocoder(nn.Module):
     def decode(
         self, f0: torch.Tensor, logspc_or_mc: torch.Tensor, codeap: torch.Tensor
         ) -> torch.Tensor:
-        f0 = f0.cpu().numpy().astype(np.double)
+        f0 = f0.cpu().numpy().astype(np.double, order='C')
         if self.use_mc:
             mc = logspc_or_mc.cpu().numpy().astype(np.double)
             logspc = mc @ self.mc2sp_matrix
         else:
             logspc = logspc_or_mc.cpu().numpy().astype(np.double)
-        codeap = codeap.cpu().numpy().astype(np.double)
-        spc = np.maximum(np.exp(logspc) - self.log_offset, 0)
+        codeap = codeap.cpu().numpy().astype(np.double, order='C')
+        spc = np.maximum(np.exp(logspc) - self.log_offset, 0).copy(order='C')
         ap = pyworld.decode_aperiodicity(codeap, self.sample_rate, self.n_fft)
         waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
         return waveform
 
-def create_sp2mc_matrix(fftlen, order, alpha):
+def create_sp2mc_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     """PySPTK compatible mel-cepstrum transform matrix
     https://pysptk.readthedocs.io/en/latest/_modules/pysptk/conversion.html#sp2mc"""
     logsp = np.eye(fftlen // 2 + 1, dtype=np.float32)
@@ -99,7 +99,7 @@ def create_sp2mc_matrix(fftlen, order, alpha):
     mc = freqt(c, order, alpha)
     return mc
 
-def create_mc2sp_matrix(fftlen, order, alpha):
+def create_mc2sp_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     """PySPTK compatible mel-cepstrum invert transform matrix
     https://pysptk.readthedocs.io/en/latest/_modules/pysptk/conversion.html#mc2sp"""
     c = np.eye(order + 1, dtype=np.float32)
@@ -109,7 +109,7 @@ def create_mc2sp_matrix(fftlen, order, alpha):
     logsp = np.fft.rfft(c).real
     return logsp
 
-def freqt(ceps: torch.Tensor, order=25, alpha=0.0) -> torch.Tensor:
+def freqt(ceps: np.ndarray, order=25, alpha=0.0) -> np.ndarray:
     """PySPTK compatible frequency transform
     https://pysptk.readthedocs.io/en/latest/generated/pysptk.sptk.freqt.html#pysptk.sptk.freqt
     """
