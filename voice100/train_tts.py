@@ -66,10 +66,10 @@ class WORLDNorm(nn.Module):
         self.f0_mean = nn.Parameter(
             torch.zeros([1], dtype=torch.float32),
             requires_grad=False)
-        self.mcep_std = nn.Parameter(
+        self.spec_std = nn.Parameter(
             torch.ones([spec_size], dtype=torch.float32),
             requires_grad=False)
-        self.mcep_mean = nn.Parameter(
+        self.spec_mean = nn.Parameter(
             torch.zeros([spec_size], dtype=torch.float32),
             requires_grad=False)
         self.codeap_std = nn.Parameter(
@@ -87,7 +87,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
-        mcep = (mcep - self.mcep_mean) / self.mcep_std
+        mcep = (mcep - self.spec_mean) / self.spec_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, mcep, codeap
 
@@ -96,7 +96,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean 
-        mcep = self.mcep_std * mcep + self.mcep_mean
+        mcep = self.spec_std * mcep + self.spec_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
