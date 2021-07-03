@@ -79,7 +79,7 @@ class WORLDNorm(nn.Module):
             torch.zeros([codeap_size], dtype=torch.float32),
             requires_grad=False)
 
-    def forward(self, f0, logspc, codeap):
+    def forward(self, f0, mcep, codeap):
         return self.normalize(f0, mcep, codeap)
 
     @torch.no_grad()
@@ -155,6 +155,7 @@ class CharToAudioModel(pl.LightningModule):
         dec_out = self.transformer(embedded_inputs, src_ids_len, embedded_targets)
         dec_out = torch.transpose(dec_out, 1, 2)
         logits = self.out_proj(dec_out)
+        logits = torch.transpose(logits, 1, 2)
         world_out = self.world_out_proj(dec_out)
         world_out = torch.transpose(world_out, 1, 2)
         hasf0_hat, f0_hat, mcep_hat, codeap_hat = torch.split(world_out, [
