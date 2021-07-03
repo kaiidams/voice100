@@ -186,7 +186,7 @@ class CharToAudioProcessor(nn.Module):
     def __init__(
         self,
         language: str,
-        sample_rate: int = 22050,
+        sample_rate: int,
         infer: bool = False
         ):
         super().__init__()
@@ -284,11 +284,11 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
             chained_ds += ds
     return chained_ds
 
-def get_transform(task: str, language: str, infer: bool = False):
+def get_transform(task: str, sample_rate: int, language: str, infer: bool = False):
     if task == 'asr':
         transform = AudioToCharProcessor(language=language)
     elif task == 'tts':
-        transform = CharToAudioProcessor(language=language, infer=infer)
+        transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, infer=infer)
     else:
         raise ValueError('Unknown task')
     return transform
@@ -424,19 +424,21 @@ class AudioTextDataModule(pl.LightningDataModule):
 
     def __init__(
         self, task: str, dataset: str, valid_ratio: float,
+        sample_rate: int,
         language: str, cache: str,
         batch_size: int, infer: bool):
         super().__init__()
         self.task = task
         self.dataset = dataset
         self.valid_ratio = valid_ratio
+        self.sample_rate = sample_rate
         self.language = language
         self.cache = cache
         self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.language, infer)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, infer)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset, needalign=self.task == 'tts')
@@ -490,6 +492,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         args.vocab_size = DEFAULT_VOCAB_SIZE
         return AudioTextDataModule(
             task=args.task,
+            sample_rate=args.sample_rate,
             dataset=args.dataset,
             valid_ratio=args.valid_ratio,
             language=args.language,

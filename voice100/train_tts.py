@@ -2,7 +2,7 @@
 
 from argparse import ArgumentParser
 from typing import Optional, Tuple
-from .transformer import Translation
+from .transformer import Transformer
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
@@ -58,7 +58,7 @@ def adjust_size(x, y):
     return x, y
 
 class WORLDNorm(nn.Module):
-    def __init__(self, logspc_size: int, codeap_size: int):
+    def __init__(self, mcep_size: int, codeap_size: int):
         super().__init__()
         self.f0_std = nn.Parameter(
             torch.ones([1], dtype=torch.float32),
@@ -66,11 +66,11 @@ class WORLDNorm(nn.Module):
         self.f0_mean = nn.Parameter(
             torch.zeros([1], dtype=torch.float32),
             requires_grad=False)
-        self.logspc_std = nn.Parameter(
-            torch.ones([logspc_size], dtype=torch.float32),
+        self.mcep_std = nn.Parameter(
+            torch.ones([mcep_size], dtype=torch.float32),
             requires_grad=False)
-        self.logspc_mean = nn.Parameter(
-            torch.zeros([logspc_size], dtype=torch.float32),
+        self.mcep_mean = nn.Parameter(
+            torch.zeros([mcep_size], dtype=torch.float32),
             requires_grad=False)
         self.codeap_std = nn.Parameter(
             torch.ones([codeap_size], dtype=torch.float32),
@@ -80,25 +80,25 @@ class WORLDNorm(nn.Module):
             requires_grad=False)
 
     def forward(self, f0, logspc, codeap):
-        return self.normalize(f0, logspc, codeap)
+        return self.normalize(f0, mcep, codeap)
 
     @torch.no_grad()
     def normalize(
-        self, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
+        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
-        logspc = (logspc - self.logspc_mean) / self.logspc_std
+        mcep = (mcep - self.mcep_mean) / self.mcep_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
-        return f0, logspc, codeap
+        return f0, mcep, codeap
 
     @torch.no_grad()
     def unnormalize(
-        self, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
+        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean 
-        logspc = self.logspc_std * logspc + self.logspc_mean
+        mcep = self.mcep_std * mcep + self.mcep_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
-        return f0, logspc, codeap
+        return f0, mcep, codeap
 
 class WORLDLoss(nn.Module):
     def __init__(self):
@@ -106,17 +106,17 @@ class WORLDLoss(nn.Module):
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
 
-    def forward(self, length, hasf0_hat, f0, logspc, codeap, hasf0, f0_target, logspc_target, codeap_target):
+    def forward(self, length, hasf0_hat, f0, mcep, codeap, hasf0, f0_target, mcep_target, codeap_target):
 
         hasf0_hat, hasf0 = adjust_size(hasf0_hat, hasf0)
         f0, f0_target = adjust_size(f0, f0_target)
-        logspc, logspc_target = adjust_size(logspc, logspc_target)
+        mcep, mcep_target = adjust_size(mcep, mcep_target)
         codeap, codeap_target = adjust_size(codeap, codeap_target)
 
         weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
         hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
         f0_loss = self.l1_loss(f0, f0_target) * hasf0 * weights
-        logspec_loss = torch.mean(self.l1_loss(logspc, logspc_target), axis=2) * weights
+        logspec_loss = torch.mean(self.l1_loss(mcep, mcep_target), axis=2) * weights
         codeap_loss = torch.mean(self.l1_loss(codeap, codeap_target), axis=2) * weights
         weights_sum = torch.sum(weights)
         hasf0_loss = torch.sum(hasf0_loss) / weights_sum
@@ -136,48 +136,54 @@ class CharToAudioModel(pl.LightningModule):
         self.vocab_size = vocab_size
         self.hasf0_size = 1
         self.f0_size = 1
-        self.logspc_size = 513
+        self.xx_mcep_size = 25
+        self.mcep_size = 25
         self.codeap_size = 2
-        self.transformer = Translation(native, vocab_size, hidden_size, filter_size, num_layers, num_headers)
-        self.world_decoder = VoiceDecoder(hidden_size, self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size)
+        self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.out_proj = nn.Linear(hidden_size, vocab_size)
+        self.world_out_proj = VoiceDecoder(hidden_size, self.hasf0_size + self.f0_size + self.mcep_size + self.codeap_size)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
-        self.world_norm = WORLDNorm(self.logspc_size, self.codeap_size)
+        self.world_norm = WORLDNorm(self.mcep_size, self.codeap_size)
         self.world_criteria = WORLDLoss()
         self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
-        logits, dec_out = self.transformer(src_ids, src_ids_len, tgt_in_ids)
+        embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
+        embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
+        dec_out = self.transformer(embedded_inputs, src_ids_len, embedded_targets)
         dec_out = torch.transpose(dec_out, 1, 2)
-        world_out = self.world_decoder(dec_out)
+        logits = self.out_proj(dec_out)
+        world_out = self.world_out_proj(dec_out)
         world_out = torch.transpose(world_out, 1, 2)
-        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
+        hasf0_hat, f0_hat, mcep_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
-            self.logspc_size,
+            self.mcep_size,
             self.codeap_size
         ], dim=2)
         hasf0_hat = hasf0_hat[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
-        return logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat
+        return logits, hasf0_hat, f0_hat, mcep_hat, codeap_hat
 
     def _calc_batch_loss(self, batch):
-        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        (f0, f0_len, mcep, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
-        f0, logspc, codeap = self.world_norm.normalize(f0, logspc, codeap)
+        f0, mcep, codeap = self.world_norm.normalize(f0, mcep, codeap)
 
         src_ids = text
         src_ids_len = text_len
         tgt_in_ids = aligntext[:, :-1]
         tgt_out_ids = aligntext[:, 1:]
         tgt_out_mask = get_padding_mask(tgt_out_ids, aligntext_len - 1)
-        logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
+        logits, hasf0_hat, f0_hat, mcep_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
         align_loss = self.criteria(logits, tgt_out_ids)
         #print(tgt_out_mask)
         align_loss = torch.sum(align_loss * tgt_out_mask) / torch.sum(tgt_out_mask)
 
         hasf0_loss, f0_loss, logspec_loss, codeap_loss = self.world_criteria(
-            f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
+            f0_len, hasf0_hat, f0_hat, mcep_hat, codeap_hat, hasf0, f0, mcep, codeap)
 
         return align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss
 
@@ -190,7 +196,7 @@ class CharToAudioModel(pl.LightningModule):
         self.log('train_align_loss', align_loss)
         self.log('train_hasf0_loss', hasf0_loss)
         self.log('train_f0_loss', f0_loss)
-        self.log('train_logspc_loss', logspec_loss)
+        self.log('train_mcep_loss', logspec_loss)
         self.log('train_codeap_loss', codeap_loss)
         self.log('train_loss', loss)
 
@@ -252,12 +258,15 @@ def cli_main():
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)
     parser.add_argument('--calc_stat', action='store_true', help='Calculate WORLD statistics')
+    parser.add_argument('--calc_stat_mc', action='store_true', help='Calculate WORLD statistics')
     parser.add_argument('--infer2', action='store_true', help='')
     parser.set_defaults(task='tts')
     args = parser.parse_args()
 
     if args.calc_stat:
         calc_stat(args)
+    elif args.calc_stat_mc:
+        calc_stat_mc(args)
     elif args.infer:
         assert args.resume_from_checkpoint
         data = AudioTextDataModule.from_argparse_args(args)
@@ -295,11 +304,11 @@ def infer_force_align(args, data, model: CharToAudioModel):
             text_len = text_len.cuda()
             tgt_in = tgt_in.cuda()
         if True:
-            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            logits, hasf0_hat, f0_hat, mcep_hat, codeap_hat = model.forward(text, text_len, tgt_in)
             f0_hat
-            f0_hat, logspc_hat, codeap_hat = model.world_norm.unnormalize(f0_hat, logspc_hat, codeap_hat)
+            f0_hat, mcep_hat, codeap_hat = model.world_norm.unnormalize(f0_hat, mcep_hat, codeap_hat)
         else:
-            logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            logits, hasf0_hat, f0_hat, mcep_hat, codeap_hat = model.forward(text, text_len, tgt_in)
         tgt_out = logits.argmax(axis=-1)
         tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
         for j in range(text.shape[0]):
@@ -344,6 +353,49 @@ def calc_stat(args):
                     'f0_std': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
                     'logspc_mean': logspc_sum / logspc_count,
                     'logspc_std': torch.sqrt((logspc_sqrsum / logspc_count) - (logspc_sum / logspc_count) ** 2),
+                    'codeap_mean': codeap_sum / codeap_count,
+                    'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
+                }
+                print('saving...')
+                torch.save(state_dict, 'world_stat.pt')
+
+def calc_stat_mc(args):
+    from tqdm import tqdm
+    data = AudioTextDataModule.from_argparse_args(args)
+    data.setup()
+    mcep_size = 25
+    f0_sum = torch.zeros(1, dtype=torch.double)
+    mcep_sum = torch.zeros(mcep_size, dtype=torch.double)
+    codeap_sum = torch.zeros(2, dtype=torch.double)
+    f0_sqrsum = torch.zeros(1, dtype=torch.double)
+    mcep_sqrsum = torch.zeros(mcep_size, dtype=torch.double)
+    codeap_sqrsum = torch.zeros(2, dtype=torch.double)
+    f0_count = 0
+    mcep_count = 0
+    for batch_idx, batch in enumerate(tqdm(data.train_dataloader())):
+        (f0, f0_len, mc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        with torch.no_grad():
+            mask = get_padding_mask(f0, f0_len)
+            f0mask = (f0 > 30.0).float() * mask
+
+            f0_sum += torch.sum(f0 * f0mask)
+            f0_sqrsum += torch.sum(f0 ** 2 * f0mask)
+            f0_count += torch.sum(f0mask)
+
+            mcep_sum += torch.sum(torch.sum(mc * mask[:, :, None], axis=1), axis=0)
+            mcep_sqrsum += torch.sum(torch.sum(mc ** 2 * mask[:, :, None], axis=1), axis=0)
+            mcep_count += torch.sum(mask)
+
+            codeap_sum += torch.sum(torch.sum(codeap * mask[:, :, None], axis=1), axis=0)
+            codeap_sqrsum += torch.sum(torch.sum(codeap ** 2 * mask[:, :, None], axis=1), axis=0)
+
+            if batch_idx % 10 == 0:
+                codeap_count = mcep_count
+                state_dict = {
+                    'f0_mean': f0_sum / f0_count,
+                    'f0_std': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
+                    'mcep_mean': mcep_sum / mcep_count,
+                    'mcep_std': torch.sqrt((mcep_sqrsum / mcep_count) - (mcep_sum / mcep_count) ** 2),
                     'codeap_mean': codeap_sum / codeap_count,
                     'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
                 }
