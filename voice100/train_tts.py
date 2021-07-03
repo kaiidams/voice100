@@ -219,6 +219,7 @@ class CharToAudioModel(pl.LightningModule):
         aligntext_mask = get_padding_mask(aligntext, aligntext_len)
         align_loss = self.criteria(logits, aligntext)
         align_loss = torch.sum(align_loss * aligntext_mask) / torch.sum(aligntext_mask)
+        return align_loss
 
     def training_step(self, batch, batch_idx):
         if batch_idx % 1000 == 10:
