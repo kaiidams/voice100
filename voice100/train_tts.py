@@ -133,10 +133,11 @@ class CharToAudioModel(pl.LightningModule):
     def __init__(self, native, vocab_size, hidden_size, filter_size, num_layers, num_headers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
+        self.hidden_size = hidden_size
         self.vocab_size = vocab_size
         self.hasf0_size = 1
         self.f0_size = 1
-        self.xx_mcep_size = 25
+        self.xx_mcep_size = 513
         self.mcep_size = 25
         self.codeap_size = 2
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
