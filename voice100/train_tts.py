@@ -379,8 +379,6 @@ def infer2(args):
                     text_len = text_len.cuda()
                     tgt_in = tgt_in.cuda()            
                 logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
-                logits[:, :, 0] = -5.0
-                logits[:, :, 1] = -5.0
                 tgt_out = logits.argmax(axis=-1)
                 #print(logits[0, -1, :].numpy())
                 if False:
