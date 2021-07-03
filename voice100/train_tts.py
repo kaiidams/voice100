@@ -66,10 +66,10 @@ class WORLDNorm(nn.Module):
         self.f0_mean = nn.Parameter(
             torch.zeros([1], dtype=torch.float32),
             requires_grad=False)
-        self.spec_std = nn.Parameter(
+        self.mcep_std = nn.Parameter(
             torch.ones([spec_size], dtype=torch.float32),
             requires_grad=False)
-        self.spec_mean = nn.Parameter(
+        self.mcep_mean = nn.Parameter(
             torch.zeros([spec_size], dtype=torch.float32),
             requires_grad=False)
         self.codeap_std = nn.Parameter(
@@ -87,7 +87,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
-        mcep = (mcep - self.spec_mean) / self.spec_std
+        mcep = (mcep - self.mcep_mean) / self.mcep_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, mcep, codeap
 
@@ -96,7 +96,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean 
-        mcep = self.spec_std * mcep + self.spec_mean
+        mcep = self.mcep_std * mcep + self.mcep_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
@@ -192,7 +192,6 @@ class CharToAudioModel(pl.LightningModule):
         logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
         align_loss = self.criteria(logits, tgt_out_ids)
-        #print(tgt_out_mask)
         align_loss = torch.sum(align_loss * tgt_out_mask) / torch.sum(tgt_out_mask)
 
         hasf0_loss, f0_loss, logspec_loss, codeap_loss = self.world_criteria(
@@ -201,10 +200,10 @@ class CharToAudioModel(pl.LightningModule):
         return align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss
 
     def training_step(self, batch, batch_idx):
-        if batch_idx % 1000 == 0:
+        if batch_idx % 1000 == 10:
             print('ssss', sss)
         align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
+        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
 
         self.log('train_align_loss', align_loss)
         self.log('train_hasf0_loss', hasf0_loss)
@@ -217,12 +216,12 @@ class CharToAudioModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
+        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
         align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = (align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss) / 5
+        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
