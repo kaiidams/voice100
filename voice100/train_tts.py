@@ -14,7 +14,7 @@ import math
 sss = 0
 
 class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_size=256):
+    def __init__(self, in_channels, out_channels, hidden_size=256) -> None:
         from .models.asr import InvertedResidual
         super().__init__()
         half_hidden_size = hidden_size // 2
@@ -26,7 +26,7 @@ class VoiceDecoder(nn.Module):
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
 class CustomSchedule(optim.lr_scheduler._LRScheduler):
@@ -50,7 +50,9 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         return [base_lr * x
                 for base_lr in self.base_lrs]
 
-def adjust_size(x, y):
+def adjust_size(
+    x: torch.Tensor, y: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
     if x.shape[1] > y.shape[1]:
         return x[:, :y.shape[1]], y
     if x.shape[1] < y.shape[1]:
@@ -100,34 +102,38 @@ class WORLDNorm(nn.Module):
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
+@torch.no_grad()
+def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+
 class WORLDLoss(nn.Module):
     def __init__(self):
         super().__init__()
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
 
-    def forward(self, length, hasf0_hat, f0, mcep, codeap, hasf0, f0_target, spec_target, codeap_target):
+    def forward(
+        self, length: torch.Tensor,
+        hasf0_hat: torch.Tensor, f0_hat: torch.Tensor, spec_hat: torch.Tensor, codeap_hat: torch.Tensor,
+        hasf0: torch.Tensor, f0: torch.Tensor, spec: torch.Tensor, codeap: torch.Tensor
+        ) -> torch.Tensor:
 
         hasf0_hat, hasf0 = adjust_size(hasf0_hat, hasf0)
-        f0, f0_target = adjust_size(f0, f0_target)
-        mcep, spec_target = adjust_size(mcep, spec_target)
-        codeap, codeap_target = adjust_size(codeap, codeap_target)
+        f0_hat, f0 = adjust_size(f0_hat, f0)
+        spec_hat, spec = adjust_size(spec_hat, spec)
+        codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
-        weights = (torch.arange(f0.shape[1], device=f0.device)[None, :] < length[:, None]).float()
-        hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * weights
-        f0_loss = self.l1_loss(f0, f0_target) * hasf0 * weights
-        logspec_loss = torch.mean(self.l1_loss(mcep, spec_target), axis=2) * weights
-        codeap_loss = torch.mean(self.l1_loss(codeap, codeap_target), axis=2) * weights
-        weights_sum = torch.sum(weights)
-        hasf0_loss = torch.sum(hasf0_loss) / weights_sum
-        f0_loss = torch.sum(f0_loss) / weights_sum
-        logspec_loss = torch.sum(logspec_loss) / weights_sum
-        codeap_loss = torch.sum(codeap_loss) / weights_sum
-        return hasf0_loss, f0_loss, logspec_loss, codeap_loss
-
-@torch.no_grad()
-def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+        mask = get_padding_mask(f0, length)
+        hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
+        f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
+        spec_loss = torch.mean(self.l1_loss(spec_hat, spec), axis=2) * mask
+        codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
+        mask_sum = torch.sum(mask)
+        hasf0_loss = torch.sum(hasf0_loss) / mask_sum
+        f0_loss = torch.sum(f0_loss) / mask_sum
+        spec_loss = torch.sum(spec_loss) / mask_sum
+        codeap_loss = torch.sum(codeap_loss) / mask_sum
+        return hasf0_loss, f0_loss, spec_loss, codeap_loss
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(
@@ -141,7 +147,7 @@ class CharToAudioModel(pl.LightningModule):
         self.f0_size = 1
         self.xx_spec_size = 513
         self.spec_size = 25
-        self.codeap_size = 2
+        self.codeap_size = 1
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.out_proj = nn.Linear(hidden_size, vocab_size)
@@ -186,29 +192,36 @@ class CharToAudioModel(pl.LightningModule):
 
         src_ids = text
         src_ids_len = text_len
-        tgt_in_ids = aligntext[:, :-1]
-        tgt_out_ids = aligntext[:, 1:]
-        tgt_out_mask = get_padding_mask(tgt_out_ids, aligntext_len - 1)
+        tgt_in_ids = self._create_target_input(aligntext)
         logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
-        align_loss = self.criteria(logits, tgt_out_ids)
-        align_loss = torch.sum(align_loss * tgt_out_mask) / torch.sum(tgt_out_mask)
 
-        hasf0_loss, f0_loss, logspec_loss, codeap_loss = self.world_criteria(
+        hasf0_loss, f0_loss, spec_loss, codeap_loss = self.world_criteria(
             f0_len, hasf0_hat, f0_hat, spec_hat, codeap_hat, hasf0, f0, mcep, codeap)
+        align_loss = self._calc_align_loss(logits, aligntext, aligntext_len)
 
-        return align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss
+        return align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss
+
+    def _create_target_input(self, target_output):
+        return torch.cat([
+            torch.zeros((target_output.shape[0], 1)),
+            target_output[:, :-1]], axis=1)
+
+    def _calc_align_loss(self, logits, aligntext, aligntext_len):
+        aligntext_mask = get_padding_mask(aligntext, aligntext_len)
+        align_loss = self.criteria(logits, aligntext)
+        align_loss = torch.sum(align_loss * aligntext_mask) / torch.sum(aligntext_mask)
 
     def training_step(self, batch, batch_idx):
         if batch_idx % 1000 == 10:
             print('ssss', sss)
-        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
+        align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = align_loss + hasf0_loss + f0_loss + spec_loss + codeap_loss
 
         self.log('train_align_loss', align_loss)
         self.log('train_hasf0_loss', hasf0_loss)
         self.log('train_f0_loss', f0_loss)
-        self.log('train_spec_loss', logspec_loss)
+        self.log('train_spec_loss', spec_loss)
         self.log('train_codeap_loss', codeap_loss)
         self.log('train_loss', loss)
 
