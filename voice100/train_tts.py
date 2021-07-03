@@ -190,8 +190,7 @@ class CharToAudioModel(pl.LightningModule):
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, mcep, codeap = self.world_norm.normalize(f0, mcep, codeap)
 
-        src_ids = text
-        src_ids_len = text_len
+        src_ids, src_ids_len = self._create_source_input(text, text_len)
         tgt_in_ids = self._create_target_input(aligntext)
         logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
@@ -202,10 +201,19 @@ class CharToAudioModel(pl.LightningModule):
 
         return align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss
 
-    def _create_target_input(self, target_output):
+    def _create_source_input(self, text, text_len):
+        source_input = torch.cat([
+            text,
+            torch.zeros_like(text[:, :1])
+            ], axis=1)
+        source_input_length = text_len + 1
+        return source_input, source_input_length
+
+    def _create_target_input(self, aligntext):
         return torch.cat([
-            torch.zeros((target_output.shape[0], 1)),
-            target_output[:, :-1]], axis=1)
+            torch.zeros_like(aligntext[:, -1:]),
+            aligntext[:, :-1]
+            ], axis=1)
 
     def _calc_align_loss(self, logits, aligntext, aligntext_len):
         aligntext_mask = get_padding_mask(aligntext, aligntext_len)
