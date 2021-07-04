@@ -145,7 +145,7 @@ class CharToAudioModel(pl.LightningModule):
         self.hasf0_size = 1
         self.f0_size = 1
         self.xx_spec_size = 513
-        self.spec_size = 25
+        self.spec_size = 257
         self.codeap_size = 1
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
