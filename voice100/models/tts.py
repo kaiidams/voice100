@@ -155,7 +155,7 @@ class CharToAudioModel(pl.LightningModule):
         self.criteria = nn.CrossEntropyLoss(reduction='none')
         self.world_norm = WORLDNorm(self.spec_size, self.codeap_size)
         self.world_criteria = WORLDLoss()
-        self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
+        self.world_norm.load_state_dict(torch.load('data/stat_ljspeech_world.pt'))
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
         embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
