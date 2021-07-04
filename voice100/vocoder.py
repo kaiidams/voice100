@@ -17,7 +17,7 @@ class WORLDVocoder(nn.Module):
         sample_rate: int = 16000,
         frame_period: int = 10.0,
         n_fft: int = None,
-        use_mc: bool = True,
+        use_mc: bool = False,
         log_offset: float = 1e-15
         ) -> None:
         super().__init__()

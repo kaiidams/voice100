@@ -134,9 +134,6 @@ class WORLDLoss(nn.Module):
         codeap_loss = torch.sum(codeap_loss) / mask_sum
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
-from ..vocoder import create_mc2sp_matrix
-mc2sp_matrix = torch.tensor(create_mc2sp_matrix(512, 24, 0.410), dtype=torch.float32).cuda()
-
 class CharToAudioModel(pl.LightningModule):
     def __init__(
         self, native: str, vocab_size: int, hidden_size: int, filter_size: int,
@@ -188,9 +185,8 @@ class CharToAudioModel(pl.LightningModule):
         return logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat
 
     def _calc_batch_loss(self, batch):
-        (f0, f0_len, mcep, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
-        logspc = mcep @ mc2sp_matrix
         f0, logspc, codeap = self.world_norm.normalize(f0, logspc, codeap)
 
         src_ids, src_ids_len = self._create_source_input(text, text_len)
