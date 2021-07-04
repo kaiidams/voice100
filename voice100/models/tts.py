@@ -59,7 +59,7 @@ def adjust_size(
     return x, y
 
 class WORLDNorm(nn.Module):
-    def __init__(self, spec_size: int, codeap_size: int):
+    def __init__(self, logspc_size: int, codeap_size: int):
         super().__init__()
         self.f0_std = nn.Parameter(
             torch.ones([1], dtype=torch.float32),
@@ -67,11 +67,11 @@ class WORLDNorm(nn.Module):
         self.f0_mean = nn.Parameter(
             torch.zeros([1], dtype=torch.float32),
             requires_grad=False)
-        self.spec_std = nn.Parameter(
-            torch.ones([spec_size], dtype=torch.float32),
+        self.logspc_std = nn.Parameter(
+            torch.ones([logspc_size], dtype=torch.float32),
             requires_grad=False)
-        self.spec_mean = nn.Parameter(
-            torch.zeros([spec_size], dtype=torch.float32),
+        self.logspc_mean = nn.Parameter(
+            torch.zeros([logspc_size], dtype=torch.float32),
             requires_grad=False)
         self.codeap_std = nn.Parameter(
             torch.ones([codeap_size], dtype=torch.float32),
@@ -88,7 +88,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
-        mcep = (mcep - self.spec_mean) / self.spec_std
+        mcep = (mcep - self.logspc_mean) / self.logspc_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, mcep, codeap
 
@@ -97,7 +97,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean 
-        mcep = self.spec_std * mcep + self.spec_mean
+        mcep = self.logspc_std * mcep + self.logspc_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
@@ -113,26 +113,29 @@ class WORLDLoss(nn.Module):
 
     def forward(
         self, length: torch.Tensor,
-        hasf0_hat: torch.Tensor, f0_hat: torch.Tensor, spec_hat: torch.Tensor, codeap_hat: torch.Tensor,
-        hasf0: torch.Tensor, f0: torch.Tensor, spec: torch.Tensor, codeap: torch.Tensor
+        hasf0_hat: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
+        hasf0: torch.Tensor, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
         ) -> torch.Tensor:
 
         hasf0_hat, hasf0 = adjust_size(hasf0_hat, hasf0)
         f0_hat, f0 = adjust_size(f0_hat, f0)
-        spec_hat, spec = adjust_size(spec_hat, spec)
+        logspc_hat, logspc = adjust_size(logspc_hat, logspc)
         codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
         mask = get_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
-        spec_loss = torch.mean(self.l1_loss(spec_hat, spec), axis=2) * mask
+        logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
         f0_loss = torch.sum(f0_loss) / mask_sum
-        spec_loss = torch.sum(spec_loss) / mask_sum
+        logspc_loss = torch.sum(logspc_loss) / mask_sum
         codeap_loss = torch.sum(codeap_loss) / mask_sum
-        return hasf0_loss, f0_loss, spec_loss, codeap_loss
+        return hasf0_loss, f0_loss, logspc_loss, codeap_loss
+
+from ..vocoder import create_mc2sp_matrix
+mc2sp_matrix = torch.tensor(create_mc2sp_matrix(512, 24, 0.410), dtype=torch.float32)
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(
@@ -144,16 +147,16 @@ class CharToAudioModel(pl.LightningModule):
         self.vocab_size = vocab_size
         self.hasf0_size = 1
         self.f0_size = 1
-        self.xx_spec_size = 513
-        self.spec_size = 257
+        self.xx_logspc_size = 513
+        self.logspc_size = 257
         self.codeap_size = 1
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.out_proj = nn.Linear(hidden_size, vocab_size)
-        self.audio_size = self.hasf0_size + self.f0_size + self.spec_size + self.codeap_size
+        self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.world_out_proj = VoiceDecoder(hidden_size, self.audio_size)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
-        self.world_norm = WORLDNorm(self.spec_size, self.codeap_size)
+        self.world_norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.world_criteria = WORLDLoss()
         self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
     
@@ -174,31 +177,32 @@ class CharToAudioModel(pl.LightningModule):
         world_out = torch.transpose(world_out_trans, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
-        hasf0_hat, f0_hat, spec_hat, codeap_hat = torch.split(world_out, [
+        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
-            self.spec_size,
+            self.logspc_size,
             self.codeap_size
         ], dim=2)
         hasf0_hat = hasf0_hat[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
-        return logits, hasf0_hat, f0_hat, spec_hat, codeap_hat
+        return logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat
 
     def _calc_batch_loss(self, batch):
         (f0, f0_len, mcep, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
-        f0, mcep, codeap = self.world_norm.normalize(f0, mcep, codeap)
+        logspc = mcep @ mc2sp_matrix
+        f0, logspc, codeap = self.world_norm.normalize(f0, logspc, codeap)
 
         src_ids, src_ids_len = self._create_source_input(text, text_len)
         tgt_in_ids = self._create_target_input(aligntext)
-        logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
+        logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
 
-        hasf0_loss, f0_loss, spec_loss, codeap_loss = self.world_criteria(
-            f0_len, hasf0_hat, f0_hat, spec_hat, codeap_hat, hasf0, f0, mcep, codeap)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.world_criteria(
+            f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
         align_loss = self._calc_align_loss(logits, aligntext, aligntext_len)
 
-        return align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss
+        return align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
     def predict(self, src_ids: torch.Tensor, src_ids_len, max_steps=100):
         embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
@@ -238,26 +242,26 @@ class CharToAudioModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         if batch_idx % 1000 == 10:
             print('ssss', sss)
-        align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = align_loss + hasf0_loss + f0_loss + spec_loss + codeap_loss
+        align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = align_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
 
         self.log('train_align_loss', align_loss)
         self.log('train_hasf0_loss', hasf0_loss)
         self.log('train_f0_loss', f0_loss)
-        self.log('train_spec_loss', spec_loss)
+        self.log('train_logspc_loss', logspc_loss)
         self.log('train_codeap_loss', codeap_loss)
         self.log('train_loss', loss)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
+        align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = align_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        align_loss, hasf0_loss, f0_loss, logspec_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = align_loss + hasf0_loss + f0_loss + logspec_loss + codeap_loss
+        align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
+        loss = align_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
         self.log('test_loss', loss)
 
     def configure_optimizers(self):
