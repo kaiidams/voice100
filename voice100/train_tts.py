@@ -1,6 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
+from voice100.vocoder import WORLDVocoder
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
@@ -43,21 +44,23 @@ def calc_stat(args):
     from tqdm import tqdm
     data = AudioTextDataModule.from_argparse_args(args)
     data.setup()
+    vocoder: WORLDVocoder = data.transform.vocoder
 
-    spec_size = 25
+    logspc_size = 257
     codeap_size = 1
 
     f0_sum = torch.zeros(1, dtype=torch.double)
-    spec_sum = torch.zeros(spec_size, dtype=torch.double)
+    logspc_sum = torch.zeros(logspc_size, dtype=torch.double)
     codeap_sum = torch.zeros(codeap_size, dtype=torch.double)
     f0_sqrsum = torch.zeros(1, dtype=torch.double)
-    spec_sqrsum = torch.zeros(spec_size, dtype=torch.double)
+    logspc_sqrsum = torch.zeros(logspc_size, dtype=torch.double)
     codeap_sqrsum = torch.zeros(codeap_size, dtype=torch.double)
     f0_count = 0
-    spec_count = 0
+    logspc_count = 0
     for batch_idx, batch in enumerate(tqdm(data.train_dataloader())):
-        (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        (f0, f0_len, mcep, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         with torch.no_grad():
+            logspc = mcep @ vocoder.mc2sp_matrix
             mask = get_padding_mask(f0, f0_len)
             f0mask = (f0 > 30.0).float() * mask
 
@@ -65,25 +68,24 @@ def calc_stat(args):
             f0_sqrsum += torch.sum(f0 ** 2 * f0mask)
             f0_count += torch.sum(f0mask)
 
-            spec_sum += torch.sum(torch.sum(spec * mask[:, :, None], axis=1), axis=0)
-            spec_sqrsum += torch.sum(torch.sum(spec ** 2 * mask[:, :, None], axis=1), axis=0)
-            spec_count += torch.sum(mask)
+            logspc_sum += torch.sum(torch.sum(logspc * mask[:, :, None], axis=1), axis=0)
+            logspc_sqrsum += torch.sum(torch.sum(logspc ** 2 * mask[:, :, None], axis=1), axis=0)
+            logspc_count += torch.sum(mask)
 
             codeap_sum += torch.sum(torch.sum(codeap * mask[:, :, None], axis=1), axis=0)
             codeap_sqrsum += torch.sum(torch.sum(codeap ** 2 * mask[:, :, None], axis=1), axis=0)
 
-            if batch_idx % 10 == 0:
-                codeap_count = spec_count
-                state_dict = {
-                    'f0_mean': f0_sum / f0_count,
-                    'f0_std': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
-                    'spec_mean': spec_sum / spec_count,
-                    'spec_std': torch.sqrt((spec_sqrsum / spec_count) - (spec_sum / spec_count) ** 2),
-                    'codeap_mean': codeap_sum / codeap_count,
-                    'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
-                }
-                print('saving...')
-                torch.save(state_dict, f'data/stat_{args.dataset}.pt')
+    codeap_count = logspc_count
+    state_dict = {
+        'f0_mean': f0_sum / f0_count,
+        'f0_std': torch.sqrt((f0_sqrsum / f0_count) - (f0_sum / f0_count) ** 2),
+        'logspc_mean': logspc_sum / logspc_count,
+        'logspc_std': torch.sqrt((logspc_sqrsum / logspc_count) - (logspc_sum / logspc_count) ** 2),
+        'codeap_mean': codeap_sum / codeap_count,
+        'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
+    }
+    print('saving...')
+    torch.save(state_dict, f'data/stat_{args.dataset}.pt')
 
 def test_force_align(args):
 

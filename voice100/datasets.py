@@ -198,19 +198,19 @@ class CharToAudioProcessor(nn.Module):
 
         self._phonemizer = get_phonemizer(language)
         if infer:
-            self._vocoder = None
+            self.vocoder = None
         else:
             from voice100.vocoder import WORLDVocoder
-            self._vocoder = WORLDVocoder(sample_rate=self.sample_rate)
+            self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
         self.encoder = CharTokenizer()
 
     def forward(self, audiopath, text, aligntext):
         text = self.encoder.encode(self._phonemizer(text))
         aligntext = self.encoder.encode(aligntext)
 
-        if self._vocoder is not None:
+        if self.vocoder is not None:
             waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-            f0, logspc, codeap = self._vocoder(waveform[0])
+            f0, logspc, codeap = self.vocoder(waveform[0])
         else:
             f0_len = aligntext.shape[0] * 2 - 1
             f0 = torch.zeros([f0_len], dtype=torch.float32)
@@ -247,7 +247,7 @@ class AudioToAudioProcessor(nn.Module):
             hop_length=self.hop_length,
             n_mels=self.n_mels)
 
-        self._vocoder = WORLDVocoder(sample_rate=target_sample_rate)
+        self.vocoder = WORLDVocoder(sample_rate=target_sample_rate)
 
     def forward(self, audiopath, text):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
@@ -256,7 +256,7 @@ class AudioToAudioProcessor(nn.Module):
         audio = torch.log(audio + self.log_offset)
         
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        target = self._vocoder(waveform[0])
+        target = self.vocoder(waveform[0])
         return audio, target
 
 def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
