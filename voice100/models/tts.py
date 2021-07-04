@@ -200,6 +200,22 @@ class CharToAudioModel(pl.LightningModule):
 
         return align_loss, hasf0_loss, f0_loss, spec_loss, codeap_loss
 
+    def predict(self, src_ids: torch.Tensor, src_ids_len, max_steps=100):
+        embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
+        attention_mask = get_padding_mask(embedded_inputs, src_ids_len)
+        encoder_outputs = self.transformer.encode(embedded_inputs, attention_mask)
+        tgt_in_ids = torch.zeros([src_ids.shape[0], 1], dtype=src_ids.dtype, device=src_ids.device)
+
+        for i in range(max_steps):
+            embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
+            print(embedded_targets.shape)
+            decoder_outputs = self.transformer.decode(embedded_targets, encoder_outputs, attention_mask)
+            logits = self.out_proj(decoder_outputs[:, -1:, :])
+            preds = logits.argmax(axis=-1)
+            tgt_in_ids = torch.cat([tgt_in_ids, preds], axis=1)
+
+        return tgt_in_ids
+
     def _create_source_input(self, text, text_len):
         source_input = torch.cat([
             text,

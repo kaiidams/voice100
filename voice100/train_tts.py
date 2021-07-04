@@ -20,19 +20,20 @@ def cli_main():
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = CharToAudioModel.add_model_specific_args(parser)
     parser.add_argument('--calc_stat', action='store_true', help='Calculate WORLD statistics')
-    parser.add_argument('--infer2', action='store_true', help='')
+    parser.add_argument('--align', action='store_true', help='')
     parser.set_defaults(task='tts')
     args = parser.parse_args()
 
     if args.calc_stat:
         calc_stat(args)
     elif args.infer:
-        assert args.resume_from_checkpoint
-        data = AudioTextDataModule.from_argparse_args(args)
-        model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
-        infer_force_align(args, data, model)
-    elif args.infer2:
-        infer2(args)
+        if args.align:
+            infer_align(args)
+        else:
+            assert args.resume_from_checkpoint
+            data = AudioTextDataModule.from_argparse_args(args)
+            model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
+            infer_force_align(args, data, model)
     else:
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.from_argparse_args(args)
@@ -120,9 +121,9 @@ def calc_stat(args):
                     'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
                 }
                 print('saving...')
-                torch.save(state_dict, 'world_stat.pt')
+                torch.save(state_dict, f'data/stat_{args.dataset}.pt')
 
-def infer2(args):
+def infer_align(args):
 
     assert args.resume_from_checkpoint
     data = AudioTextDataModule.from_argparse_args(args)
@@ -136,35 +137,19 @@ def infer2(args):
         model.cuda()
     model.eval()
     data.setup()
-    from tqdm import tqdm
+
     for batch in data.train_dataloader():
         (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         print('===')
         with torch.no_grad():
-            tgt_in = torch.zeros([text.shape[0], 1], dtype=torch.long)
-            #print(text.shape, text_len.shape, tgt_in.shape)
-            for i in tqdm(range(50)):
-                #print(text.shape, text_len.shape)
-                #hoge
-                if use_cuda:
-                    text = text.cuda()
-                    text_len = text_len.cuda()
-                    tgt_in = tgt_in.cuda()            
-                logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = model.forward(text, text_len, tgt_in)
-                tgt_out = logits.argmax(axis=-1)
-                #print(logits[0, -1, :].numpy())
-                if False:
-                    for j in range(text.shape[0]):
-                        print(tokenizer.decode(text[j, :]))
-                        print(tokenizer.decode(aligntext[j, :]))
-                        print(tokenizer.decode(tgt_out[j, :]))
-                tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+            aligntext_hat = model.predict(text, text_len, max_steps=100)
+
         if True:
             for j in range(text.shape[0]):
                 print('---')
                 print('S:', tokenizer.decode(text[j, :]))
                 print('T:', tokenizer.decode(aligntext[j, :]))
-                print('H:', tokenizer.decode(tgt_in[j, :]))
+                print('H:', tokenizer.decode(aligntext_hat[j, :]))
         break
         if True:
             for i in range(f0.shape[0]):
