@@ -208,7 +208,6 @@ class CharToAudioModel(pl.LightningModule):
 
         for i in range(max_steps):
             embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-            print(embedded_targets.shape)
             decoder_outputs = self.transformer.decode(embedded_targets, encoder_outputs, attention_mask)
             logits = self.out_proj(decoder_outputs[:, -1:, :])
             preds = logits.argmax(axis=-1)

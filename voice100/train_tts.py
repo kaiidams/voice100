@@ -4,9 +4,6 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
-from torch import nn
-from torch import optim
-import math
 
 from .models.tts import CharToAudioModel
 from .datasets import AudioTextDataModule
@@ -26,14 +23,11 @@ def cli_main():
 
     if args.calc_stat:
         calc_stat(args)
-    elif args.infer:
+    elif args.test:
         if args.align:
-            infer_align(args)
+            test_align(args)
         else:
-            assert args.resume_from_checkpoint
-            data = AudioTextDataModule.from_argparse_args(args)
-            model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
-            infer_force_align(args, data, model)
+            test_force_align(args)
     else:
         data = AudioTextDataModule.from_argparse_args(args)
         model = CharToAudioModel.from_argparse_args(args)
@@ -44,38 +38,6 @@ def cli_main():
             args,
             callbacks=[monitor_callback, checkpoint_callback])
         trainer.fit(model, data)
-
-def infer_force_align(args, data, model: CharToAudioModel):
-    from .text import CharTokenizer
-    tokenizer = CharTokenizer()
-    use_cuda = args.gpus and args.gpus > 0
-    if use_cuda:
-        print('cuda')
-        model.cuda()
-    model.eval()
-    data.setup()
-    from tqdm import tqdm
-    for batch in data.train_dataloader():
-        (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
-        print('===')
-        tgt_in = aligntext
-        if use_cuda:
-            text = text.cuda()
-            text_len = text_len.cuda()
-            tgt_in = tgt_in.cuda()
-        if True:
-            logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = model.forward(text, text_len, tgt_in)
-            f0_hat
-            f0_hat, spec_hat, codeap_hat = model.world_norm.unnormalize(f0_hat, spec_hat, codeap_hat)
-        else:
-            logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = model.forward(text, text_len, tgt_in)
-        tgt_out = logits.argmax(axis=-1)
-        tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
-        for j in range(text.shape[0]):
-            print('---')
-            print('S:', tokenizer.decode(text[j, :]))
-            print('T:', tokenizer.decode(aligntext[j, :]))
-            print('H:', tokenizer.decode(tgt_out[j, :]))
 
 def calc_stat(args):
     from tqdm import tqdm
@@ -123,7 +85,43 @@ def calc_stat(args):
                 print('saving...')
                 torch.save(state_dict, f'data/stat_{args.dataset}.pt')
 
-def infer_align(args):
+def test_force_align(args):
+
+    assert args.resume_from_checkpoint
+    data = AudioTextDataModule.from_argparse_args(args)
+    model = CharToAudioModel.load_from_checkpoint(args.resume_from_checkpoint)
+    from .text import CharTokenizer
+    tokenizer = CharTokenizer()
+    use_cuda = args.gpus and args.gpus > 0
+    if use_cuda:
+        print('cuda')
+        model.cuda()
+    model.eval()
+    data.setup()
+    from tqdm import tqdm
+    for batch in data.test_dataloader():
+        (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        print('===')
+        tgt_in = aligntext
+        if use_cuda:
+            text = text.cuda()
+            text_len = text_len.cuda()
+            tgt_in = tgt_in.cuda()
+        if True:
+            logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+            f0_hat
+            f0_hat, spec_hat, codeap_hat = model.world_norm.unnormalize(f0_hat, spec_hat, codeap_hat)
+        else:
+            logits, hasf0_hat, f0_hat, spec_hat, codeap_hat = model.forward(text, text_len, tgt_in)
+        tgt_out = logits.argmax(axis=-1)
+        tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
+        for j in range(text.shape[0]):
+            print('---')
+            print('S:', tokenizer.decode(text[j, :]))
+            print('T:', tokenizer.decode(aligntext[j, :]))
+            print('H:', tokenizer.decode(tgt_out[j, :]))
+
+def test_align(args):
 
     assert args.resume_from_checkpoint
     data = AudioTextDataModule.from_argparse_args(args)
@@ -138,7 +136,7 @@ def infer_align(args):
     model.eval()
     data.setup()
 
-    for batch in data.train_dataloader():
+    for batch in data.test_dataloader():
         (f0, f0_len, spec, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         print('===')
         with torch.no_grad():

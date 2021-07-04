@@ -100,12 +100,12 @@ class LibriSpeechDataset(Dataset):
         return audiopath, text
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, salt, transform, repeat=1, augment=False, cachedir=None):
+    def __init__(self, dataset, salt, transform, cachedir=None):
         self._dataset = dataset
         self._salt = salt
         self._cachedir = cachedir
-        self._repeat = repeat
-        self._augment = augment
+        self._repeat = 1
+        self._augment = False
         self._transform = transform
         self._spec_augment = SpectrogramAugumentation()
 
@@ -426,7 +426,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self, task: str, dataset: str, valid_ratio: float,
         sample_rate: int,
         language: str, cache: str,
-        batch_size: int, infer: bool):
+        batch_size: int, test: bool):
         super().__init__()
         self.task = task
         self.dataset = dataset
@@ -438,27 +438,40 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, infer)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, test)
+        self.test = test
+        if test:
+            self.cache_salt += b'-test'
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset, needalign=self.task == 'tts')
-
-        # Split the dataset
-        total_len = len(ds)
-        valid_len = int(total_len * self.valid_ratio)
-        train_len = total_len - valid_len
-        train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
-
         os.makedirs(self.cache, exist_ok=True)
 
-        self.train_ds = EncodedCacheDataset(
-            train_ds, self.cache_salt, transform=self.transform,
-            augment=False, cachedir=self.cache)
-        self.valid_ds = EncodedCacheDataset(
-            valid_ds, self.cache_salt, transform=self.transform,
-            augment=False, cachedir=self.cache)
+        if self.test:
+            self.train_ds = None
+            self.valid_ds = None
+            self.test_ds = EncodedCacheDataset(
+                ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+
+        else:
+            # Split the dataset
+            total_len = len(ds)
+            valid_len = int(total_len * self.valid_ratio)
+            train_len = total_len - valid_len
+            train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+
+            self.train_ds = EncodedCacheDataset(
+                train_ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+            self.valid_ds = EncodedCacheDataset(
+                valid_ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+            self.test_ds = None
 
     def train_dataloader(self):
+        if self.train_ds is None:
+            return None
         return DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -467,8 +480,20 @@ class AudioTextDataModule(pl.LightningDataModule):
             collate_fn=self.collate_fn)
 
     def val_dataloader(self):
+        if self.valid_ds is None:
+            return None
         return DataLoader(
             self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    def test_dataloader(self):
+        if self.test_ds is None:
+            return None
+        return DataLoader(
+            self.test_ds,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -484,7 +509,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
         parser.add_argument('--language', default='en', type=str, help='Language')
         parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
-        parser.add_argument('--infer', action='store_true', help='Inference')
+        parser.add_argument('--test', action='store_true', help='Test mode')
         return parser
 
     @staticmethod
@@ -498,7 +523,7 @@ class AudioTextDataModule(pl.LightningDataModule):
             language=args.language,
             cache=args.cache,
             batch_size=args.batch_size,
-            infer=args.infer)
+            test=args.test)
 
 class VCDataModule(pl.LightningDataModule):
 
