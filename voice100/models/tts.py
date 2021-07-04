@@ -135,7 +135,7 @@ class WORLDLoss(nn.Module):
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
 from ..vocoder import create_mc2sp_matrix
-mc2sp_matrix = torch.tensor(create_mc2sp_matrix(512, 24, 0.410), dtype=torch.float32)
+mc2sp_matrix = torch.tensor(create_mc2sp_matrix(512, 24, 0.410), dtype=torch.float32).cuda()
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(
