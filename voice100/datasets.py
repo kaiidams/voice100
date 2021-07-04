@@ -108,6 +108,11 @@ class EncodedCacheDataset(Dataset):
         self._augment = False
         self._transform = transform
         self._spec_augment = SpectrogramAugumentation()
+        self.save_mcep = hasattr(self._transform, "vocoder")
+        if self.save_mcep:
+            from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
+            self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
+            self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
 
     def __len__(self):
         return len(self._dataset) * self._repeat
@@ -128,9 +133,21 @@ class EncodedCacheDataset(Dataset):
         if encoded_data is None:
             encoded_data = self._transform(*data)
             try:
+                if self.save_mcep:
+                    audio, text, aligntext = encoded_data
+                    f0, logspc, codeap = audio
+                    mcep = logspc @ self.sp2mc_matrix
+                    audio = f0, mcep, codeap
+                    encoded_data = audio, text, aligntext
                 torch.save(encoded_data, cachefile)
             except Exception as ex:
                 print(ex)
+        if self.save_mcep:
+            audio, text, aligntext = encoded_data
+            f0, mcep, codeap = audio
+            logspc = mcep @ self.mc2sp_matrix
+            audio = f0, logspc, codeap
+            encoded_data = audio, text, aligntext
         if self._augment:
             encoded_audio, encoded_text = encoded_data
             encoded_audio = self._spec_augment(encoded_audio)
