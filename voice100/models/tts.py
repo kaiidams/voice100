@@ -106,7 +106,7 @@ class WORLDLoss(nn.Module):
 
         f = 16000.0 * torch.arange(257) / 512.0
         dm = 1127 / (700 + f)
-        self.logspc_weights = dm / torch.sum(dm)
+        self.logspc_weights = nn.Parameter((dm / torch.sum(dm)).float(), requires_grad=False)
 
     def forward(
         self, length: torch.Tensor,
