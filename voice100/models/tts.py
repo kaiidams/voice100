@@ -11,8 +11,6 @@ import math
 from .transformer import Transformer
 from .asr import InvertedResidual
 
-sss = 0
-
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_size=256) -> None:
         super().__init__()
@@ -41,11 +39,6 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         arg1 = 1 / math.sqrt(step)
         arg2 = step * (self.warmup_steps ** -1.5)
         x = min(arg1, arg2) / math.sqrt(self.d_model)
-        global sss
-        sss = x
-        #print(self._step_count)
-        #for base_lr in self.base_lrs:
-        #    print(base_lr)
         return [base_lr * x
                 for base_lr in self.base_lrs]
 
@@ -111,6 +104,10 @@ class WORLDLoss(nn.Module):
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
 
+        f = 16000.0 * torch.arange(257) / 512.0
+        dm = 1127 / (700 + f)
+        self.logspc_weights = dm / torch.sum(dm)
+
     def forward(
         self, length: torch.Tensor,
         hasf0_hat: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
@@ -125,7 +122,7 @@ class WORLDLoss(nn.Module):
         mask = get_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
-        logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
+        logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
@@ -236,8 +233,6 @@ class CharToAudioModel(pl.LightningModule):
         return align_loss
 
     def training_step(self, batch, batch_idx):
-        if batch_idx % 1000 == 10:
-            print('ssss', sss)
         align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
         loss = align_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
 
