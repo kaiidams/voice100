@@ -35,7 +35,7 @@ class CustomSchedule(optim.lr_scheduler._LRScheduler):
         super(CustomSchedule, self).__init__(optimizer)
 
     def get_lr(self):
-        step = max(1, self._step_count - 400000) / 3
+        step = max(1, self._step_count + 200000) / 3
         arg1 = 1 / math.sqrt(step)
         arg2 = step * (self.warmup_steps ** -1.5)
         x = min(arg1, arg2) / math.sqrt(self.d_model)
