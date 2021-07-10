@@ -31,8 +31,7 @@ def cli_main():
             test_force_align(args)
     else:
         data = AudioTextDataModule.from_argparse_args(args)
-        #model = CharToAudioModel.from_argparse_args(args)
-        model = CharToAudioModel.load_from_checkpoint('a.pt', strict=False)
+        model = CharToAudioModel.from_argparse_args(args)
         checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, period=10)
         from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
         monitor_callback = LearningRateMonitor()

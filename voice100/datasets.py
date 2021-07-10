@@ -231,8 +231,8 @@ class CharToAudioProcessor(nn.Module):
         else:
             f0_len = aligntext.shape[0] * 2 - 1
             f0 = torch.zeros([f0_len], dtype=torch.float32)
-            logspc = torch.zeros([f0_len, 513], dtype=torch.float32)
-            codeap = torch.zeros([f0_len, 2], dtype=torch.float32)
+            logspc = torch.zeros([f0_len, 257], dtype=torch.float32)
+            codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
 
         return (f0, logspc, codeap), text, aligntext
 
