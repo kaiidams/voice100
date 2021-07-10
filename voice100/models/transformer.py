@@ -97,22 +97,26 @@ def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
 
 @torch.no_grad()
 def get_position_encoding(
-        length, hidden_size, device, min_timescale=1.0, max_timescale=1.0e4):
+        x: torch.Tensor, min_timescale=1.0, max_timescale=1.0e4):
     """Return positional encoding.
 
+    Args:
+        x [batch_size, length, hidden_size]
     Returns:
         Tensor with shape [length, hidden_size]
     """
-    position = torch.arange(0, length, device=device, dtype=torch.float32)
+    length = x.shape[1]
+    hidden_size = x.shape[2]
+    position = torch.arange(0, length, device=x.device, dtype=torch.float32)
     num_timescales = hidden_size // 2
     log_timescale_increment = (
             math.log(float(max_timescale) / float(min_timescale)) /
             (num_timescales - 1))
     inv_timescales = min_timescale * torch.exp(
-            torch.arange(0, num_timescales, device=device, dtype=torch.float32) * -log_timescale_increment)
+            torch.arange(0, num_timescales, device=x.device, dtype=torch.float32) * -log_timescale_increment)
     scaled_time = position[:, None] * inv_timescales[None, :]
     signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], axis=1)
-    return signal
+    return signal.to(x.dtype)
 
 class PrePostProcessingWrapper(nn.Module):
 
@@ -242,9 +246,7 @@ class TransformerEncoder(nn.Module):
                 load_numpy_state_layer_norm(self.layer_norm)
 
     def forward(self, embedded_inputs, key_padding_mask):
-        length = embedded_inputs.shape[1]
-        pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_inputs.device)
-        pos_encoding = pos_encoding.to(embedded_inputs.dtype)
+        pos_encoding = get_position_encoding(embedded_inputs)
         encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
         return self.encoder_stack(encoder_inputs, key_padding_mask)
 
@@ -307,11 +309,10 @@ class TransformerDecoder(nn.Module):
                 load_numpy_state_layer_norm(self.layer_norm)
 
     def forward(self, embedded_targets, encoder_outputs, attention_mask):
-        length = embedded_targets.shape[1]
-        pos_encoding = get_position_encoding(length, self.hidden_size, device=embedded_targets.device)
-        pos_encoding = pos_encoding.to(embedded_targets.dtype)
+        pos_encoding = get_position_encoding(embedded_targets)
         decoder_inputs = self.dropout(embedded_targets + pos_encoding)
 
+        length = embedded_targets.shape[1]
         decoder_self_attention_bias = get_decoder_self_attention_bias(
             length, device=embedded_targets.device, dtype=embedded_targets.dtype)
         decoder_self_attention_mask = decoder_self_attention_bias[0, 0, :, :] != 0.0
