@@ -92,7 +92,7 @@ def generate_square_subsequent_mask(sz, device):
     return r[:, None] < r[None, :]
 
 @torch.no_grad()
-def get_position_encoding(
+def generate_position_encoding(
     x: torch.Tensor, min_timescale=1.0, max_timescale=1.0e4
     ) -> torch.Tensor:
     """Return positional encoding.
@@ -244,7 +244,7 @@ class TransformerEncoder(nn.Module):
                 load_numpy_state_layer_norm(self.layer_norm)
 
     def forward(self, embedded_inputs, key_padding_mask):
-        pos_encoding = get_position_encoding(embedded_inputs)
+        pos_encoding = generate_position_encoding(embedded_inputs)
         encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
         return self.encoder_stack(encoder_inputs, key_padding_mask)
 
@@ -307,7 +307,7 @@ class TransformerDecoder(nn.Module):
                 load_numpy_state_layer_norm(self.layer_norm)
 
     def forward(self, embedded_targets, encoder_outputs, attention_mask):
-        pos_encoding = get_position_encoding(embedded_targets)
+        pos_encoding = generate_position_encoding(embedded_targets)
         decoder_inputs = self.dropout(embedded_targets + pos_encoding)
 
         decoder_self_attention_mask = generate_square_subsequent_mask(
