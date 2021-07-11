@@ -85,11 +85,15 @@ def generate_key_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Te
     return torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]
 
 @torch.no_grad()
-def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
-    neg_inf = _NEG_INF_FP16 if dtype == torch.float16 else _NEG_INF_FP32
-    r = torch.arange(0, length, device=device)
-    y = (torch.reshape(r, [-1, 1]) < torch.reshape(r, [1, -1])).to(dtype) * neg_inf
-    return y[None, None, :, :]
+def generate_square_subsequent_mask(sz, device):
+    """
+    Args:
+        sz: size of the mask
+    Returns:
+        float tensor of shape [sz, sz]
+    """
+    r = torch.arange(0, sz, device=device)
+    return r[:, None] < r[None, :]
 
 @torch.no_grad()
 def get_position_encoding(
@@ -310,10 +314,8 @@ class TransformerDecoder(nn.Module):
         pos_encoding = get_position_encoding(embedded_targets)
         decoder_inputs = self.dropout(embedded_targets + pos_encoding)
 
-        length = embedded_targets.shape[1]
-        decoder_self_attention_bias = get_decoder_self_attention_bias(
-            length, device=embedded_targets.device, dtype=embedded_targets.dtype)
-        decoder_self_attention_mask = decoder_self_attention_bias[0, 0, :, :] != 0.0
+        decoder_self_attention_mask = generate_square_subsequent_mask(
+            embedded_targets.shape[1], device=embedded_targets.device)
         #print(attention_mask.shape, decoder_self_attention_bias.shape)
         return self.decoder_stack(
             decoder_inputs,
@@ -399,10 +401,10 @@ class Translation(nn.Module):
         embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
         if self.native:
             src_key_padding_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
-            decoder_self_attention_bias = get_decoder_self_attention_bias(
+            decoder_self_attention_mask = generate_square_subsequent_mask(
                 embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
             decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
-                tgt_mask=decoder_self_attention_bias[0, 0, :, :] != 0,
+                tgt_mask=decoder_self_attention_mask,
                 src_key_padding_mask=src_key_padding_mask)
         else:
             decoder_outputs = self.transformer(embedded_inputs, inputs_len, embedded_targets)
