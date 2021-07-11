@@ -13,6 +13,19 @@ from .transformer import (
     generate_key_padding_mask, generate_square_subsequent_mask)
 from .asr import InvertedResidual
 
+@torch.no_grad()
+def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
+    """
+    Args:
+        x: tensor of shape [batch_size, length]
+        length: tensor of shape [batch_size]
+    Returns:
+        float tensor of shape [batch_size, length]
+    """
+    assert x.dim() == 2
+    assert length.dim() == 1
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).float()
+
 class VoiceDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_size=256) -> None:
         super().__init__()
@@ -117,7 +130,7 @@ class WORLDLoss(nn.Module):
         logspc_hat, logspc = adjust_size(logspc_hat, logspc)
         codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
-        mask = generate_key_padding_mask(f0, length)
+        mask = generate_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
         logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
@@ -252,7 +265,7 @@ class CharToAudioModel(pl.LightningModule):
             ], axis=1)
 
     def _calc_align_loss(self, logits, aligntext, aligntext_len):
-        aligntext_mask = generate_key_padding_mask(aligntext, aligntext_len)
+        aligntext_mask = generate_padding_mask(aligntext, aligntext_len)
         align_loss = self.criteria(logits, aligntext)
         align_loss = torch.sum(align_loss * aligntext_mask) / torch.sum(aligntext_mask)
         return align_loss

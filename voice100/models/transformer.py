@@ -77,7 +77,7 @@ def generate_key_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Te
     Returns:
         float tensor of shape [batch_size, length]
     """
-    assert x.dim() == 2 or x.dim() == 3
+    assert x.dim() == 3
     assert length.dim() == 1
     return torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]
 
