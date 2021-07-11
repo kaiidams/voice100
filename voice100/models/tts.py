@@ -301,7 +301,7 @@ class CharToAudioModel(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--filter_size', type=int, default=512)
-        parser.add_argument('--num_layers', type=int, default=6)
+        parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
         parser.add_argument('--native', action='store_true')
