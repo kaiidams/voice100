@@ -147,8 +147,8 @@ def test_align(args):
         if True:
             for j in range(text.shape[0]):
                 print('---')
-                print('S:', tokenizer.decode(text[j, :]))
-                print('T:', tokenizer.decode(aligntext[j, :]))
+                print('S:', tokenizer.decode(text[j, :text_len[j]]))
+                print('T:', tokenizer.decode(aligntext[j, :aligntext_len[j]]))
                 print('H:', tokenizer.decode(aligntext_hat[j, :]))
         break
         if True:

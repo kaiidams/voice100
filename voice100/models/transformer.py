@@ -81,7 +81,7 @@ def generate_key_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Te
     return torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]
 
 @torch.no_grad()
-def generate_square_subsequent_mask(sz, device):
+def generate_square_subsequent_mask(sz: int, device) -> torch.Tensor:
     """
     Args:
         sz: size of the mask
@@ -204,8 +204,8 @@ class TransformerEncoderLayer(nn.Module):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.hidden_size = hidden_size
-        self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads), hidden_size)
-        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size), hidden_size)
+        self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads, **factory_kwargs), hidden_size)
+        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size, **factory_kwargs), hidden_size)
 
     def load_numpy_state(self):
         with variable_scope("self_attention"):
@@ -260,9 +260,9 @@ class TransformerDecoderLayer(nn.Module):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.hidden_size = hidden_size
-        self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads), hidden_size)
-        self.encdec_attention = PrePostProcessingWrapper(AttentionLayer(hidden_size, num_heads), hidden_size)
-        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size), hidden_size)
+        self.self_attention = PrePostProcessingWrapper(SelfAttentionLayer(hidden_size, num_heads, **factory_kwargs), hidden_size)
+        self.encdec_attention = PrePostProcessingWrapper(AttentionLayer(hidden_size, num_heads, **factory_kwargs), hidden_size)
+        self.ffn = PrePostProcessingWrapper(FeedForwardNetwork(hidden_size, filter_size, **factory_kwargs), hidden_size)
 
     def load_numpy_state(self):
         with variable_scope("self_attention"):
@@ -273,11 +273,11 @@ class TransformerDecoderLayer(nn.Module):
             self.ffn.load_numpy_state()
 
     def forward(self, decoder_inputs, encoder_outputs,
-        decoder_self_attention_mask, key_padding_mask):
+        tgt_mask, memory_key_padding_mask):
         x = self.self_attention(
             decoder_inputs, bias=None,
-            attn_mask=decoder_self_attention_mask)
-        x = self.encdec_attention(x, encoder_outputs, key_padding_mask=key_padding_mask)
+            attn_mask=tgt_mask)
+        x = self.encdec_attention(x, encoder_outputs, key_padding_mask=memory_key_padding_mask)
         x = self.ffn(x)
         return x
 
@@ -306,18 +306,18 @@ class TransformerDecoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_targets, encoder_outputs, attention_mask):
+    def forward(self, embedded_targets, encoder_outputs, memory_key_padding_mask):
         pos_encoding = generate_position_encoding(embedded_targets)
         decoder_inputs = self.dropout(embedded_targets + pos_encoding)
 
-        decoder_self_attention_mask = generate_square_subsequent_mask(
+        tgt_mask = generate_square_subsequent_mask(
             embedded_targets.shape[1], device=embedded_targets.device)
-        #print(attention_mask.shape, decoder_self_attention_bias.shape)
+        #print(memory_key_padding_mask.shape, decoder_self_attention_bias.shape)
         return self.decoder_stack(
             decoder_inputs,
             encoder_outputs,
-            decoder_self_attention_mask,
-            attention_mask)
+            tgt_mask,
+            memory_key_padding_mask)
 
     def decoder_stack(
         self, decoder_inputs, encoder_outputs, decoder_self_attention_bias, attention_bias
@@ -348,9 +348,9 @@ class Transformer(nn.Module):
         self.decode.load_numpy_state()
 
     def forward(self, embedded_inputs, inputs_len, embedded_targets):
-        attention_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
-        encoder_outputs = self.encode(embedded_inputs, attention_mask)
-        decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_mask)
+        src_key_padding_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
+        encoder_outputs = self.encode(embedded_inputs, src_key_padding_mask)
+        decoder_outputs = self.decode(embedded_targets, encoder_outputs, src_key_padding_mask)
         return decoder_outputs
 
 class Translation(nn.Module):
@@ -397,10 +397,10 @@ class Translation(nn.Module):
         embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
         if self.native:
             src_key_padding_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
-            decoder_self_attention_mask = generate_square_subsequent_mask(
+            tgt_mask = generate_square_subsequent_mask(
                 embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
             decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
-                tgt_mask=decoder_self_attention_mask,
+                tgt_mask=tgt_mask,
                 src_key_padding_mask=src_key_padding_mask)
         else:
             decoder_outputs = self.transformer(embedded_inputs, inputs_len, embedded_targets)
