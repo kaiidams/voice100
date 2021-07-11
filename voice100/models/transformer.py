@@ -72,21 +72,17 @@ def load_numpy_state_layer_norm(layer):
 # Transformer layers
 
 @torch.no_grad()
-def get_padding_bias(x: torch.Tensor, length: torch.Tensor, padding_value=0) -> torch.Tensor:
+def generate_key_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
     Args:
         x: tensor of shape [batch_size, length, embed_size]
         length: tensor of shape [batch_size]
     Returns:
-        float tensor of shape [batch_size, 1, 1, length]
+        float tensor of shape [batch_size, length]
     """
     assert x.dim() == 3
     assert length.dim() == 1
-    neg_inf = _NEG_INF_FP16 if x.dtype == torch.float16 else _NEG_INF_FP32
-    padding = (torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]).float()
-    attention_bias = padding * neg_inf
-    attention_bias = attention_bias[:,None,None,:]
-    return attention_bias
+    return torch.arange(x.shape[1], device=x.device)[None, :] >= length[:, None]
 
 @torch.no_grad()
 def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
@@ -97,14 +93,16 @@ def get_decoder_self_attention_bias(length, device, dtype=torch.float32):
 
 @torch.no_grad()
 def get_position_encoding(
-        x: torch.Tensor, min_timescale=1.0, max_timescale=1.0e4):
+    x: torch.Tensor, min_timescale=1.0, max_timescale=1.0e4
+    ) -> torch.Tensor:
     """Return positional encoding.
 
     Args:
-        x [batch_size, length, hidden_size]
+        x: tensor of shape [batch_size, length, hidden_size]
     Returns:
         Tensor with shape [length, hidden_size]
     """
+    assert x.dim() == 3
     length = x.shape[1]
     hidden_size = x.shape[2]
     position = torch.arange(0, length, device=x.device, dtype=torch.float32)
@@ -352,8 +350,7 @@ class Transformer(nn.Module):
         self.decode.load_numpy_state()
 
     def forward(self, embedded_inputs, inputs_len, embedded_targets):
-        attention_bias = get_padding_bias(embedded_inputs, inputs_len)
-        attention_mask = attention_bias[:, 0, 0, :] != 0.0
+        attention_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
         encoder_outputs = self.encode(embedded_inputs, attention_mask)
         decoder_outputs = self.decode(embedded_targets, encoder_outputs, attention_mask)
         return decoder_outputs
@@ -401,12 +398,12 @@ class Translation(nn.Module):
         embedded_inputs = self.embedding(inputs) * self.hidden_size ** 0.5
         embedded_targets = self.embedding(targets) * self.hidden_size ** 0.5
         if self.native:
-            src_key_padding_mask = get_padding_bias(embedded_inputs, inputs_len)
+            src_key_padding_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
             decoder_self_attention_bias = get_decoder_self_attention_bias(
                 embedded_targets.shape[1], device=embedded_targets.device, dtype=embedded_targets.dtype)
             decoder_outputs = self.transformer(embedded_inputs, embedded_targets,
                 tgt_mask=decoder_self_attention_bias[0, 0, :, :] != 0,
-                src_key_padding_mask=src_key_padding_mask[:, 0, 0, :] != 0)
+                src_key_padding_mask=src_key_padding_mask)
         else:
             decoder_outputs = self.transformer(embedded_inputs, inputs_len, embedded_targets)
 
