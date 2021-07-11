@@ -119,9 +119,9 @@ def test_force_align(args):
         tgt_in = torch.cat([tgt_in, tgt_out[:, -1:]], axis=1)
         for j in range(text.shape[0]):
             print('---')
-            print('S:', tokenizer.decode(text[j, :]))
-            print('T:', tokenizer.decode(aligntext[j, :]))
-            print('H:', tokenizer.decode(tgt_out[j, :]))
+            print('S:', tokenizer.decode(text[j, :text_len[j]]))
+            print('T:', tokenizer.decode(aligntext[j, :aligntext_len[j]]))
+            print('H:', tokenizer.decode(tgt_out[j, :aligntext_len[j]]))
 
 def test_align(args):
 

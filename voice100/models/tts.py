@@ -198,15 +198,23 @@ class CharToAudioModel(pl.LightningModule):
         src_key_padding_mask = generate_key_padding_mask(embedded_inputs, src_ids_len)
         encoder_outputs = self.transformer.encode(embedded_inputs, src_key_padding_mask)
         tgt_in_ids = torch.zeros([src_ids.shape[0], 1], dtype=src_ids.dtype, device=src_ids.device)
+        tgt_out = None
 
-        for i in range(max_steps):
+        cache = {}
+        for pos in range(max_steps):
             embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-            decoder_outputs = self.transformer.decode(embedded_targets, encoder_outputs, src_key_padding_mask)
+            decoder_outputs = self.transformer.decode.step(
+                pos,
+                embedded_targets, encoder_outputs, src_key_padding_mask, cache=cache)
             logits = self.out_proj(decoder_outputs[:, -1:, :])
             preds = logits.argmax(axis=-1)
-            tgt_in_ids = torch.cat([tgt_in_ids, preds], axis=1)
+            tgt_in_ids = preds
+            if tgt_out is None:
+                tgt_out = preds
+            else:
+                tgt_out = torch.cat([tgt_out, preds], axis=1)
 
-        return tgt_in_ids
+        return tgt_out
 
     def _create_source_input(self, text, text_len):
         source_input = torch.cat([

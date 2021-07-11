@@ -4,6 +4,7 @@ import torch
 from torch import nn
 import numpy as np
 import math
+from typing import Dict
 
 __all__ = ["Transformer", "Translation"]
 
@@ -162,10 +163,23 @@ class SelfAttentionLayer(AttentionLayer):
     def load_numpy_state(self, name='self_attention'):
         super(self).load_numpy_state(name)
 
-    def forward(self, query_input, key_padding_mask=None, attn_mask=None, **args):
-        x, _ = self.layer(
-            query_input, query_input, query_input, need_weights=False,
-            key_padding_mask=key_padding_mask, attn_mask=attn_mask)
+    def forward(
+        self, query_input, key_padding_mask=None, attn_mask=None,
+        cache_key: str = None, cache: Dict[str, torch.Tensor] = None
+        ) -> torch.Tensor:
+        if cache is not None:
+            if cache_key in cache:
+                y = torch.cat([cache[cache_key], query_input], axis=1)
+            else:
+                y = query_input
+            cache[cache_key] = y
+            x, _ = self.layer(
+                query_input, y, y,
+                key_padding_mask=key_padding_mask, attn_mask=attn_mask)
+        else:
+            x, _ = self.layer(
+                query_input, query_input, query_input,
+                key_padding_mask=key_padding_mask, attn_mask=attn_mask)
         return x
 
 class FeedForwardNetwork(nn.Sequential):
@@ -264,11 +278,16 @@ class TransformerDecoderLayer(nn.Module):
         with variable_scope("ffn"):
             self.ffn.load_numpy_state()
 
-    def forward(self, decoder_inputs, encoder_outputs,
-        tgt_mask, memory_key_padding_mask):
+    def forward(
+        self, decoder_inputs, encoder_outputs,
+        tgt_mask, memory_key_padding_mask,
+        cache_key: str, cache: Dict[str, torch.Tensor] = None
+        ) -> torch.Tensor:
         x = self.self_attention(
-            decoder_inputs, bias=None,
-            attn_mask=tgt_mask)
+            decoder_inputs,
+            attn_mask=tgt_mask,
+            cache_key=cache_key,
+            cache=cache)
         x = self.encdec_attention(x, encoder_outputs, key_padding_mask=memory_key_padding_mask)
         x = self.ffn(x)
         return x
@@ -311,12 +330,34 @@ class TransformerDecoder(nn.Module):
             tgt_mask,
             memory_key_padding_mask)
 
+    def step(
+        self, pos, embedded_targets, encoder_outputs, memory_key_padding_mask,
+        cache: Dict[str, torch.Tensor]
+        ) -> torch.Tensor:
+        pos_encoding = generate_position_encoding(
+            torch.zeros(
+                [1, pos + 1, self.hidden_size],
+                device=embedded_targets.device, dtype=embedded_targets.dtype))
+        decoder_inputs = self.dropout(embedded_targets + pos_encoding[None, -1:, :])
+
+        return self.decoder_stack(
+            decoder_inputs,
+            encoder_outputs,
+            None,
+            memory_key_padding_mask,
+            cache=cache)
+
     def decoder_stack(
-        self, decoder_inputs, encoder_outputs, decoder_self_attention_bias, attention_bias
+        self, decoder_inputs, encoder_outputs, tgt_mask, memory_key_padding_mask,
+        cache: Dict[str, torch.Tensor] = None
         ):
         x = decoder_inputs
-        for layer in self.layers:
-            x = layer(x, encoder_outputs, decoder_self_attention_bias, attention_bias)
+        for i, layer in enumerate(self.layers):
+            x = layer(
+                x, encoder_outputs, tgt_mask=tgt_mask,
+                memory_key_padding_mask=memory_key_padding_mask,
+                cache_key='dec%d' % i,
+                cache=cache)
         return self.layer_norm(x)
 
 class Transformer(nn.Module):
