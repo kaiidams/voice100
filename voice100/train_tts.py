@@ -8,7 +8,7 @@ import torch
 
 from .models.tts import CharToAudioModel
 from .datasets import AudioTextDataModule
-from .models.tts import get_padding_mask
+from .models.tts import generate_key_padding_mask
 
 def cli_main():
     pl.seed_everything(1234)
@@ -61,7 +61,7 @@ def calc_stat(args):
         (f0, f0_len, mcep, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         with torch.no_grad():
             logspc = mcep @ vocoder.mc2sp_matrix
-            mask = get_padding_mask(f0, f0_len)
+            mask = generate_key_padding_mask(f0, f0_len)
             f0mask = (f0 > 30.0).float() * mask
 
             f0_sum += torch.sum(f0 * f0mask)

@@ -147,15 +147,11 @@ class AttentionLayer(nn.Module):
             embed_dim=hidden_size, num_heads=num_heads, dropout=dropout,
             bias=False, batch_first=True, **factory_kwargs)
 
-    def load_numpy_state(self):
-        with variable_scope('attention'):
-            x = get_variable('query/kernel')
-            #print(x.shape)
+    def load_numpy_state(self, name='attention'):
+        with variable_scope(name):
             self.layer.in_proj_weight[:512, :] = get_variable('query/kernel').reshape([512, 512]).T
             self.layer.in_proj_weight[512:1024, :] = get_variable('key/kernel').reshape([512, 512]).T
             self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
-            x = get_variable('output_transform/kernel')
-            #print(x.shape)
             self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
 
     def forward(self, query_input, source_input, key_padding_mask):
@@ -163,12 +159,8 @@ class AttentionLayer(nn.Module):
         return x
 
 class SelfAttentionLayer(AttentionLayer):
-    def load_numpy_state(self):
-        with variable_scope('self_attention'):
-            self.layer.in_proj_weight[:512, :] = get_variable('query/kernel').reshape([512, 512]).T
-            self.layer.in_proj_weight[512:1024, :] = get_variable('key/kernel').reshape([512, 512]).T
-            self.layer.in_proj_weight[1024:, :] = get_variable('value/kernel').reshape([512, 512]).T
-            self.layer.out_proj.weight[:, :] = get_variable('output_transform/kernel').reshape([512, 512]).T
+    def load_numpy_state(self, name='self_attention'):
+        super(self).load_numpy_state(name)
 
     def forward(self, query_input, key_padding_mask=None, attn_mask=None, **args):
         x, _ = self.layer(
@@ -213,8 +205,8 @@ class TransformerEncoderLayer(nn.Module):
         with variable_scope("ffn"):
             self.ffn.load_numpy_state()
 
-    def forward(self, inputs, key_padding_mask):
-        x = self.self_attention(inputs, key_padding_mask=key_padding_mask)
+    def forward(self, inputs, src_key_padding_mask):
+        x = self.self_attention(inputs, key_padding_mask=src_key_padding_mask)
         x = self.ffn(x)
         return x
 
@@ -243,14 +235,14 @@ class TransformerEncoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_inputs, key_padding_mask):
+    def forward(self, embedded_inputs, src_key_padding_mask):
         pos_encoding = generate_position_encoding(embedded_inputs)
         encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
-        return self.encoder_stack(encoder_inputs, key_padding_mask)
+        return self.encoder_stack(encoder_inputs, src_key_padding_mask)
 
-    def encoder_stack(self, encoder_inputs, key_padding_mask):
+    def encoder_stack(self, encoder_inputs, src_key_padding_mask):
         for layer in self.layers:
-            encoder_inputs = layer(encoder_inputs, key_padding_mask)
+            encoder_inputs = layer(encoder_inputs, src_key_padding_mask)
         return self.layer_norm(encoder_inputs)
 
 class TransformerDecoderLayer(nn.Module):

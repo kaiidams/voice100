@@ -8,7 +8,7 @@ from torch import nn
 from torch import optim
 import math
 
-from .transformer import Transformer
+from .transformer import Transformer, generate_key_padding_mask
 from .asr import InvertedResidual
 
 class VoiceDecoder(nn.Module):
@@ -94,10 +94,6 @@ class WORLDNorm(nn.Module):
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
-@torch.no_grad()
-def get_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
-
 class WORLDLoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -119,7 +115,7 @@ class WORLDLoss(nn.Module):
         logspc_hat, logspc = adjust_size(logspc_hat, logspc)
         codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
-        mask = get_padding_mask(f0, length)
+        mask = generate_key_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
         logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
@@ -199,13 +195,13 @@ class CharToAudioModel(pl.LightningModule):
 
     def predict(self, src_ids: torch.Tensor, src_ids_len, max_steps=100):
         embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
-        attention_mask = get_padding_mask(embedded_inputs, src_ids_len)
-        encoder_outputs = self.transformer.encode(embedded_inputs, attention_mask)
+        src_key_padding_mask = generate_key_padding_mask(embedded_inputs, src_ids_len)
+        encoder_outputs = self.transformer.encode(embedded_inputs, src_key_padding_mask)
         tgt_in_ids = torch.zeros([src_ids.shape[0], 1], dtype=src_ids.dtype, device=src_ids.device)
 
         for i in range(max_steps):
             embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-            decoder_outputs = self.transformer.decode(embedded_targets, encoder_outputs, attention_mask)
+            decoder_outputs = self.transformer.decode(embedded_targets, encoder_outputs, src_key_padding_mask)
             logits = self.out_proj(decoder_outputs[:, -1:, :])
             preds = logits.argmax(axis=-1)
             tgt_in_ids = torch.cat([tgt_in_ids, preds], axis=1)
@@ -227,7 +223,7 @@ class CharToAudioModel(pl.LightningModule):
             ], axis=1)
 
     def _calc_align_loss(self, logits, aligntext, aligntext_len):
-        aligntext_mask = get_padding_mask(aligntext, aligntext_len)
+        aligntext_mask = generate_key_padding_mask(aligntext, aligntext_len)
         align_loss = self.criteria(logits, aligntext)
         align_loss = torch.sum(align_loss * aligntext_mask) / torch.sum(aligntext_mask)
         return align_loss
