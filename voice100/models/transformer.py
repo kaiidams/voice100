@@ -227,7 +227,7 @@ class TransformerEncoderLayer(nn.Module):
 class TransformerEncoder(nn.Module):
 
     def __init__(
-        self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1,
+        self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int,
         device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
@@ -237,7 +237,6 @@ class TransformerEncoder(nn.Module):
         for i in range(self.num_layers):
             layers.append(TransformerEncoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads))
         self.layers = nn.ModuleList(layers)
-        self.dropout = nn.Dropout(dropout, inplace=True)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6, **factory_kwargs)
 
     def load_numpy_state(self):
@@ -249,15 +248,11 @@ class TransformerEncoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_inputs, src_key_padding_mask):
-        pos_encoding = generate_position_encoding(embedded_inputs)
-        encoder_inputs = self.dropout(embedded_inputs + pos_encoding)
-        return self.encoder_stack(encoder_inputs, src_key_padding_mask)
-
-    def encoder_stack(self, encoder_inputs, src_key_padding_mask):
+    def forward(self, src, src_key_padding_mask):
+        x = src
         for layer in self.layers:
-            encoder_inputs = layer(encoder_inputs, src_key_padding_mask)
-        return self.layer_norm(encoder_inputs)
+            x = layer(x, src_key_padding_mask)
+        return self.layer_norm(x)
 
 class TransformerDecoderLayer(nn.Module):
 
@@ -294,7 +289,7 @@ class TransformerDecoderLayer(nn.Module):
 
 class TransformerDecoder(nn.Module):
 
-    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int, dropout: float = 0.1,
+    def __init__(self, num_layers: int, hidden_size: int, filter_size: int, num_heads: int,
         device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
@@ -305,7 +300,6 @@ class TransformerDecoder(nn.Module):
             self.layers.append(
                 TransformerDecoderLayer(hidden_size=hidden_size, filter_size=filter_size, num_heads=num_heads,
                     **factory_kwargs))
-        self.dropout = nn.Dropout(dropout, inplace=True)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6, **factory_kwargs)
 
     def load_numpy_state(self):
@@ -317,44 +311,14 @@ class TransformerDecoder(nn.Module):
 
                 load_numpy_state_layer_norm(self.layer_norm)
 
-    def forward(self, embedded_targets, encoder_outputs, memory_key_padding_mask):
-        pos_encoding = generate_position_encoding(embedded_targets)
-        decoder_inputs = self.dropout(embedded_targets + pos_encoding)
-
-        tgt_mask = generate_square_subsequent_mask(
-            embedded_targets.shape[1], device=embedded_targets.device)
-        #print(memory_key_padding_mask.shape, decoder_self_attention_bias.shape)
-        return self.decoder_stack(
-            decoder_inputs,
-            encoder_outputs,
-            tgt_mask,
-            memory_key_padding_mask)
-
-    def step(
-        self, pos, embedded_targets, encoder_outputs, memory_key_padding_mask,
-        cache: Dict[str, torch.Tensor]
-        ) -> torch.Tensor:
-        pos_encoding = generate_position_encoding(
-            torch.zeros(
-                [1, pos + 1, self.hidden_size],
-                device=embedded_targets.device, dtype=embedded_targets.dtype))
-        decoder_inputs = self.dropout(embedded_targets + pos_encoding[None, -1:, :])
-
-        return self.decoder_stack(
-            decoder_inputs,
-            encoder_outputs,
-            None,
-            memory_key_padding_mask,
-            cache=cache)
-
-    def decoder_stack(
-        self, decoder_inputs, encoder_outputs, tgt_mask, memory_key_padding_mask,
+    def forward(
+        self, tgt, src, tgt_mask, memory_key_padding_mask,
         cache: Dict[str, torch.Tensor] = None
         ):
-        x = decoder_inputs
+        x = tgt
         for i, layer in enumerate(self.layers):
             x = layer(
-                x, encoder_outputs, tgt_mask=tgt_mask,
+                x, src, tgt_mask=tgt_mask,
                 memory_key_padding_mask=memory_key_padding_mask,
                 cache_key='dec%d' % i,
                 cache=cache)
@@ -380,10 +344,14 @@ class Transformer(nn.Module):
         self.encode.load_numpy_state()
         self.decode.load_numpy_state()
 
-    def forward(self, embedded_inputs, inputs_len, embedded_targets):
-        src_key_padding_mask = generate_key_padding_mask(embedded_inputs, inputs_len)
-        encoder_outputs = self.encode(embedded_inputs, src_key_padding_mask)
-        decoder_outputs = self.decode(embedded_targets, encoder_outputs, src_key_padding_mask)
+    def forward(
+        self, src, tgt, src_key_padding_mask, tgt_mask
+        ) -> torch.Tensor:
+        encoder_outputs = self.encode(
+            src, src_key_padding_mask)
+        decoder_outputs = self.decode(
+            tgt, encoder_outputs,
+            tgt_mask=tgt_mask, memory_key_padding_mask=src_key_padding_mask)
         return decoder_outputs
 
 class Translation(nn.Module):

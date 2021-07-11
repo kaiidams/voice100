@@ -8,7 +8,9 @@ from torch import nn
 from torch import optim
 import math
 
-from .transformer import Transformer, generate_key_padding_mask
+from .transformer import (
+    Transformer, generate_position_encoding,
+    generate_key_padding_mask, generate_square_subsequent_mask)
 from .asr import InvertedResidual
 
 class VoiceDecoder(nn.Module):
@@ -95,12 +97,12 @@ class WORLDNorm(nn.Module):
         return f0, mcep, codeap
 
 class WORLDLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, sample_rate: int = 16000, n_fft: int = 512):
         super().__init__()
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
 
-        f = 16000.0 * torch.arange(257) / 512.0
+        f = (sample_rate / n_fft) * torch.arange(n_fft // 2 + 1)
         dm = 1127 / (700 + f)
         self.logspc_weights = nn.Parameter((dm / torch.sum(dm)).float(), requires_grad=False)
 
@@ -137,11 +139,11 @@ class CharToAudioModel(pl.LightningModule):
         self.vocab_size = vocab_size
         self.hasf0_size = 1
         self.f0_size = 1
-        self.xx_logspc_size = 513
         self.logspc_size = 257
         self.codeap_size = 1
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.dropout = nn.Dropout(0.1, inplace=True)
         self.out_proj = nn.Linear(hidden_size, vocab_size)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.world_out_proj = VoiceDecoder(hidden_size, self.audio_size)
@@ -151,9 +153,19 @@ class CharToAudioModel(pl.LightningModule):
         self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
-        embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
-        embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-        decoder_outputs = self.transformer(embedded_inputs, src_ids_len, embedded_targets)
+        src = self.embedding(src_ids) * self.hidden_size ** 0.5
+        tgt_in = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
+        src_pos_encoding = generate_position_encoding(src)
+        tgt_pos_encoding = generate_position_encoding(tgt_in)
+        src = self.dropout(src + src_pos_encoding)
+        tgt_in = self.dropout(tgt_in + tgt_pos_encoding)
+        src_key_padding_mask = generate_key_padding_mask(src, src_ids_len)
+
+        tgt_mask = generate_square_subsequent_mask(
+            tgt_in.shape[1], device=tgt_in.device)
+        #print(memory_key_padding_mask.shape, decoder_self_attention_bias.shape)
+
+        decoder_outputs = self.transformer(src, tgt_in, src_key_padding_mask=src_key_padding_mask, tgt_mask=tgt_mask)
         batch_size = -1 # torch.shape(inputs)[0]
         length = decoder_outputs.shape[1]
         decoder_outputs = torch.reshape(decoder_outputs, [batch_size, length, self.hidden_size])
@@ -194,18 +206,27 @@ class CharToAudioModel(pl.LightningModule):
         return align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
     def predict(self, src_ids: torch.Tensor, src_ids_len, max_steps=100):
-        embedded_inputs = self.embedding(src_ids) * self.hidden_size ** 0.5
-        src_key_padding_mask = generate_key_padding_mask(embedded_inputs, src_ids_len)
-        encoder_outputs = self.transformer.encode(embedded_inputs, src_key_padding_mask)
+        src = self.embedding(src_ids) * self.hidden_size ** 0.5
+        src_pos_encoding = generate_position_encoding(src)
+        src = self.dropout(src + src_pos_encoding)
+        src_key_padding_mask = generate_key_padding_mask(src, src_ids_len)
+        encoder_outputs = self.transformer.encode(src, src_key_padding_mask)
+
         tgt_in_ids = torch.zeros([src_ids.shape[0], 1], dtype=src_ids.dtype, device=src_ids.device)
-        tgt_out = None
+        tgt_pos_encoding = generate_position_encoding(
+            torch.zeros(
+                [1, max_steps, self.hidden_size],
+                device=src.device, dtype=src.dtype))
 
         cache = {}
+        tgt_out = None
+
         for pos in range(max_steps):
-            embedded_targets = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
-            decoder_outputs = self.transformer.decode.step(
-                pos,
-                embedded_targets, encoder_outputs, src_key_padding_mask, cache=cache)
+            tgt_in = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
+            tgt_in = self.dropout(tgt_in + tgt_pos_encoding[None, pos:pos+1, :])
+            decoder_outputs = self.transformer.decode(
+                tgt_in, encoder_outputs, tgt_mask=None,
+                memory_key_padding_mask=src_key_padding_mask, cache=cache)
             logits = self.out_proj(decoder_outputs[:, -1:, :])
             preds = logits.argmax(axis=-1)
             tgt_in_ids = preds
@@ -278,8 +299,8 @@ class CharToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
-        parser.add_argument('--filter_size', type=int, default=1024)
+        parser.add_argument('--hidden_size', type=int, default=128)
+        parser.add_argument('--filter_size', type=int, default=512)
         parser.add_argument('--num_layers', type=int, default=6)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
