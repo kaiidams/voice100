@@ -2,14 +2,10 @@
 
 import torch
 from torch import nn
-from torch.nn import init
 import numpy as np
 import math
 
 __all__ = ["Transformer", "Translation"]
-
-_NEG_INF_FP32 = -1e9
-_NEG_INF_FP16 = np.finfo(np.float16).min
 
 # Variables
 
