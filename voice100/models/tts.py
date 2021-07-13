@@ -67,25 +67,26 @@ def adjust_size(
     return x, y
 
 class WORLDNorm(nn.Module):
-    def __init__(self, logspc_size: int, codeap_size: int):
+    def __init__(self, logspc_size: int, codeap_size: int, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.f0_std = nn.Parameter(
-            torch.ones([1], dtype=torch.float32),
+            torch.ones([1], **factory_kwargs),
             requires_grad=False)
         self.f0_mean = nn.Parameter(
-            torch.zeros([1], dtype=torch.float32),
+            torch.zeros([1], **factory_kwargs),
             requires_grad=False)
         self.logspc_std = nn.Parameter(
-            torch.ones([logspc_size], dtype=torch.float32),
+            torch.ones([logspc_size], **factory_kwargs),
             requires_grad=False)
         self.logspc_mean = nn.Parameter(
-            torch.zeros([logspc_size], dtype=torch.float32),
+            torch.zeros([logspc_size], **factory_kwargs),
             requires_grad=False)
         self.codeap_std = nn.Parameter(
-            torch.ones([codeap_size], dtype=torch.float32),
+            torch.ones([codeap_size], **factory_kwargs),
             requires_grad=False)
         self.codeap_mean = nn.Parameter(
-            torch.zeros([codeap_size], dtype=torch.float32),
+            torch.zeros([codeap_size], **factory_kwargs),
             requires_grad=False)
 
     def forward(self, f0, mcep, codeap):
@@ -110,14 +111,15 @@ class WORLDNorm(nn.Module):
         return f0, mcep, codeap
 
 class WORLDLoss(nn.Module):
-    def __init__(self, sample_rate: int = 16000, n_fft: int = 512):
+    def __init__(self, sample_rate: int = 16000, n_fft: int = 512, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
-        self.l1_loss = nn.L1Loss(reduction='none')
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none', **factory_kwargs)
+        self.l1_loss = nn.L1Loss(reduction='none', **factory_kwargs)
 
         f = (sample_rate / n_fft) * torch.arange(n_fft // 2 + 1)
         dm = 1127 / (700 + f)
-        self.logspc_weights = nn.Parameter((dm / torch.sum(dm)).float(), requires_grad=False)
+        self.register_buffer('logspc_weights', (dm / torch.sum(dm)).float(), persistent=False)
 
     def forward(
         self, length: torch.Tensor,
@@ -144,15 +146,17 @@ class WORLDLoss(nn.Module):
 
 class CharToAudioModel(pl.LightningModule):
     def __init__(
-        self, native: str, vocab_size: int, hidden_size: int, filter_size: int,
+        self, vocab_size: int, hidden_size: int, filter_size: int,
         num_layers: int, num_headers: int, learning_rate: float) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
+        self.sample_rate = 16000
+        self.n_fft = 512
         self.hasf0_size = 1
         self.f0_size = 1
-        self.logspc_size = 257
+        self.logspc_size = self.n_fft // 2 + 1
         self.codeap_size = 1
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
@@ -162,8 +166,7 @@ class CharToAudioModel(pl.LightningModule):
         self.world_out_proj = VoiceDecoder(hidden_size, self.audio_size)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
         self.world_norm = WORLDNorm(self.logspc_size, self.codeap_size)
-        self.world_criteria = WORLDLoss()
-        self.world_norm.load_state_dict(torch.load('data/stat_ljspeech.pt'))
+        self.world_criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
     
     def forward(self, src_ids, src_ids_len, tgt_in_ids):
         src = self.embedding(src_ids) * self.hidden_size ** 0.5
@@ -317,12 +320,12 @@ class CharToAudioModel(pl.LightningModule):
         parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
-        parser.add_argument('--native', action='store_true')
+        parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
 
     @staticmethod
     def from_argparse_args(args):
-        return CharToAudioModel(
+        model = CharToAudioModel(
             native=args.native,
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
@@ -330,3 +333,5 @@ class CharToAudioModel(pl.LightningModule):
             num_layers=args.num_layers,
             num_headers=args.num_headers,
             learning_rate=args.learning_rate)
+        model.world_norm.load_state_dict(torch.load(args.audio_stat))
+        return model
