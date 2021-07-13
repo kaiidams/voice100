@@ -220,7 +220,7 @@ class CharToAudioModel(pl.LightningModule):
         tgt_in_ids = self._create_target_input(aligntext)
         tgt_out_ids = self._generate_action(aligntext)
         tgt_out_ids_len = aligntext_len
-        print(tgt_out_ids)
+
         logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
 
