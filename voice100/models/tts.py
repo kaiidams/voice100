@@ -112,14 +112,15 @@ class WORLDNorm(nn.Module):
 
 class WORLDLoss(nn.Module):
     def __init__(self, sample_rate: int = 16000, n_fft: int = 512, device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none', **factory_kwargs)
-        self.l1_loss = nn.L1Loss(reduction='none', **factory_kwargs)
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
+        self.l1_loss = nn.L1Loss(reduction='none')
 
-        f = (sample_rate / n_fft) * torch.arange(n_fft // 2 + 1)
+        f = (sample_rate / n_fft) * torch.arange(
+            n_fft // 2 + 1, device=device, dtype=dtype if dtype is not None else torch.float32)
         dm = 1127 / (700 + f)
-        self.register_buffer('logspc_weights', (dm / torch.sum(dm)).float(), persistent=False)
+        logspc_weights = dm / torch.sum(dm)
+        self.register_buffer('logspc_weights', logspc_weights, persistent=False)
 
     def forward(
         self, length: torch.Tensor,
