@@ -17,12 +17,12 @@ setup(
         'pytorch_lightning'
     ],
     extras_require={
-        "audio": [
+        "asr": [
             'torchaudio',
-            #'librosa',
-            #'soundfile',
-            #'pyworld>=0.2.12',
-            #'pysptk>=0.1.18',
+        ],
+        "tts": [
+            'torchaudio',
+            'pyworld>=0.2.12',
         ],
         "lang-ja": [
             'mecab-python3',
