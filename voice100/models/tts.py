@@ -13,6 +13,10 @@ from .transformer import (
     generate_key_padding_mask, generate_square_subsequent_mask)
 from .asr import InvertedResidual
 
+ACTION_BLANK = 0
+ACTION_STAY = 1
+ACTION_STEP = 2
+
 @torch.no_grad()
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
@@ -153,6 +157,7 @@ class CharToAudioModel(pl.LightningModule):
         self.save_hyperparameters()
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
+        self.num_actions = 3
         self.sample_rate = 16000
         self.n_fft = 512
         self.hasf0_size = 1
@@ -162,7 +167,7 @@ class CharToAudioModel(pl.LightningModule):
         self.transformer = Transformer(hidden_size, filter_size, num_layers, num_headers)
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.dropout = nn.Dropout(0.1, inplace=True)
-        self.out_proj = nn.Linear(hidden_size, vocab_size)
+        self.out_proj = nn.Linear(hidden_size, self.num_actions)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.world_out_proj = VoiceDecoder(hidden_size, self.audio_size)
         self.criteria = nn.CrossEntropyLoss(reduction='none')
@@ -213,12 +218,15 @@ class CharToAudioModel(pl.LightningModule):
 
         src_ids, src_ids_len = self._create_source_input(text, text_len)
         tgt_in_ids = self._create_target_input(aligntext)
+        tgt_out_ids = self._generate_action(aligntext)
+        tgt_out_ids_len = aligntext_len
+        print(tgt_out_ids)
         logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
         logits = torch.transpose(logits, 1, 2)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.world_criteria(
             f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
-        align_loss = self._calc_align_loss(logits, aligntext, aligntext_len)
+        align_loss = self._calc_align_loss(logits, tgt_out_ids, tgt_out_ids_len)
 
         return align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
@@ -286,6 +294,18 @@ class CharToAudioModel(pl.LightningModule):
             aligntext[:, :-1]
             ], axis=1)
 
+    def _generate_action(self, aligntext):
+        prev_aligntext = torch.cat([
+            torch.zeros_like(aligntext[:, -1:]),
+            aligntext[:, :-1]],
+            axis=1)
+        return torch.where(
+            aligntext == 0,
+            ACTION_BLANK,
+            torch.where(
+                prev_aligntext == aligntext,
+                ACTION_STAY, ACTION_STEP))
+
     def _calc_align_loss(self, logits, aligntext, aligntext_len):
         aligntext_mask = generate_padding_mask(aligntext, aligntext_len)
         align_loss = self.criteria(logits, aligntext)
@@ -334,8 +354,8 @@ class CharToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
-        parser.add_argument('--filter_size', type=int, default=1024)
+        parser.add_argument('--hidden_size', type=int, default=128)
+        parser.add_argument('--filter_size', type=int, default=512)
         parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1.0)
