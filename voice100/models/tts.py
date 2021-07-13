@@ -227,7 +227,7 @@ class CharToAudioModel(pl.LightningModule):
         src_pos_encoding = generate_position_encoding(src)
         src = self.dropout(src + src_pos_encoding)
         src_key_padding_mask = generate_key_padding_mask(src, src_ids_len)
-        encoder_outputs = self.transformer.encode(src, src_key_padding_mask)
+        memory = self.transformer.encode(src, src_key_padding_mask)
 
         tgt_in_ids = torch.zeros([src_ids.shape[0], 1], dtype=src_ids.dtype, device=src_ids.device)
         tgt_pos_encoding = generate_position_encoding(
@@ -236,23 +236,41 @@ class CharToAudioModel(pl.LightningModule):
                 device=src.device, dtype=src.dtype))
 
         cache = {}
-        tgt_out = None
+        dec_out = []
+        tgt_out = []
 
         for pos in range(max_steps):
             tgt_in = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
             tgt_in = self.dropout(tgt_in + tgt_pos_encoding[None, pos:pos+1, :])
-            decoder_outputs = self.transformer.decode(
-                tgt_in, encoder_outputs, tgt_mask=None,
+            dec = self.transformer.decode(
+                tgt_in, memory, tgt_mask=None,
                 memory_key_padding_mask=src_key_padding_mask, cache=cache)
-            logits = self.out_proj(decoder_outputs[:, -1:, :])
+            # dec: [batch_size, alightext_len, hidden_size]
+            logits = self.out_proj(dec[:, -1:, :])
             preds = logits.argmax(axis=-1)
             tgt_in_ids = preds
-            if tgt_out is None:
-                tgt_out = preds
-            else:
-                tgt_out = torch.cat([tgt_out, preds], axis=1)
 
-        return tgt_out
+            dec_out.append(dec)
+            tgt_out.append(preds)
+
+        dec_out = torch.cat(dec_out, axis=1)
+        tgt_out = torch.cat(tgt_out, axis=1)
+
+        dec_out_trans = torch.transpose(dec_out, 1, 2)
+        world_out_trans = self.world_out_proj(dec_out_trans)
+        world_out = torch.transpose(world_out_trans, 1, 2)
+        # world_out: [batch_size, target_len, audio_size]
+
+        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
+            self.hasf0_size,
+            self.f0_size,
+            self.logspc_size,
+            self.codeap_size
+        ], dim=2)
+        hasf0_hat = hasf0_hat[:, :, 0]
+        f0_hat = f0_hat[:, :, 0]
+
+        return tgt_out, hasf0_hat, f0_hat, logspc_hat, codeap_hat
 
     def _create_source_input(self, text, text_len):
         source_input = torch.cat([
