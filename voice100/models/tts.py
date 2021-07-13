@@ -327,7 +327,6 @@ class CharToAudioModel(pl.LightningModule):
     @staticmethod
     def from_argparse_args(args):
         model = CharToAudioModel(
-            native=args.native,
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
             filter_size=args.filter_size,
