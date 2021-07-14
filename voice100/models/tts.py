@@ -257,6 +257,7 @@ class CharToAudioModel(pl.LightningModule):
             # dec: [batch_size, alightext_len, hidden_size]
             logits = self.out_proj(dec[:, -1:, :])
             preds = logits.argmax(axis=-1)
+            print(src_pos[0])
             print(preds[0])
             src_pos = torch.where(
                 preds == ACTION_BLANK,
