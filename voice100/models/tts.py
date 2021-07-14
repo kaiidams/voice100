@@ -246,7 +246,7 @@ class CharToAudioModel(pl.LightningModule):
         cache = {}
         dec_out = []
         tgt_out = []
-        src_pos = torch.zeros_like(src[:, 0], dtype=torch.long)
+        src_pos = torch.zeros_like(src_ids[:, 0], dtype=torch.long)
 
         for pos in range(max_steps):
             tgt_in = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
