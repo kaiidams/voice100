@@ -266,7 +266,7 @@ class CharToAudioModel(pl.LightningModule):
                     src_pos))
             tgt_out_id = torch.where(
                 src_pos % 2 == 1,
-                src_ids[torch.floor_divide(src_pos, 2)][:, None],
+                torch.gather(src_ids, dim=1, index=torch.floor_divide(src_pos, 2)),
                 0
             )
             tgt_in_ids = tgt_out_id
