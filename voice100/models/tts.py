@@ -258,10 +258,10 @@ class CharToAudioModel(pl.LightningModule):
             logits = self.out_proj(dec[:, -1:, :])
             preds = logits.argmax(axis=-1)
             src_pos = torch.where(
-                preds.item() == ACTION_BLANK,
+                preds == ACTION_BLANK,
                 torch.floor_divide(src_pos + 1, 2) * 2,
                 torch.where(
-                    preds.item() == ACTION_STEP,
+                    preds == ACTION_STEP,
                     src_pos + 1,
                     src_pos))
             tgt_out_id = torch.where(
