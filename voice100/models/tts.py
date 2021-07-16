@@ -253,7 +253,7 @@ class CharToAudioModel(pl.LightningModule):
             logits = self.out_proj(dec[:, -1:, :])
             aligntext_logits, end_logits = torch.split(
                 logits,
-                [self.vocab_size, 1], dim=1)
+                [self.vocab_size, 2], dim=1)
             preds = aligntext_logits.argmax(axis=-1)
             tgt_in_ids = preds
             print(end_logits)
