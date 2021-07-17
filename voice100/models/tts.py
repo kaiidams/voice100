@@ -256,7 +256,6 @@ class CharToAudioModel(pl.LightningModule):
                 [self.vocab_size, 1], dim=2)
             preds = aligntext_logits.argmax(axis=-1)
             tgt_in_ids = preds
-            print(end_logits)
 
             dec_out.append(dec)
             tgt_out.append(preds)
