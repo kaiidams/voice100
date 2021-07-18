@@ -365,5 +365,6 @@ class CharToAudioModel(pl.LightningModule):
             num_layers=args.num_layers,
             num_headers=args.num_headers,
             learning_rate=args.learning_rate)
-        model.world_norm.load_state_dict(torch.load(args.audio_stat))
+        if not args.resume_from_checkpoint:
+            model.world_norm.load_state_dict(torch.load(args.audio_stat))
         return model
