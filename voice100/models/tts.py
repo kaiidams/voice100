@@ -262,7 +262,7 @@ class CharToAudioModel(pl.LightningModule):
             tgt_out.append(preds)
 
             end_hat = end_logits > 0
-            if end_hat[0, 0, 0]:
+            if end_hat[0, 0]:
                 break
 
         dec_out = torch.cat(dec_out, axis=1)
