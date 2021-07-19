@@ -242,6 +242,7 @@ class CharToAudioModel(pl.LightningModule):
         cache = {}
         dec_out = []
         tgt_out = []
+        end_hat = torch.zeros([2], device=src.device, dtype=torch.bool)
 
         for pos in range(max_steps):
             tgt_in = self.embedding(tgt_in_ids) * self.hidden_size ** 0.5
@@ -254,15 +255,15 @@ class CharToAudioModel(pl.LightningModule):
             aligntext_logits, end_logits = torch.split(
                 logits,
                 [self.vocab_size, 1], dim=2)
-            end_logits = end_logits[:, :, 0]
+            end_logits = end_logits[:, 0, 0]
             preds = aligntext_logits.argmax(axis=-1)
             tgt_in_ids = preds
 
             dec_out.append(dec)
             tgt_out.append(preds)
 
-            end_hat = end_logits > 0
-            if end_hat[0, 0]:
+            end_hat = end_hat | (end_logits > 0)
+            if torch.all(end_hat):
                 break
 
         dec_out = torch.cat(dec_out, axis=1)
