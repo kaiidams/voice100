@@ -210,7 +210,7 @@ class CharToAudioModel(pl.LightningModule):
         f0_hat = f0_hat[:, :, 0]
         return aligntext_logits, end_logits, hasf0_logits, f0_hat, logspc_hat, codeap_hat
 
-    def _calc_batch_loss(self, batch):
+    def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
         (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.world_norm.normalize(f0, logspc, codeap)
@@ -311,29 +311,29 @@ class CharToAudioModel(pl.LightningModule):
 
         return aligntext_loss, end_loss
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx) -> torch.Tensor:
         aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
         loss = aligntext_loss + end_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
-
-        self.log('train_aligntext_loss', aligntext_loss)
-        self.log('train_end_loss', end_loss)
-        self.log('train_hasf0_loss', hasf0_loss)
-        self.log('train_f0_loss', f0_loss)
-        self.log('train_logspc_loss', logspc_loss)
-        self.log('train_codeap_loss', codeap_loss)
-        self.log('train_loss', loss)
-
+        self._log_loss('train', loss, aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
         loss = aligntext_loss + end_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
-        self.log('val_loss', loss)
+        self._log_loss('val', loss, aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
 
     def test_step(self, batch, batch_idx):
         aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
         loss = aligntext_loss + end_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
-        self.log('test_loss', loss)
+        self._log_loss('test', loss, aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
+
+    def _log_loss(self, task, loss, aligntext_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss) -> None:
+        self.log(f'{task}_loss', loss)
+        self.log(f'{task}_aligntext_loss', aligntext_loss)
+        self.log(f'{task}_hasf0_loss', hasf0_loss)
+        self.log(f'{task}_f0_loss', f0_loss)
+        self.log(f'{task}_logspc_loss', logspc_loss)
+        self.log(f'{task}_codeap_loss', codeap_loss)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
