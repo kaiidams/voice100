@@ -128,17 +128,17 @@ class WORLDLoss(nn.Module):
 
     def forward(
         self, length: torch.Tensor,
-        hasf0_hat: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
+        hasf0_logits: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
         hasf0: torch.Tensor, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
         ) -> torch.Tensor:
 
-        hasf0_hat, hasf0 = adjust_size(hasf0_hat, hasf0)
+        hasf0_logits, hasf0 = adjust_size(hasf0_logits, hasf0)
         f0_hat, f0 = adjust_size(f0_hat, f0)
         logspc_hat, logspc = adjust_size(logspc_hat, logspc)
         codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
         mask = generate_padding_mask(f0, length)
-        hasf0_loss = self.bce_loss(hasf0_hat, hasf0) * mask
+        hasf0_loss = self.bce_loss(hasf0_logits, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
         logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
@@ -193,23 +193,23 @@ class CharToAudioModel(pl.LightningModule):
         decoder_outputs = torch.reshape(decoder_outputs, [batch_size, length, self.hidden_size])
         # decoder_outputs: [batch_size, target_len, hidden_size]
 
-        logits = self.out_proj(decoder_outputs)
-        # logits: [batch_size, target_len, vocab_size]
+        action_logits = self.out_proj(decoder_outputs)
+        # action_logits: [batch_size, target_len, vocab_size]
 
         decoder_outputs_trans = torch.transpose(decoder_outputs, 1, 2)
         world_out_trans = self.world_out_proj(decoder_outputs_trans)
         world_out = torch.transpose(world_out_trans, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
-        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
             self.logspc_size,
             self.codeap_size
         ], dim=2)
-        hasf0_hat = hasf0_hat[:, :, 0]
+        hasf0_logits = hasf0_logits[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
-        return logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat
+        return action_logits, hasf0_logits, f0_hat, logspc_hat, codeap_hat
 
     def _calc_batch_loss(self, batch):
         (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
@@ -221,12 +221,12 @@ class CharToAudioModel(pl.LightningModule):
         tgt_out_ids = self._generate_action(aligntext)
         tgt_out_ids_len = aligntext_len
 
-        logits, hasf0_hat, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
-        logits = torch.transpose(logits, 1, 2)
+        action_logits, hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(src_ids, src_ids_len, tgt_in_ids)
+        action_logits = torch.transpose(action_logits, 1, 2)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.world_criteria(
-            f0_len, hasf0_hat, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
-        align_loss = self._calc_align_loss(logits, tgt_out_ids, tgt_out_ids_len)
+            f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
+        align_loss = self._calc_align_loss(action_logits, tgt_out_ids, tgt_out_ids_len)
 
         return align_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
@@ -283,16 +283,16 @@ class CharToAudioModel(pl.LightningModule):
         world_out = torch.transpose(world_out_trans, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
-        hasf0_hat, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat = torch.split(world_out, [
             self.hasf0_size,
             self.f0_size,
             self.logspc_size,
             self.codeap_size
         ], dim=2)
-        hasf0_hat = hasf0_hat[:, :, 0]
+        hasf0_logits = hasf0_logits[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
 
-        return tgt_out, hasf0_hat, f0_hat, logspc_hat, codeap_hat
+        return tgt_out, hasf0_logits, f0_hat, logspc_hat, codeap_hat
 
     def _create_source_input(self, text, text_len):
         source_input = torch.cat([
@@ -385,5 +385,6 @@ class CharToAudioModel(pl.LightningModule):
             num_layers=args.num_layers,
             num_headers=args.num_headers,
             learning_rate=args.learning_rate)
-        model.world_norm.load_state_dict(torch.load(args.audio_stat))
+        if not args.resume_from_checkpoint:
+            model.world_norm.load_state_dict(torch.load(args.audio_stat))
         return model
