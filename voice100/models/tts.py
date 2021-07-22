@@ -327,9 +327,10 @@ class CharToAudioModel(pl.LightningModule):
         loss = aligntext_loss + end_loss + hasf0_loss + f0_loss + logspc_loss + codeap_loss
         self._log_loss('test', loss, aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
 
-    def _log_loss(self, task, loss, aligntext_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss) -> None:
+    def _log_loss(self, task, loss, aligntext_loss, end_loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss) -> None:
         self.log(f'{task}_loss', loss)
         self.log(f'{task}_aligntext_loss', aligntext_loss)
+        self.log(f'{task}_end_loss', end_loss)
         self.log(f'{task}_hasf0_loss', hasf0_loss)
         self.log(f'{task}_f0_loss', f0_loss)
         self.log(f'{task}_logspc_loss', logspc_loss)
