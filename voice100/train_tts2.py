@@ -6,10 +6,10 @@ import torch
 from torch import nn
 from torch import optim
 
-from .datasets import ASRDataModule
+#from .datasets import ASRDataModule
 from .text import DEFAULT_VOCAB_SIZE
 #from .models.asr import AudioToCharCTC
-from models.asr import InvertedResidual
+from .models.asr import InvertedResidual
 
 class TextToAlignText(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size=256) -> None:
@@ -34,7 +34,7 @@ class TextToAlignText(pl.LightningModule):
         pass
     @staticmethod
     def add_model_specific_args(parser):
-        pass
+        return parser
 
 MELSPEC_DIM = 64
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
@@ -45,7 +45,7 @@ def cli_main():
 
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = ASRDataModule.add_data_specific_args(parser)
+    #parser = ASRDataModule.add_data_specific_args(parser)
     parser = TextToAlignText.add_model_specific_args(parser)    
     parser.add_argument('--prepare', action='store_true', help='')
     args = parser.parse_args()
@@ -112,13 +112,13 @@ def create_aligndata2(args):
 
     tokenizer = CharTokenizer()
     phonemizer = BasicPhonemizer()
-    with open('data/LJSpeech-1.1/metadata2.csv', 'w') as f:
+    with open('data/LJSpeech-1.1/aligndata2.csv', 'w') as f:
         for text, aligntext in zip(texts, aligntexts):
             x = gaptext(text)
             y = tokenizer.encode(aligntext).numpy()
             w = getalign(x, y)
             w = ' '.join([str(t) for t in w])
-            f.write('%s|%s')
+            f.write('%s|%s\n' % (text, w))
             #print(tokenizer.decode(x[z]))
             #print(tokenizer.decode(y))
 
