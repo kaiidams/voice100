@@ -87,9 +87,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(
             self.parameters(),
-            lr=self.hparams.learning_rate,
-            betas=(0.9, 0.98),
-            eps=1e-3)
+            lr=self.hparams.learning_rate)
 
     @staticmethod
     def add_model_specific_args(parent_parser):
