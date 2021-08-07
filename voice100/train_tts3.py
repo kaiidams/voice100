@@ -96,7 +96,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         parser.add_argument('--filter_size', type=int, default=1024)
         parser.add_argument('--num_layers', type=int, default=4)
         parser.add_argument('--num_headers', type=int, default=8)
-        parser.add_argument('--learning_rate', type=float, default=1.0)
+        parser.add_argument('--learning_rate', type=float, default=1e-3)
         parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
 
