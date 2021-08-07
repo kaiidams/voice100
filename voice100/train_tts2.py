@@ -120,7 +120,7 @@ class TextToAlignModel(pl.LightningModule):
         (text, text_len), (align, align_len) = batch
         align = align[:, :-1].reshape([align.shape[0], -1, 2])
         align_len = align_len // 2
-        print(torch.all(text_len == align_len))
+        #print(torch.all(text_len == align_len))
         pred = torch.relu(self.forward(text)) + 1
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)
