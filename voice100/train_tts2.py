@@ -117,11 +117,20 @@ class TextToAlignModel(pl.LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log(f'train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log(f'val_loss', loss)
+
+    def _calc_batch_loss(self, batch) -> torch.Tensor:
         (text, text_len), (align, align_len) = batch
         align = align[:, :-1].reshape([align.shape[0], -1, 2])
         align_len = align_len // 2
         #print(torch.all(text_len == align_len))
-        pred = torch.relu(self.forward(text)) + 1
+        pred = torch.relu(self.forward(text))
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)
         weights = (torch.arange(logalign.shape[1], device=align_len.device)[None, :] < align_len[:, None]).to(logalign.dtype)
@@ -129,12 +138,16 @@ class TextToAlignModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.parameters(),
-            lr=self.hparams.learning_rate,
-            weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        if False:
+            optimizer = torch.optim.Adam(
+                self.parameters(),
+                lr=self.hparams.learning_rate,
+                weight_decay=0.00004)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+            return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        return torch.optim.Adam(
+                self.parameters(),
+                lr=self.hparams.learning_rate)
 
     @staticmethod
     def add_model_specific_args(parser):
@@ -154,7 +167,7 @@ def cli_main():
     parser.add_argument('--prepare', action='store_true', help='')
     args = parser.parse_args()
     args.hidden_size = 256
-    args.learning_rate = 0.001
+    args.learning_rate = 1e-3
 
     if args.prepare:
         create_aligndata2(args)
