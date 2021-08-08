@@ -127,13 +127,10 @@ class TextToAlignTextModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
         super().__init__()
         self.save_hyperparameters()
-        #half_hidden_size = hidden_size // 2
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65, use_residual=False),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=5),
             nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -178,7 +175,7 @@ class TextToAlignTextModel(pl.LightningModule):
         pred = torch.relu(self.forward(text))
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)
-        mask = generate_padding_mask(logalign, align_len)
+        mask = generate_padding_mask(text, text_len)
         loss = torch.sum(loss * mask) / torch.sum(mask)
         return loss
 
@@ -190,7 +187,7 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
