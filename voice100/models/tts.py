@@ -244,7 +244,7 @@ class AlignTextToAudioModel(pl.LightningModule):
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext)
 
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.world_criteria(
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
 
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
@@ -282,6 +282,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=256)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
+        parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
 
     @staticmethod

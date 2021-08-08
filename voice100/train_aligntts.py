@@ -11,11 +11,14 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
+    parser.add_argument('--task', type=str, help='Task')
+    args, _ = parser.parse_known_args()
+
+    parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
-    parser.set_defaults(task='aligntts')
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     data = AudioTextDataModule.from_argparse_args(args)
     model = AlignTextToAudioModel.from_argparse_args(args)
