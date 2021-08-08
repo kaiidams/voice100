@@ -5,16 +5,11 @@ from typing import Optional
 import pytorch_lightning as pl
 import numpy as np
 import torch
-from torch import nn
-from torch import optim
 from torch.utils.data import Dataset, DataLoader
 from voice100.text import CharTokenizer, BasicPhonemizer
 from torch.nn.utils.rnn import pad_sequence
 
-#from .datasets import ASRDataModule
-from .text import DEFAULT_VOCAB_SIZE
-#from .models.asr import AudioToCharCTC
-from .models.asr import InvertedResidual
+from .models.tts import TextToAlignTextModel
 
 class TextToAlignDataset(Dataset):
 
@@ -93,91 +88,22 @@ class TextToAlignDataModule(pl.LightningDataModule):
     def from_argparse_args(args):
         return TextToAlignDataModule()
 
-class TextToAlignModel(pl.LightningModule):
-    def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
-        super().__init__()
-        self.save_hyperparameters()
-        #half_hidden_size = hidden_size // 2
-        self.embedding = nn.Embedding(vocab_size, hidden_size)
-        self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65, use_residual=False),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: [batch_size, text_len]
-        x = self.embedding(x)
-        # x: [batch_size, text_len, hidden_size]
-        x = torch.transpose(x, 1, 2)
-        x = self.layers(x)
-        x = torch.transpose(x, 1, 2)
-        # x: [batch_size, text_len, 2]
-        return x
-
-    def training_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
-        self.log(f'train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self._calc_batch_loss(batch)
-        self.log(f'val_loss', loss)
-
-    def _calc_batch_loss(self, batch) -> torch.Tensor:
-        (text, text_len), (align, align_len) = batch
-        align = align[:, :-1].reshape([align.shape[0], -1, 2])
-        align_len = align_len // 2
-        #print(torch.all(text_len == align_len))
-        pred = torch.relu(self.forward(text))
-        logalign = torch.log((align + 1).to(pred.dtype))
-        loss = torch.mean(torch.abs(logalign - pred), axis=2)
-        weights = (torch.arange(logalign.shape[1], device=align_len.device)[None, :] < align_len[:, None]).to(logalign.dtype)
-        loss = torch.sum(loss * weights) / torch.sum(weights)
-        return loss
-
-    def configure_optimizers(self):
-        if False:
-            optimizer = torch.optim.Adam(
-                self.parameters(),
-                lr=self.hparams.learning_rate,
-                weight_decay=0.00004)
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
-            return {"optimizer": optimizer, "lr_scheduler": scheduler}
-        return torch.optim.Adam(
-                self.parameters(),
-                lr=self.hparams.learning_rate)
-
-    @staticmethod
-    def add_model_specific_args(parser):
-        return parser
-
-MELSPEC_DIM = 64
-VOCAB_SIZE = DEFAULT_VOCAB_SIZE
-assert VOCAB_SIZE == 29
-
 def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = TextToAlignDataModule.add_data_specific_args(parser)
-    parser = TextToAlignModel.add_model_specific_args(parser)    
+    parser = TextToAlignTextModel.add_model_specific_args(parser)    
     parser.add_argument('--prepare', action='store_true', help='')
     args = parser.parse_args()
-    args.hidden_size = 256
-    args.learning_rate = 1e-3
 
     if args.prepare:
         create_aligndata2(args)
         return
 
     data = TextToAlignDataModule.from_argparse_args(args)
-    model = TextToAlignModel(
-        vocab_size=VOCAB_SIZE,
-        hidden_size=args.hidden_size,
-        learning_rate=args.learning_rate)
+    model = TextToAlignTextModel.from_argparse_args(args)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, data)
 

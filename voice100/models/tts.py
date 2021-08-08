@@ -376,10 +376,88 @@ class CharToAudioModel(pl.LightningModule):
             model.world_norm.load_state_dict(torch.load(args.audio_stat))
         return model
 
+class TextToAlignTextModel(pl.LightningModule):
+    def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
+        super().__init__()
+        self.save_hyperparameters()
+        #half_hidden_size = hidden_size // 2
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.layers = nn.Sequential(
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [batch_size, text_len]
+        x = self.embedding(x)
+        # x: [batch_size, text_len, hidden_size]
+        x = torch.transpose(x, 1, 2)
+        x = self.layers(x)
+        x = torch.transpose(x, 1, 2)
+        # x: [batch_size, text_len, 2]
+        return x
+
+    def align(self, text, align, head=0, tail=5):
+        l = int(torch.sum(align))
+        l += tail
+        arr = torch.zeros(l, dtype=text.dtype)
+        t = head
+        for i in range(align.shape[0]):
+            t += align[i, 0].item()
+            s = round(t)
+            t += align[i, 1].item()
+            e = round(t)
+            if s == e:
+                s = max(0, s - 1)
+            for j in range(s, e):
+                arr[j] = text[i]
+        return arr
+        
+    def training_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log(f'train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._calc_batch_loss(batch)
+        self.log(f'val_loss', loss)
+
+    def _calc_batch_loss(self, batch) -> torch.Tensor:
+        (text, text_len), (align, align_len) = batch
+        align = align[:, :-1].reshape([align.shape[0], -1, 2])
+        align_len = align_len // 2
+        #print(torch.all(text_len == align_len))
+        pred = torch.relu(self.forward(text))
+        logalign = torch.log((align + 1).to(pred.dtype))
+        loss = torch.mean(torch.abs(logalign - pred), axis=2)
+        weights = (torch.arange(logalign.shape[1], device=align_len.device)[None, :] < align_len[:, None]).to(logalign.dtype)
+        loss = torch.sum(loss * weights) / torch.sum(weights)
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(
+            self.parameters(),
+            lr=self.hparams.learning_rate)
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--learning_rate', type=float, default=1e-3)
+        return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return TextToAlignTextModel(
+            vocab_size=args.vocab_size,
+            hidden_size=args.hidden_size,
+            learning_rate=args.learning_rate)
+        
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
-        self, vocab_size: int, hidden_size: int, filter_size: int,
-        num_layers: int, num_headers: int, learning_rate: float) -> None:
+        self, vocab_size: int, hidden_size: int, learning_rate: float) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
@@ -457,11 +535,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=256)
-        parser.add_argument('--filter_size', type=int, default=1024)
-        parser.add_argument('--num_layers', type=int, default=4)
-        parser.add_argument('--num_headers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
-        parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
 
     @staticmethod
@@ -469,9 +543,6 @@ class AlignTextToAudioModel(pl.LightningModule):
         model = AlignTextToAudioModel(
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
-            filter_size=args.filter_size,
-            num_layers=args.num_layers,
-            num_headers=args.num_headers,
             learning_rate=args.learning_rate)
         if not args.resume_from_checkpoint:
             model.norm.load_state_dict(torch.load(args.audio_stat))
