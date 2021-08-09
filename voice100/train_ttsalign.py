@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 from typing import Optional
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import torch
 from .text import DEFAULT_VOCAB_SIZE
@@ -45,9 +46,9 @@ def generate_audio_text_align_batch(data_batch):
     return (text_batch, text_len), (align_batch, align_len)
 
 class TextToAlignDataModule(pl.LightningDataModule):
-    def __init__(self):
+    def __init__(self, batch_size):
         super().__init__()
-        self.batch_size = 32
+        self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = generate_audio_text_align_batch
 
@@ -90,7 +91,7 @@ class TextToAlignDataModule(pl.LightningDataModule):
     @staticmethod
     def from_argparse_args(args):
         args.vocab_size = DEFAULT_VOCAB_SIZE
-        return TextToAlignDataModule()
+        return TextToAlignDataModule(args.batch_size)
 
 def cli_main():
     pl.seed_everything(1234)
@@ -107,7 +108,10 @@ def cli_main():
 
     data = TextToAlignDataModule.from_argparse_args(args)
     model = TextToAlignTextModel.from_argparse_args(args)
-    trainer = pl.Trainer.from_argparse_args(args)
+    checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, period=10)
+    trainer = pl.Trainer.from_argparse_args(
+        args,
+        callbacks=[checkpoint_callback])
     trainer.fit(model, data)
 
 def create_aligndata2():
