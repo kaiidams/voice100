@@ -129,8 +129,8 @@ class TextToAlignTextModel(pl.LightningModule):
         self.save_hyperparameters()
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=5),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=35),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=35),
             nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
