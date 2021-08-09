@@ -131,6 +131,8 @@ class TextToAlignTextModel(pl.LightningModule):
         self.layers = nn.Sequential(
             InvertedResidual(hidden_size, hidden_size, kernel_size=35),
             InvertedResidual(hidden_size, hidden_size, kernel_size=35),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=35),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=35),
             nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -187,7 +189,7 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
