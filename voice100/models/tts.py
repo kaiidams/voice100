@@ -173,7 +173,7 @@ class TextToAlignTextModel(pl.LightningModule):
     def _calc_batch_loss(self, batch) -> torch.Tensor:
         (text, text_len), (align, align_len) = batch
         align = align[:, :-1].reshape([align.shape[0], -1, 2])
-        align_len = align_len // 2
+        align_len = torch.div(align_len, 2, rounding_mode='trunc')
         pred = torch.relu(self.forward(text))
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)

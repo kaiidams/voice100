@@ -83,7 +83,7 @@ class TextToAlignDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
+        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
         parser.add_argument('--language', default='en', type=str, help='Language')
         return parser
