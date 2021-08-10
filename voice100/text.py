@@ -35,11 +35,11 @@ class CharTokenizer(nn.Module):
     def forward(self, text: str) -> torch.Tensor:
         return self.encode(text)
 
-    def encode(self, text):
+    def encode(self, text) -> torch.Tensor:
         encoded = [self._v2i[ch] for ch in text if ch in self._v2i]
         return torch.tensor(encoded, dtype=torch.long)
 
-    def decode(self, encoded):
+    def decode(self, encoded) -> str:
         return ''.join([
             self._vocab[x]
             for x in encoded
