@@ -145,10 +145,9 @@ class TextToAlignTextModel(pl.LightningModule):
         # x: [batch_size, text_len, 2]
         return x
 
-    def align(self, text, align, head=0, tail=5):
-        l = int(torch.sum(align))
-        l += tail
-        arr = torch.zeros(l, dtype=text.dtype)
+    def align(self, text, align, head=5, tail=5):
+        aligntext_len = head + int(torch.sum(align)) + tail
+        aligntext = torch.zeros(aligntext_len, dtype=text.dtype)
         t = head
         for i in range(align.shape[0]):
             t += align[i, 0].item()
@@ -156,10 +155,10 @@ class TextToAlignTextModel(pl.LightningModule):
             t += align[i, 1].item()
             e = round(t)
             if s == e:
-                s = max(0, s - 1)
+                e = max(0, e + 1)
             for j in range(s, e):
-                arr[j] = text[i]
-        return arr
+                aligntext[j] = text[i]
+        return aligntext
         
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
