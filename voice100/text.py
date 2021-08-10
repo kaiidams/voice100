@@ -24,16 +24,11 @@ class BasicPhonemizer(nn.Module):
 
 class CharTokenizer(nn.Module):
 
-    def __init__(self, add_special=False, vocab=None):
+    def __init__(self, vocab=None):
         super().__init__()
         if vocab is None:
             vocab = DEFAULT_CHARACTERS
-        self.add_special = add_special
         self.vocab_size = len(vocab)
-        if self.add_special:
-            self.vocab_size += 2
-            self.sos_id = self.vocab_size - 2
-            self.eos_id = self.vocab_size - 1
         self._vocab = vocab
         self._v2i = {x: i for i, x in enumerate(vocab)}
 
@@ -42,8 +37,6 @@ class CharTokenizer(nn.Module):
 
     def encode(self, text):
         encoded = [self._v2i[ch] for ch in text if ch in self._v2i]
-        if self.add_special:
-            encoded = [self.sos_id] + encoded + [self.eos_id]
         return torch.tensor(encoded, dtype=torch.long)
 
     def decode(self, encoded):
