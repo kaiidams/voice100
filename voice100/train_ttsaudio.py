@@ -11,7 +11,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--task', type=str, help='Task')
+    parser.add_argument('--task', type=str, help='Task', default='tts')
     args, _ = parser.parse_known_args()
 
     parser = ArgumentParser()

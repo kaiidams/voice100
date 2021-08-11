@@ -281,7 +281,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
