@@ -21,15 +21,18 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).float()
 
 class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_size=256) -> None:
+    def __init__(self, hidden_size, out_channels) -> None:
         super().__init__()
         half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, hidden_size, kernel_size=65, use_residual=False),
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=33),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
             nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=17),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
