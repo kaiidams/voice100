@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from argparse import ArgumentParser
 import time
 import torch
 from torch import nn
@@ -79,7 +80,7 @@ class AlignTextToAudioPredictModel(nn.Module):
 
 def export_onnx_ttsaudio():
     from voice100.models.tts import AlignTextToAudioModel
-    ckpt_path = 'model/aligntts_en_conv_base.ckpt'
+    ckpt_path = 'model/ttsaudio_en_conv_base-20210811.ckpt'
     model = AlignTextToAudioModel.load_from_checkpoint(ckpt_path)
     model.eval()
     model = AlignTextToAudioPredictModel(model)
@@ -93,7 +94,7 @@ def export_onnx_ttsaudio():
     # Export the model
     torch.onnx.export(model,               # model being run
                     x,                         # model input (or a tuple for multiple inputs)
-                    "model/ttsaudio_en_conv_base.onnx",   # where to save the model (can be a file or file-like object)
+                    "model/onnx/ttsaudio_en_conv_base.onnx",   # where to save the model (can be a file or file-like object)
                     export_params=True,        # store the trained parameter weights inside the model file
                     opset_version=13,          # the ONNX version to export the model to
                     do_constant_folding=True,  # whether to execute constant folding for optimization
@@ -101,7 +102,6 @@ def export_onnx_ttsaudio():
                     output_names = ['f0', 'logspc', 'codeap'], # the model's output names
                     dynamic_axes={
                         'aligntext' : {0 : 'batch_size', 1: 'text_len'},    # variable length axes
-                        #'hasf0' : {0 : 'batch_size', 1: 'audio_len'},
                         'f0' : {0 : 'batch_size', 1: 'audio_len'},
                         'logspc' : {0 : 'batch_size', 1: 'audio_len'},
                         'codeap' : {0 : 'batch_size', 1: 'audio_len'},
@@ -139,3 +139,15 @@ def test():
     logits, = sess.run(['logits'], ort_inputs)
     pred = logits.argmax(-1)
     print(encoder.merge_repeated(encoder.decode(pred[0])))
+
+def cli_main():
+    parser = ArgumentParser()
+    parser.add_argument('--export', type=str, required=True)
+    args = parser.parse_args()
+    if args.export == 'ttsaudio':
+        export_onnx_ttsaudio()
+    else:
+        raise ValueError()
+
+if __name__ == '__main__':
+    cli_main()
