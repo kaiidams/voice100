@@ -5,6 +5,12 @@
 - Don't depend non-commercially licensed dataset
 - Small enough to run on normal PCs, Raspberry Pi or smartphones.
 
+## Architecture
+
+![ASR](./docs/asr.png)
+
+![TTS](./docs/tts.png)
+
 # Sample synthesis
 
 - [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
