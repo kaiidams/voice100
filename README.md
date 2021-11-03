@@ -1,9 +1,19 @@
 # Voice100
 
+Voice100 includes neural TTS/ASR models. Inference of Voice100
+is low cost as its models are tiny and only depend on CNN
+without recursion.
+
 ## Objectives
 
 - Don't depend non-commercially licensed dataset
 - Small enough to run on normal PCs, Raspberry Pi or smartphones.
+
+## Architecture
+
+![ASR](./docs/asr.png)
+
+![TTS](./docs/tts.png)
 
 # Sample synthesis
 
