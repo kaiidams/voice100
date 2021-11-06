@@ -65,7 +65,18 @@ of the input.
 - [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
 - [Sample synthesis 2 (From JVS corpus)](docs/sample2.wav)
 
-## How to train
+### Align model
+
+The align model is 2-layer bi-directional LSTM which is trained to predict
+aligned texts from MFCC audio features. The align model is used to
+prepare aligned texts for dataset to train the TTS models.
+
+## Training
+
+### LJ Speech Corpus
+
+
+
 
 ### Preprocessing
 
