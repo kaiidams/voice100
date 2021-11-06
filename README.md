@@ -6,14 +6,59 @@ without recursion.
 
 ## Objectives
 
-- Don't depend non-commercially licensed dataset
-- Small enough to run on normal PCs, Raspberry Pi or smartphones.
+- Don't depend on non-commercially licensed dataset
+- Small enough to run on normal PCs, Raspberry Pi and smartphones.
 
 ## Architecture
 
-![ASR](./docs/asr.png)
+### TTS
+
+TTS model is devided into two sub models, align model and audio model.
+The align model predicts text alignments given a text. An aligned text
+is generated from the text and the text alignments. The audio model predicts
+[WORLD](https://github.com/mmorise/World)
+features (F0, spectral envelope, coded aperiodicity) given
+the aligned text.
 
 ![TTS](./docs/tts.png)
+
+#### Align model pre-processing
+
+The input of the align model is sequence of tokens of the input text.
+The input text is lower cased and tokenized
+into characters and encoded by the text encoder. The text encoder
+has 28 characters in the vocabulary, which includes lower alphabets,
+a space and an apostrophy. All characters which are not found in the
+vocabulary, are removed.
+
+#### Align model post-processing
+
+The output of the align model is sequence of pairs of timings which
+length is the same as the number of input tokens. A pair has two values,
+number of frames before the token and number of frames for the token.
+One frame is 20ms. An aligned text is generated from the input text and
+pairs of timings. The length of the aligned text is the number of total
+frames for the audio.
+
+#### Audio model pre-processing.
+
+The input of the audio model is the encoded aligned text, which is
+encoded in the same way as the align model pre-processing, except it
+has one added token in the vocabulary for spacing between tokens for
+the original text.
+
+#### Audio model post-processing.
+
+The output of the audio model is the sequence of F0, F0 existences,
+log spectral envelope, coded aperiodicity.
+A F0 existence is a boolean value, which is true when F0 is available
+false otherwise. F0 is forced into 0 when F0 existence is false.
+One frame is 10ms. The length of the output is twice as the length
+of the input.
+
+### ASR
+
+![ASR](./docs/asr.png)
 
 # Sample synthesis
 
