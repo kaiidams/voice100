@@ -71,12 +71,43 @@ The align model is 2-layer bi-directional LSTM which is trained to predict
 aligned texts from MFCC audio features. The align model is used to
 prepare aligned texts for dataset to train the TTS models.
 
+```
+  | Name          | Type                          | Params
+----------------------------------------------------------------
+0 | conv          | Conv1d                        | 24.7 K
+1 | lstm          | LSTM                          | 659 K 
+2 | dense         | Linear                        | 7.5 K 
+3 | loss_fn       | CTCLoss                       | 0     
+4 | batch_augment | BatchSpectrogramAugumentation | 0     
+----------------------------------------------------------------
+```
+
 ## Training
 
-### LJ Speech Corpus
+### Align model with LJ Speech Corpus
 
+Training align model with 
+[LJ Speech Corpus](https://keithito.com/LJ-Speech-Dataset/).
 
+```
+MODEL=align_en_lstm_base_ctc
+DATASET=ljspeech
+LANGUAGE=en
 
+cd data
+curl -O https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
+tar xfz LJSpeech-1.1.tar.bz2
+cd ..
+
+python -m voice100.train_align \
+    --gpus 1 \
+    --precision 16 \
+    --batch_size 256 \
+    --max_epochs 100 \
+    --dataset ${DATASET} \
+    --language ${LANGUAGE} \
+    --default_root_dir=model/${MODEL}
+```
 
 ### Preprocessing
 
