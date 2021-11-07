@@ -163,7 +163,7 @@ class TextToAlignTextModel(pl.LightningModule):
             for j in range(s, e):
                 aligntext[j] = text[i]
         return aligntext
-        
+
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
@@ -192,7 +192,7 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -202,7 +202,8 @@ class TextToAlignTextModel(pl.LightningModule):
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate)
-        
+
+
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
         self, vocab_size: int, hidden_size: int, learning_rate: float) -> None:
