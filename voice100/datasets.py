@@ -22,6 +22,7 @@ from .audio import SpectrogramAugumentation
 
 BLANK_IDX = 0
 
+
 class MetafileDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with TSV metafile,
     like LJ Speech Corpus and Mozilla Common Voice.
@@ -303,20 +304,24 @@ class AudioToAudioProcessor(nn.Module):
 
 def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     chained_ds = None
-    alignfile = './data/align-{dataset}.txt' if needalign else None
+    alignfile = f'./data/align-{dataset}.txt' if needalign else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
-            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
+            ds = MetafileDataset(
+                root, metafile='metadata.csv', alignfile=alignfile,
+                sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = MetafileDataset(root)
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
-            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
+            ds = MetafileDataset(
+                root, metafile='metadata.csv', alignfile=alignfile,
+                sep='|', header=False, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
 
