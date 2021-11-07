@@ -223,7 +223,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.decoder = VoiceDecoder(hidden_size, self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
-    
+
     def forward(self, aligntext):
         x = self.embedding(aligntext)
         x = torch.transpose(x, 1, 2)
@@ -286,7 +286,6 @@ class AlignTextToAudioModel(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
-        parser.add_argument('--audio_stat', type=str, default='data/stat_ljspeech.pt')
         return parser
 
     @staticmethod
@@ -296,5 +295,6 @@ class AlignTextToAudioModel(pl.LightningModule):
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate)
         if not args.resume_from_checkpoint:
+            args.audio_stat = f'data/stat_{args.dataset}.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model
