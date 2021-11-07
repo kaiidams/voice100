@@ -21,7 +21,7 @@ setup(
     install_requires=[
         'torch',
         'torchaudio',
-        'pytorch_lightning'
+        'pytorch_lightning>=1.4.0'
     ],
     extras_require={
         "align": [

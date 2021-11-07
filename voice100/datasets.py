@@ -31,7 +31,7 @@ class MetafileDataset(Dataset):
 
     def __init__(
         self, root: str, metafile='validated.tsv', alignfile: str = None, sep='|',
-        header=True, idcol=1, textcol=2, aligncol=0, wavsdir='wavs', ext='.wav'
+        header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
         self._root = root
         self._data = []
@@ -50,10 +50,10 @@ class MetafileDataset(Dataset):
                 self._data.append((audioid, text))
         if alignfile:
             self._aligntexts = []
-            with open(os.path.join(root, alignfile)) as f:
+            with open(alignfile) as f:
                 for line in f:
-                    parts = line.rstrip('\r\n').split(self._sep)
-                    aligntext = parts[aligncol]
+                    parts = line.rstrip('\r\n').split('|')
+                    aligntext = parts[1]
                     self._aligntexts.append(aligntext)
             assert len(self._aligntexts) == len(self._data)
         else:
@@ -303,20 +303,20 @@ class AudioToAudioProcessor(nn.Module):
 
 def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     chained_ds = None
+    alignfile = './data/align-{dataset}.txt' if needalign else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
             ds = LibriSpeechDataset(root)
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
-            alignfile = 'aligndata.csv' if needalign else None
             ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
             ds = MetafileDataset(root)
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
-            ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=False, idcol=0, ext='.flac')
+            ds = MetafileDataset(root, metafile='metadata.csv', alignfile=alignfile, sep='|', header=False, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
 

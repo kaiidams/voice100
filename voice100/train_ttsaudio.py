@@ -7,6 +7,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from .models.tts import AlignTextToAudioModel
 from .datasets import AudioTextDataModule
 
+
 def cli_main():
     pl.seed_everything(1234)
 
@@ -27,6 +28,7 @@ def cli_main():
         args,
         callbacks=[checkpoint_callback])
     trainer.fit(model, data)
+
 
 if __name__ == '__main__':
     cli_main()
