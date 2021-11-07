@@ -47,6 +47,20 @@ encoded in the same way as the align model pre-processing, except it
 has one added token in the vocabulary for spacing between tokens for
 the original text.
 
+```
+  | Name      | Type         | Params
+-------------------------------------------
+0 | embedding | Embedding    | 14.8 K
+1 | decoder   | VoiceDecoder | 11.0 M
+2 | norm      | WORLDNorm    | 518   
+3 | criteria  | WORLDLoss    | 0     
+-------------------------------------------
+11.1 M    Trainable params
+518       Non-trainable params
+11.1 M    Total params
+22.120    Total estimated model params size (MB)
+```
+
 #### Audio model post-processing.
 
 The output of the audio model is the sequence of F0, F0 existences,
@@ -127,6 +141,7 @@ voice100-align-text \
 
 ### Train 
 
+```
 !voice100-train-ttsalign \
     --gpus 1 \
     --batch_size 256 \
@@ -135,7 +150,7 @@ voice100-align-text \
     --dataset {DATASET} \
     --language {LANGUAGE} \
     --default_root_dir=model/{MODEL} \
-
+```
 
 ### Preprocessing
 
