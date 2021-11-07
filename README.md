@@ -125,6 +125,18 @@ voice100-align-text \
     --checkpoint model/${CHECKPOINT}
 ```
 
+### Train 
+
+!voice100-train-ttsalign \
+    --gpus 1 \
+    --batch_size 256 \
+    --precision 16 \
+    --max_epochs 100 \
+    --dataset {DATASET} \
+    --language {LANGUAGE} \
+    --default_root_dir=model/{MODEL} \
+
+
 ### Preprocessing
 
 Get CSS10 Japanese corpus and extract the data under `./data`.

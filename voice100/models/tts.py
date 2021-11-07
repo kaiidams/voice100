@@ -206,7 +206,8 @@ class TextToAlignTextModel(pl.LightningModule):
 
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
-        self, vocab_size: int, hidden_size: int, learning_rate: float) -> None:
+        self, vocab_size: int, hidden_size: int, learning_rate: float
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
