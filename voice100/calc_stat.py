@@ -15,6 +15,7 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     Returns:
         float tensor of shape [batch_size, length]
     """
+    assert x.dim() == 2
     assert length.dim() == 1
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
 
