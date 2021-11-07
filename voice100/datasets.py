@@ -241,7 +241,7 @@ class CharToAudioProcessor(nn.Module):
         if infer:
             self.vocoder = None
         else:
-            from voice100.vocoder import WORLDVocoder
+            from .vocoder import WORLDVocoder
             self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
         self.encoder = CharTokenizer()
 
@@ -264,7 +264,7 @@ class CharToAudioProcessor(nn.Module):
 class AudioToAudioProcessor(nn.Module):
 
     def __init__(self, target_sample_rate=22050):
-        from voice100.vocoder import WORLDVocoder
+        from .vocoder import WORLDVocoder
 
         super().__init__()
         self.sample_rate = 16000
