@@ -22,6 +22,39 @@ the aligned text.
 
 ![TTS](./docs/tts.png)
 
+#### TTS align model
+
+```
+  | Name          | Type                          | Params
+----------------------------------------------------------------
+0 | conv          | Conv1d                        | 24.7 K
+1 | lstm          | LSTM                          | 659 K 
+2 | dense         | Linear                        | 7.5 K 
+3 | loss_fn       | CTCLoss                       | 0     
+4 | batch_augment | BatchSpectrogramAugumentation | 0     
+----------------------------------------------------------------
+691 K     Trainable params
+0         Non-trainable params
+691 K     Total params
+1.383     Total estimated model params size (MB)
+```
+
+#### TTS audio model
+
+```
+  | Name      | Type         | Params
+-------------------------------------------
+0 | embedding | Embedding    | 14.8 K
+1 | decoder   | VoiceDecoder | 11.0 M
+2 | norm      | WORLDNorm    | 518   
+3 | criteria  | WORLDLoss    | 0     
+-------------------------------------------
+11.1 M    Trainable params
+518       Non-trainable params
+11.1 M    Total params
+22.120    Total estimated model params size (MB)
+```
+
 #### Align model pre-processing
 
 The input of the align model is sequence of tokens of the input text.
@@ -46,20 +79,6 @@ The input of the audio model is the encoded aligned text, which is
 encoded in the same way as the align model pre-processing, except it
 has one added token in the vocabulary for spacing between tokens for
 the original text.
-
-```
-  | Name      | Type         | Params
--------------------------------------------
-0 | embedding | Embedding    | 14.8 K
-1 | decoder   | VoiceDecoder | 11.0 M
-2 | norm      | WORLDNorm    | 518   
-3 | criteria  | WORLDLoss    | 0     
--------------------------------------------
-11.1 M    Trainable params
-518       Non-trainable params
-11.1 M    Total params
-22.120    Total estimated model params size (MB)
-```
 
 #### Audio model post-processing.
 
@@ -125,7 +144,7 @@ voice100-train-align \
 
 ### Align text with align model
 
-This generates the aligned text as `data/timing-ljspeech.txt`.
+This generates the aligned text as `data/align-ljspeech.txt`.
 
 ```
 CHECKPOINT=align_en_lstm_base_ctc.ckpt
@@ -139,10 +158,14 @@ voice100-align-text \
     --checkpoint model/${CHECKPOINT}
 ```
 
-### Train 
+### Train TTS align model
 
 ```
-!voice100-train-ttsalign \
+MODEL=ttsalign_en_conv_base
+DATASET=ljspeech
+LANGUAGE=en
+
+voice100-train-ttsalign \
     --gpus 1 \
     --batch_size 256 \
     --precision 16 \
@@ -152,76 +175,36 @@ voice100-align-text \
     --default_root_dir=model/{MODEL} \
 ```
 
-### Preprocessing
+### Compute audio statistics
 
-Get CSS10 Japanese corpus and extract the data under `./data`.
-`./data/japanese-single-speaker-speech-dataset/transcript.txt` should be
-the path to the transcript data.
-
-Run the preprocess,
+This generates the statistics as `data/stat-ljspeech.pt`.
 
 ```
-$ python -m voice100.preprocess --dataset css10ja
+DATASET=ljspeech
+LANGUAGE=en
+
+voice100-calc-stat \
+    --dataset {DATASET} \
+    --language {LANGUAGE}
 ```
 
-This generates `data/css10ja_train.npz` and `data/css10ja_val.npz`
-
-### Training alighment model
-
-![Training CTC](./docs/train_ctc.png)
-
-The alignment model align text and audio of the dataset.
+### Train TTS align model
 
 ```
-$ python -m voice100.train_ctc --mode train --dataset css10ja --model_dir model/ctc
+DATASET=ljspeech
+LANGUAGE=en
+MODEL=ttsaudio_en_conv_base
+
+voice100-train-ttsaudio \
+  --gpus 1 \
+  --dataset {DATASET} \
+  --language {LANGUAGE} \
+  --batch_size 32 \
+  --precision 16 \
+  --max_epochs 500 \
+  --default_root_dir ./model/{MODEL}
 ```
 
-### Estimate alighment
+### Train ASR model
 
-This makes `data/css10ja_train_aligh.npz`.
-
-```
-$ python -m voice100.train_ctc --mode convert --dataset css10ja --model_dir model/ctc
-```
-
-### Train TTS model
-
-TTS model is a plain Transformer with multitask of three tasks,
-predicting alignment, audio and end of audio.
-
-```
-$ python -m voice100.train_ctc --mode train --model_dir model/audio
-```
-
-It takes 3.5 hours with T4 to train 239 epochs.
-
-![train_loss_align](./docs/train_loss_align.png)
-![train_loss_audio](./docs/train_loss_audio.png)
-
-## Data
-
-https://raw.githubusercontent.com/voice-statistics/voice-statistics.github.com/master/assets/doc/balance_sentences.txt
-
-- JSUT is 10 hour recording in female voice.
-- CSS10 is 14 hour recording in male voice.
-- JVS is 0.1 hour recording.
-
-## References
-
-- 声優統計コーパス http://voice-statistics.github.io/
-- CSS10: A Collection of Single Speaker Speech Datasets for 10 Languages https://github.com/Kyubyong/css10
-- Deep Speech 3 https://arxiv.org/abs/1710.07654
-- Tacotron 2 https://arxiv.org/abs/1712.05884
-- Tacotron https://github.com/keithito/tacotron
-- Tacotron 3 https://github.com/StevenLOL/tacotron-3
-- Tacotron 3 https://github.com/kingulight/Tacotron-3
-- Mellotron https://github.com/NVIDIA/mellotron
-- Deep Voice 3 https://github.com/Kyubyong/deepvoice3
-- WORLD http://www.kki.yamanashi.ac.jp/~mmorise/world/
-- OpenJTALK http://open-jtalk.sp.nitech.ac.jp/
-- 月ノ美兎さんの音声合成ツール(Text To Speech) を作ってみた https://qiita.com/K2_ML/items/2804594454b39180c909
-- Mozilla TTS (Tacotron2) を使って日本語音声合成 https://qiita.com/tset-tset-tset/items/7b388b0536fcc774b2ad
-- Tacotron2系における日本語のunidecodeの不確かさ https://qiita.com/nishiha/items/6e2a2ddaafe03fa7f924
-- Tacotron2を日本語で学習してみる（０から学習編） https://shirowanisan.com/entry/2020/12/05/184426
-- NVIDIA/tacotron2 で日本語の音声合成を試す https://note.com/npaka/n/n2a91c3ca9f34
-- JSUT https://sites.google.com/site/shinnosuketakamichi/publication/jsut
+TBD
