@@ -15,7 +15,11 @@ def cli_main():
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
     args = parser.parse_args()
     args.write_cache = False
-    args.output = f'data/{args.dataset}-align.txt'
+    args.timing = True
+    if args.timing:
+        args.output = f'data/timing-{args.dataset}.txt'
+    else:
+        args.output = f'data/align-{args.dataset}.txt'
 
     data = AlignInferDataModule.from_argparse_args(args)
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
@@ -25,16 +29,25 @@ def cli_main():
     with open(args.output, 'w') as f:
         for idx, batch in enumerate(tqdm(data.infer_dataloader())):
             (audio, audio_len), (text, text_len) = batch
-            score, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
+            score, hist, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
             if args.write_cache:
                 file = os.path.join(args.cache, 'align-%d.pt' % idx)
                 torch.save({
                     'score': score, 'path': path, 'path_len': path_len
                 }, file)
 
-            for i in range(path.shape[0]):
-                raw_text = encoder.decode(path[i, :path_len[i]])
-                f.write(raw_text + '\n')
+            if args.timing:
+                for i in range(path.shape[0]):
+                    timings = [0] * (2 * text_len[i] + 1)
+                    for j in hist[i, :path_len[i]]:
+                        timings[j] += 1
+                    timings = ' '.join([str(x) for x in timings])
+                    raw_text = encoder.decode(text[i, :text_len[i]])
+                    f.write(raw_text + '\t' + timings + '\n')
+            else:
+                for i in range(path.shape[0]):
+                    raw_text = encoder.decode(path[i, :path_len[i]])
+                    f.write(raw_text + '\n')
 
 
 if __name__ == '__main__':

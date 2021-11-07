@@ -27,49 +27,54 @@ def ctc_best_path(logits, labels):
     labels[1::2] = tmp
 
     cands = [
-        (logits[0, labels[0]], [labels[0]])
+        (logits[0, labels[0]], [0], [labels[0]])
     ]
     for i in range(1, logits.shape[0]):
         next_cands = []
 
         # Forward one frame in time, but stays
         # in the same position in the text.
-        for pos, (logit1, path1) in enumerate(cands):
+        for pos, (logit1, hist1, path1) in enumerate(cands):
             logit1 = logit1 + logits[i, labels[pos]]
+            hist1 = hist1 + [pos]
             path1 = path1 + [labels[pos]]
-            next_cands.append((logit1, path1))
+            next_cands.append((logit1, hist1, path1))
 
         # Forward one frame in time, and also
         # forward to the next position in the text.
-        for pos, (logit2, path2) in enumerate(cands):
+        for pos, (logit2, hist2, path2) in enumerate(cands):
             if pos + 1 < len(labels):
                 logit2 = logit2 + logits[i, labels[pos + 1]]
+                hist2 = hist2 + [pos + 1]
                 path2 = path2 + [labels[pos + 1]]
                 if pos + 1 == len(next_cands):
-                    next_cands.append((logit2, path2))
+                    next_cands.append((logit2, hist2, path2))
                 else:
-                    logit, _ = next_cands[pos + 1]
+                    logit, _, _ = next_cands[pos + 1]
                     if logit2 > logit:
-                        next_cands[pos + 1] = (logit2, path2)
+                        next_cands[pos + 1] = (logit2, hist2, path2)
 
         # Forward one frame in time, and forward to the
         # next non-blank token, skipping the next blank.
-        for pos, (logit3, path3) in enumerate(cands):
+        for pos, (logit3, hist3, path3) in enumerate(cands):
             if pos + 2 < len(labels) and labels[pos + 1] == 0:
                 logit3 = logit3 + logits[i, labels[pos + 2]]
+                # We can append items as these lists are not shared.
+                hist3.append(pos + 2)
                 path3.append(labels[pos + 2])
                 if pos + 2 == len(next_cands):
-                    next_cands.append((logit3, path3))
+                    next_cands.append((logit3, hist3, path3))
                 else:
-                    logit, _ = next_cands[pos + 2]
+                    logit, _, _ = next_cands[pos + 2]
                     if logit3 > logit:
-                        next_cands[pos + 2] = (logit3, path3)
+                        next_cands[pos + 2] = (logit3, hist3, path3)
 
         cands = next_cands
 
-    logprob, best_path = cands[-1]
+    logprob, best_hist, best_path = cands[-1]
+    best_hist = np.array(best_hist, dtype=np.int32)
     best_path = np.array(best_path, dtype=np.uint8)
-    return logprob, best_path
+    return logprob, best_hist, best_path
 
 
 class AudioAlignCTC(pl.LightningModule):
@@ -136,26 +141,31 @@ class AudioAlignCTC(pl.LightningModule):
         self, audio: torch.Tensor = None,
         audio_len: torch.Tensor = None, text: torch.Tensor = None,
         text_len: torch.Tensor = None, logits: torch.Tensor = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # logits [audio_len, batch_size, vocab_size]
         if logits is None:
             logits, logits_len = self.forward(audio, audio_len)
+        else:
+            logits_len = audio_len
         if text is None:
             return logits.argmax(axis=-1)
-        path = []
         score = []
+        hist = []
+        path = []
         for i in range(logits.shape[1]):
             one_logits_len = logits_len[i].cpu().item()
             one_logits = logits[:one_logits_len, i, :].cpu().numpy()
             one_text_len = text_len[i].cpu().numpy()
             one_text = text[i, :one_text_len].cpu().numpy()
-            one_score, one_path = ctc_best_path(one_logits, one_text)
+            one_score, one_hist, one_path = ctc_best_path(one_logits, one_text)
             assert one_path.shape[0] == one_logits_len
             score.append(float(one_score))
+            hist.append(torch.from_numpy(one_hist))
             path.append(torch.from_numpy(one_path))
         score = torch.tensor(one_path, dtype=torch.float32)
+        hist = pad_sequence(hist, batch_first=True, padding_value=0)
         path = pad_sequence(path, batch_first=True, padding_value=0)
-        return score, path, logits_len
+        return score, hist, path, logits_len
 
     @staticmethod
     def add_model_specific_args(parent_parser):
