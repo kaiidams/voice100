@@ -111,7 +111,7 @@ voice100-train-align \
 
 ### Align text with align model
 
-This generates the aligned text as `data/align-ljspeech.txt`.
+This generates the aligned text as `data/timing-ljspeech.txt`.
 
 ```
 CHECKPOINT=align_en_lstm_base_ctc.ckpt
