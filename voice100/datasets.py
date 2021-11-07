@@ -587,7 +587,7 @@ class AudioTextDataModule(pl.LightningDataModule):
             test=args.test)
 
 
-def generate_audio_text_align_batch(data_batch):
+def generate_text_align_batch(data_batch):
     text_batch, align_batch = [], []
     for text_item, align_item in data_batch:
         text_batch.append(text_item)
@@ -606,7 +606,7 @@ class AlignTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.dataset = dataset
         self.num_workers = 2
-        self.collate_fn = generate_audio_text_align_batch
+        self.collate_fn = generate_text_align_batch
 
     def setup(self, stage: Optional[str] = None):
         ds = AlignTextDataset(f'data/align-{self.dataset}.txt')
