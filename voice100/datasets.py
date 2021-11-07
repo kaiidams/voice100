@@ -7,8 +7,6 @@ import os
 from argparse import ArgumentParser
 from glob import glob
 from typing import Optional
-from .text import DEFAULT_VOCAB_SIZE
-from voice100.text import BasicPhonemizer, CharTokenizer
 import torch
 from torch import nn
 import torchaudio
@@ -18,6 +16,8 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
+from .text import DEFAULT_VOCAB_SIZE
+from .text import BasicPhonemizer, CharTokenizer
 from .audio import SpectrogramAugumentation
 
 BLANK_IDX = 0

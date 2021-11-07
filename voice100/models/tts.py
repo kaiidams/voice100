@@ -1,12 +1,13 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Optional, Tuple
+from typing import Tuple
 import pytorch_lightning as pl
 import torch
 from torch import nn
 
 from .asr import InvertedResidual
+
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
@@ -18,7 +19,8 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     """
     assert x.dim() == 2
     assert length.dim() == 1
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).float()
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+
 
 class VoiceDecoder(nn.Module):
     def __init__(self, hidden_size, out_channels) -> None:
@@ -38,14 +40,16 @@ class VoiceDecoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
+
 def adjust_size(
     x: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if x.shape[1] > y.shape[1]:
         return x[:, :y.shape[1]], y
     if x.shape[1] < y.shape[1]:
         return x, y[:, :x.shape[1]]
     return x, y
+
 
 class WORLDNorm(nn.Module):
     def __init__(self, logspc_size: int, codeap_size: int, device=None, dtype=None):
@@ -76,7 +80,7 @@ class WORLDNorm(nn.Module):
     @torch.no_grad()
     def normalize(
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
         mcep = (mcep - self.logspc_mean) / self.logspc_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
@@ -85,11 +89,12 @@ class WORLDNorm(nn.Module):
     @torch.no_grad()
     def unnormalize(
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        f0 = self.f0_std * f0 + self.f0_mean 
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        f0 = self.f0_std * f0 + self.f0_mean
         mcep = self.logspc_std * mcep + self.logspc_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
+
 
 class WORLDLoss(nn.Module):
     def __init__(self, sample_rate: int = 16000, n_fft: int = 512, device=None, dtype=None):
@@ -107,7 +112,7 @@ class WORLDLoss(nn.Module):
         self, length: torch.Tensor,
         hasf0_logits: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
         hasf0: torch.Tensor, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
 
         hasf0_logits, hasf0 = adjust_size(hasf0_logits, hasf0)
         f0_hat, f0 = adjust_size(f0_hat, f0)
