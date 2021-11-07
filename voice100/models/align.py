@@ -18,6 +18,7 @@ __all__ = [
     'AudioAlignCTC',
 ]
 
+
 def ctc_best_path(logits, labels):
     # Expand label with blanks
     import numpy as np
@@ -26,15 +27,20 @@ def ctc_best_path(logits, labels):
     labels[1::2] = tmp
 
     cands = [
-            (logits[0, labels[0]], [labels[0]])
+        (logits[0, labels[0]], [labels[0]])
     ]
     for i in range(1, logits.shape[0]):
         next_cands = []
+
+        # Forward one frame in time, but stays
+        # in the same position in the text.
         for pos, (logit1, path1) in enumerate(cands):
             logit1 = logit1 + logits[i, labels[pos]]
             path1 = path1 + [labels[pos]]
             next_cands.append((logit1, path1))
 
+        # Forward one frame in time, and also
+        # forward to the next position in the text.
         for pos, (logit2, path2) in enumerate(cands):
             if pos + 1 < len(labels):
                 logit2 = logit2 + logits[i, labels[pos + 1]]
@@ -45,7 +51,9 @@ def ctc_best_path(logits, labels):
                     logit, _ = next_cands[pos + 1]
                     if logit2 > logit:
                         next_cands[pos + 1] = (logit2, path2)
-                        
+
+        # Forward one frame in time, and forward to the
+        # next non-blank token, skipping the next blank.
         for pos, (logit3, path3) in enumerate(cands):
             if pos + 2 < len(labels) and labels[pos + 1] == 0:
                 logit3 = logit3 + logits[i, labels[pos + 2]]
@@ -56,12 +64,13 @@ def ctc_best_path(logits, labels):
                     logit, _ = next_cands[pos + 2]
                     if logit3 > logit:
                         next_cands[pos + 2] = (logit3, path3)
-                        
+
         cands = next_cands
 
     logprob, best_path = cands[-1]
     best_path = np.array(best_path, dtype=np.uint8)
     return logprob, best_path
+
 
 class AudioAlignCTC(pl.LightningModule):
 
@@ -120,15 +129,14 @@ class AudioAlignCTC(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=0.00004)
-        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
-        return optimizer#{"optimizer": optimizer, "lr_scheduler": scheduler}
+        return optimizer
 
     @torch.no_grad()
     def ctc_best_path(
         self, audio: torch.Tensor = None,
         audio_len: torch.Tensor = None, text: torch.Tensor = None,
         text_len: torch.Tensor = None, logits: torch.Tensor = None
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # logits [audio_len, batch_size, vocab_size]
         if logits is None:
             logits, logits_len = self.forward(audio, audio_len)

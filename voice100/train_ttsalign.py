@@ -103,7 +103,7 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = TextToAlignDataModule.add_data_specific_args(parser)
-    parser = TextToAlignTextModel.add_model_specific_args(parser)    
+    parser = TextToAlignTextModel.add_model_specific_args(parser)
     args = parser.parse_args(namespace=args)
 
     data = TextToAlignDataModule.from_argparse_args(args)
