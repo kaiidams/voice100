@@ -99,7 +99,7 @@ curl -O https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
 tar xfz LJSpeech-1.1.tar.bz2
 cd ..
 
-python -m voice100.train_align \
+voice100-train-align \
     --gpus 1 \
     --precision 16 \
     --batch_size 256 \
@@ -107,6 +107,22 @@ python -m voice100.train_align \
     --dataset ${DATASET} \
     --language ${LANGUAGE} \
     --default_root_dir=model/${MODEL}
+```
+
+### Align text with align model
+
+This generates the aligned text as `data/align-ljspeech.txt`.
+
+```
+CHECKPOINT=align_en_lstm_base_ctc.ckpt
+DATASET=ljspeech
+LANGUAGE=en
+
+voice100-align-text \
+    --batch_size 4 \
+    --dataset ${DATASET} \
+    --language ${LANGUAGE} \
+    --checkpoint model/${CHECKPOINT}
 ```
 
 ### Preprocessing
