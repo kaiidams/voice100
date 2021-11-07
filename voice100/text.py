@@ -14,6 +14,7 @@ NOT_DEFAULT_CHARACTERS_RX = re.compile("[^" + DEFAULT_CHARACTERS[1:] + "]")
 DEFAULT_VOCAB_SIZE = len(DEFAULT_CHARACTERS)
 assert DEFAULT_VOCAB_SIZE == 29
 
+
 class BasicPhonemizer(nn.Module):
 
     def __init__(self):
@@ -21,6 +22,7 @@ class BasicPhonemizer(nn.Module):
 
     def forward(self, text: str) -> str:
         return NOT_DEFAULT_CHARACTERS_RX.sub('', text.lower())
+
 
 class CharTokenizer(nn.Module):
 
@@ -43,10 +45,11 @@ class CharTokenizer(nn.Module):
         return ''.join([
             self._vocab[x]
             for x in encoded
-             if 0 <= x < len(self._vocab)])
+            if 0 <= x < len(self._vocab)])
 
     def merge_repeated(self, text: str) -> str:
         text = re.sub(r'(.)\1+', r'\1', text)
         text = text.replace('_', '')
-        if text == ' ': text = ''
+        if text == ' ':
+            text = ''
         return text

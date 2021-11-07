@@ -126,6 +126,7 @@ class WORLDLoss(nn.Module):
         codeap_loss = torch.sum(codeap_loss) / mask_sum
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
+
 class TextToAlignTextModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
         super().__init__()
@@ -295,4 +296,3 @@ class AlignTextToAudioModel(pl.LightningModule):
         if not args.resume_from_checkpoint:
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model
-        

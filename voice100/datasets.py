@@ -71,6 +71,7 @@ class MetafileDataset(Dataset):
         else:
             return audiopath, text
 
+
 class LibriSpeechDataset(Dataset):
     r"""``Dataset`` for reading from speech datasets with transcript files,
     like Libri Speech.
@@ -154,6 +155,25 @@ class EncodedCacheDataset(Dataset):
             encoded_audio = self._spec_augment(encoded_audio)
             return encoded_audio, encoded_text
         return encoded_data
+
+
+class AlignTextDataset(Dataset):
+
+    def __init__(self, file):
+        self.tokenizer = CharTokenizer()
+        self.data = []
+        with open(file, 'r') as f:
+            for line in f:
+                parts = line.rstrip('\r\n').split('|')
+                text = self.tokenizer(parts[0])
+                align = torch.tensor(data=[int(x) for x in parts[2].split()], dtype=torch.int32)
+                self.data.append((text, align))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        return self.data[index]
 
 
 class AudioToCharProcessor(nn.Module):
@@ -560,6 +580,67 @@ class AudioTextDataModule(pl.LightningDataModule):
             cache=args.cache,
             batch_size=args.batch_size,
             test=args.test)
+
+
+def generate_audio_text_align_batch(data_batch):
+    text_batch, align_batch = [], []
+    for text_item, align_item in data_batch:
+        text_batch.append(text_item)
+        align_batch.append(align_item)
+    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+    align_len = torch.tensor([len(x) for x in align_batch], dtype=torch.int32)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
+    align_batch = pad_sequence(align_batch, batch_first=True, padding_value=0)
+    return (text_batch, text_len), (align_batch, align_len)
+
+
+class AlignTextDataModule(pl.LightningDataModule):
+
+    def __init__(self, dataset: str, batch_size: int) -> None:
+        super().__init__()
+        self.batch_size = batch_size
+        self.dataset = dataset
+        self.num_workers = 2
+        self.collate_fn = generate_audio_text_align_batch
+
+    def setup(self, stage: Optional[str] = None):
+        ds = AlignTextDataset(f'data/align-{self.dataset}.txt')
+        valid_len = len(ds) // 10
+        train_len = len(ds) - valid_len
+        self.train_ds, self.valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.valid_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    def test_dataloader(self):
+        return None
+
+    @staticmethod
+    def add_data_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
+        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
+        parser.add_argument('--language', default='en', type=str, help='Language')
+        return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        args.vocab_size = DEFAULT_VOCAB_SIZE
+        return AlignTextDataModule(args.dataset, args.batch_size)
+
 
 class VCDataModule(pl.LightningDataModule):
 

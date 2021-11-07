@@ -16,10 +16,7 @@ def cli_main():
     args = parser.parse_args()
     args.write_cache = False
     args.timing = True
-    if args.timing:
-        args.output = f'data/timing-{args.dataset}.txt'
-    else:
-        args.output = f'data/align-{args.dataset}.txt'
+    args.output = f'data/align-{args.dataset}.txt'
 
     data = AlignInferDataModule.from_argparse_args(args)
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
@@ -36,18 +33,15 @@ def cli_main():
                     'score': score, 'path': path, 'path_len': path_len
                 }, file)
 
-            if args.timing:
-                for i in range(path.shape[0]):
-                    timings = [0] * (2 * text_len[i] + 1)
-                    for j in hist[i, :path_len[i]]:
-                        timings[j] += 1
-                    timings = ' '.join([str(x) for x in timings])
-                    raw_text = encoder.decode(text[i, :text_len[i]])
-                    f.write(raw_text + '\t' + timings + '\n')
-            else:
-                for i in range(path.shape[0]):
-                    raw_text = encoder.decode(path[i, :path_len[i]])
-                    f.write(raw_text + '\n')
+            for i in range(path.shape[0]):
+                align = [0] * (2 * text_len[i] + 1)
+                for j in hist[i, :path_len[i]]:
+                    align[j] += 1
+                align = ' '.join([str(x) for x in align])
+                raw_text = encoder.decode(text[i, :text_len[i]])
+
+                raw_align_text = encoder.decode(path[i, :path_len[i]])
+                f.write(raw_text + '|' + raw_align_text + '|' + align + '\n')
 
 
 if __name__ == '__main__':
