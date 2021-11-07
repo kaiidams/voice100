@@ -28,11 +28,11 @@ class MetafileDataset(Dataset):
     Args:
         root (str): Root directory of the dataset.
     """
-    
+
     def __init__(
         self, root: str, metafile='validated.tsv', alignfile: str = None, sep='|',
         header=True, idcol=1, textcol=2, aligncol=0, wavsdir='wavs', ext='.wav'
-        ) -> None:
+    ) -> None:
         self._root = root
         self._data = []
         self._sep = sep
@@ -99,6 +99,7 @@ class LibriSpeechDataset(Dataset):
         audiopath = os.path.join(self._root, audioid)
         return audiopath, text
 
+
 class EncodedCacheDataset(Dataset):
     def __init__(self, dataset, salt, transform, cachedir=None):
         self._dataset = dataset
@@ -154,6 +155,7 @@ class EncodedCacheDataset(Dataset):
             return encoded_audio, encoded_text
         return encoded_data
 
+
 class AudioToCharProcessor(nn.Module):
 
     def __init__(
@@ -165,7 +167,7 @@ class AudioToCharProcessor(nn.Module):
         hop_length: int = 160,
         n_mels: int = 64,
         log_offset: float = 1e-6
-        ):
+    ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -198,6 +200,7 @@ class AudioToCharProcessor(nn.Module):
 
         return audio, encoded
 
+
 class CharToAudioProcessor(nn.Module):
 
     def __init__(
@@ -205,7 +208,7 @@ class CharToAudioProcessor(nn.Module):
         language: str,
         sample_rate: int,
         infer: bool = False
-        ):
+    ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self.target_effects = [
@@ -235,6 +238,7 @@ class CharToAudioProcessor(nn.Module):
             codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
 
         return (f0, logspc, codeap), text, aligntext
+
 
 class AudioToAudioProcessor(nn.Module):
 
@@ -271,10 +275,11 @@ class AudioToAudioProcessor(nn.Module):
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
-        
+
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
         target = self.vocoder(waveform[0])
         return audio, target
+
 
 def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     chained_ds = None
@@ -294,12 +299,13 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
             ds = MetafileDataset(root, metafile='metadata.csv', sep='|', header=False, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
-            
+
         if chained_ds is None:
             chained_ds = ds
         else:
             chained_ds += ds
     return chained_ds
+
 
 def get_transform(task: str, sample_rate: int, language: str, infer: bool = False):
     if task == 'asr':
@@ -310,6 +316,7 @@ def get_transform(task: str, sample_rate: int, language: str, infer: bool = Fals
         raise ValueError('Unknown task')
     return transform
 
+
 def get_phonemizer(language: str):
     if language == 'en':
         return BasicPhonemizer()
@@ -319,6 +326,7 @@ def get_phonemizer(language: str):
     else:
         raise ValueError(f"Unsupported language {language}")
 
+
 def get_collate_fn(task):
     if task == 'asr':
         collate_fn = generate_audio_text_batch
@@ -327,6 +335,7 @@ def get_collate_fn(task):
     else:
         raise ValueError('Unknown task')
     return collate_fn
+
 
 def generate_audio_text_batch(data_batch):
     audio_batch, text_batch = [], []
@@ -338,6 +347,7 @@ def generate_audio_text_batch(data_batch):
     audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return (audio_batch, audio_len), (text_batch, text_len)
+
 
 def generate_audio_text_align_batch(data_batch):
     f0_batch, spec_batch, codeap_batch, aligntext_batch, text_batch = [], [], [], [], []
@@ -360,6 +370,7 @@ def generate_audio_text_align_batch(data_batch):
 
     return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (aligntext_batch, aligntext_len)
 
+
 def generate_audio_text_align_batch_(data_batch):
     audio_batch, text_batch, aligntext_batch = [], [], []
     for audio_item, text_item, aligntext_item in data_batch:
@@ -372,28 +383,32 @@ def generate_audio_text_align_batch_(data_batch):
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return (audio_batch, audio_len), (text_batch, text_len)
 
+
 class AlignInferDataModule(pl.LightningDataModule):
 
     def __init__(
-        self, dataset: str, language: str,
+        self, dataset: str,
+        sample_rate: int,
+        language: str,
         cache: str, batch_size: int
-        ):
+    ) -> None:
         super().__init__()
         self.task = 'asr'
         self.dataset = dataset
+        self.sample_rate = sample_rate
         self.language = language
         self.cache = cache
         self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.language)
+        self.transform = get_transform(self.task, self.sample_rate, self.language)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset)
         os.makedirs(self.cache, exist_ok=True)
         self.infer_ds = EncodedCacheDataset(
-            ds, self.cache_salt, repeat=1, transform=self.transform,
+            ds, self.cache_salt, transform=self.transform,
             cachedir=self.cache)
 
     def infer_dataloader(self):
@@ -418,9 +433,11 @@ class AlignInferDataModule(pl.LightningDataModule):
     def from_argparse_args(args):
         return AlignInferDataModule(
             dataset=args.dataset,
+            sample_rate=args.sample_rate,
             language=args.language,
             cache=args.cache,
             batch_size=args.batch_size)
+
 
 def generate_audio_audio_batch(data_batch):
     melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
@@ -437,13 +454,15 @@ def generate_audio_audio_batch(data_batch):
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
     return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
 
+
 class AudioTextDataModule(pl.LightningDataModule):
 
     def __init__(
         self, task: str, dataset: str, valid_ratio: float,
         sample_rate: int,
         language: str, cache: str,
-        batch_size: int, test: bool):
+        batch_size: int, test: bool
+    ) -> None:
         super().__init__()
         self.task = task
         self.dataset = dataset
