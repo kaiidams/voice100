@@ -9,6 +9,11 @@ without recursion.
 - Don't depend on non-commercially licensed dataset
 - Small enough to run on normal PCs, Raspberry Pi and smartphones.
 
+## Sample synthesis
+
+- [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
+- [Sample synthesis 2 (From JVS corpus)](docs/sample2.wav)
+
 ## Architecture
 
 ### TTS
@@ -25,18 +30,15 @@ the aligned text.
 #### TTS align model
 
 ```
-  | Name          | Type                          | Params
-----------------------------------------------------------------
-0 | conv          | Conv1d                        | 24.7 K
-1 | lstm          | LSTM                          | 659 K 
-2 | dense         | Linear                        | 7.5 K 
-3 | loss_fn       | CTCLoss                       | 0     
-4 | batch_augment | BatchSpectrogramAugumentation | 0     
-----------------------------------------------------------------
-691 K     Trainable params
+  | Name      | Type       | Params
+-----------------------------------------
+0 | embedding | Embedding  | 3.7 K 
+1 | layers    | Sequential | 614 K 
+-----------------------------------------
+618 K     Trainable params
 0         Non-trainable params
-691 K     Total params
-1.383     Total estimated model params size (MB)
+618 K     Total params
+1.237     Total estimated model params size (MB)
 ```
 
 #### TTS audio model
@@ -93,11 +95,6 @@ of the input.
 
 ![ASR](./docs/asr.png)
 
-# Sample synthesis
-
-- [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
-- [Sample synthesis 2 (From JVS corpus)](docs/sample2.wav)
-
 ### Align model
 
 The align model is 2-layer bi-directional LSTM which is trained to predict
@@ -113,6 +110,10 @@ prepare aligned texts for dataset to train the TTS models.
 3 | loss_fn       | CTCLoss                       | 0     
 4 | batch_augment | BatchSpectrogramAugumentation | 0     
 ----------------------------------------------------------------
+691 K     Trainable params
+0         Non-trainable params
+691 K     Total params
+1.383     Total estimated model params size (MB)
 ```
 
 ## Training
