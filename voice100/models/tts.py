@@ -1,12 +1,13 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Optional, Tuple
+from typing import Tuple
 import pytorch_lightning as pl
 import torch
 from torch import nn
 
 from .asr import InvertedResidual
+
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
@@ -18,31 +19,37 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     """
     assert x.dim() == 2
     assert length.dim() == 1
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).float()
+    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+
 
 class VoiceDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_size=256) -> None:
+    def __init__(self, hidden_size, out_channels) -> None:
         super().__init__()
         half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, hidden_size, kernel_size=65, use_residual=False),
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=33),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
             nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=17),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
+
 def adjust_size(
     x: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     if x.shape[1] > y.shape[1]:
         return x[:, :y.shape[1]], y
     if x.shape[1] < y.shape[1]:
         return x, y[:, :x.shape[1]]
     return x, y
+
 
 class WORLDNorm(nn.Module):
     def __init__(self, logspc_size: int, codeap_size: int, device=None, dtype=None):
@@ -73,7 +80,7 @@ class WORLDNorm(nn.Module):
     @torch.no_grad()
     def normalize(
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
         mcep = (mcep - self.logspc_mean) / self.logspc_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
@@ -82,11 +89,12 @@ class WORLDNorm(nn.Module):
     @torch.no_grad()
     def unnormalize(
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        f0 = self.f0_std * f0 + self.f0_mean 
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        f0 = self.f0_std * f0 + self.f0_mean
         mcep = self.logspc_std * mcep + self.logspc_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
+
 
 class WORLDLoss(nn.Module):
     def __init__(self, sample_rate: int = 16000, n_fft: int = 512, device=None, dtype=None):
@@ -104,7 +112,7 @@ class WORLDLoss(nn.Module):
         self, length: torch.Tensor,
         hasf0_logits: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
         hasf0: torch.Tensor, f0: torch.Tensor, logspc: torch.Tensor, codeap: torch.Tensor
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
 
         hasf0_logits, hasf0 = adjust_size(hasf0_logits, hasf0)
         f0_hat, f0 = adjust_size(f0_hat, f0)
@@ -123,14 +131,14 @@ class WORLDLoss(nn.Module):
         codeap_loss = torch.sum(codeap_loss) / mask_sum
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
+
 class TextToAlignTextModel(pl.LightningModule):
     def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
         super().__init__()
         self.save_hyperparameters()
-        #half_hidden_size = hidden_size // 2
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=17),
             InvertedResidual(hidden_size, hidden_size, kernel_size=11),
@@ -146,10 +154,9 @@ class TextToAlignTextModel(pl.LightningModule):
         # x: [batch_size, text_len, 2]
         return x
 
-    def align(self, text, align, head=0, tail=5):
-        l = int(torch.sum(align))
-        l += tail
-        arr = torch.zeros(l, dtype=text.dtype)
+    def align(self, text, align, head=5, tail=5):
+        aligntext_len = head + int(torch.sum(align)) + tail
+        aligntext = torch.zeros(aligntext_len, dtype=text.dtype)
         t = head
         for i in range(align.shape[0]):
             t += align[i, 0].item()
@@ -157,11 +164,11 @@ class TextToAlignTextModel(pl.LightningModule):
             t += align[i, 1].item()
             e = round(t)
             if s == e:
-                s = max(0, s - 1)
+                e = max(0, e + 1)
             for j in range(s, e):
-                arr[j] = text[i]
-        return arr
-        
+                aligntext[j] = text[i]
+        return aligntext
+
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
@@ -174,11 +181,11 @@ class TextToAlignTextModel(pl.LightningModule):
     def _calc_batch_loss(self, batch) -> torch.Tensor:
         (text, text_len), (align, align_len) = batch
         align = align[:, :-1].reshape([align.shape[0], -1, 2])
-        align_len = align_len // 2
+        align_len = torch.div(align_len, 2, rounding_mode='trunc')
         pred = torch.relu(self.forward(text))
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)
-        mask = generate_padding_mask(logalign, align_len)
+        mask = generate_padding_mask(text, text_len)
         loss = torch.sum(loss * mask) / torch.sum(mask)
         return loss
 
@@ -190,7 +197,7 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -200,10 +207,12 @@ class TextToAlignTextModel(pl.LightningModule):
             vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate)
-        
+
+
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
-        self, vocab_size: int, hidden_size: int, learning_rate: float) -> None:
+        self, vocab_size: int, hidden_size: int, learning_rate: float
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
@@ -219,7 +228,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.decoder = VoiceDecoder(hidden_size, self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
-    
+
     def forward(self, aligntext):
         x = self.embedding(aligntext)
         x = torch.transpose(x, 1, 2)
@@ -244,7 +253,7 @@ class AlignTextToAudioModel(pl.LightningModule):
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext)
 
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.world_criteria(
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
 
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
@@ -280,7 +289,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -291,6 +300,6 @@ class AlignTextToAudioModel(pl.LightningModule):
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate)
         if not args.resume_from_checkpoint:
+            args.audio_stat = f'data/stat_{args.dataset}.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model
-        

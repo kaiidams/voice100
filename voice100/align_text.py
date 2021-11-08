@@ -8,29 +8,41 @@ from tqdm import tqdm
 from .models.align import AudioAlignCTC
 from .datasets import AlignInferDataModule
 
+
 def cli_main():
     parser = ArgumentParser()
     parser = AlignInferDataModule.add_data_specific_args(parser)
+    parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
     args = parser.parse_args()
-    args.output = f'data/{args.dataset}-align.txt'
+    args.write_cache = False
+    args.timing = True
+    args.output = f'data/align-{args.dataset}.txt'
 
     data = AlignInferDataModule.from_argparse_args(args)
-    model = AudioAlignCTC.load_from_checkpoint('model/align_en_lstm_base_ctc.ckpt')
+    model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
     data.setup()
     encoder = data.transform.encoder
     model.eval()
     with open(args.output, 'w') as f:
         for idx, batch in enumerate(tqdm(data.infer_dataloader())):
             (audio, audio_len), (text, text_len) = batch
-            score, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
-            file = os.path.join(args.cache, 'align-%d.pt' % idx)
-            torch.save({
-                'score': score, 'path': path, 'path_len': path_len
-            }, file)
-        
+            score, hist, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
+            if args.write_cache:
+                file = os.path.join(args.cache, 'align-%d.pt' % idx)
+                torch.save({
+                    'score': score, 'path': path, 'path_len': path_len
+                }, file)
+
             for i in range(path.shape[0]):
-                raw_text = encoder.decode(path[i, :path_len[i]])
-                f.write(raw_text + '\n')
+                align = [0] * (2 * text_len[i] + 1)
+                for j in hist[i, :path_len[i]]:
+                    align[j] += 1
+                align = ' '.join([str(x) for x in align])
+                raw_text = encoder.decode(text[i, :text_len[i]])
+
+                raw_align_text = encoder.decode(path[i, :path_len[i]])
+                f.write(raw_text + '|' + raw_align_text + '|' + align + '\n')
+
 
 if __name__ == '__main__':
     cli_main()

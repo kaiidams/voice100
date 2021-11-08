@@ -9,19 +9,27 @@ setup(
     license="MIT",
     url="https://github.com/kaiidams/voice100",
     packages=['voice100'],
-    long_description="Voice100 is a small TTS for Japanese.",
+    long_description="Voice100 is a small TTS for English and Japanese.",
     entry_points={
+        "console_scripts": [
+            "voice100-align-text=voice100.align_text:cli_main",
+            "voice100-calc-stat=voice100.calc_stat:cli_main",
+            "voice100-train-align=voice100.train_align:cli_main",
+            "voice100-train-ttsalign=voice100.train_ttsalign:cli_main",
+            "voice100-train-ttsaudio=voice100.train_ttsaudio:cli_main",
+        ]
     },
     install_requires=[
         'torch',
-        'pytorch_lightning'
+        'torchaudio',
+        'pytorch_lightning>=1.4.0'
     ],
     extras_require={
+        "align": [
+        ],
         "asr": [
-            'torchaudio',
         ],
         "tts": [
-            'torchaudio',
             'pyworld>=0.2.12',
         ],
         "lang-ja": [
