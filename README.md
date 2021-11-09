@@ -167,8 +167,8 @@ voice100-train-ttsalign \
     --batch_size 256 \
     --precision 16 \
     --max_epochs 100 \
-    --dataset {DATASET} \
-    --language {LANGUAGE} \
+    --dataset ${DATASET} \
+    --language ${LANGUAGE} \
     --default_root_dir=model/{MODEL} \
 ```
 
@@ -178,8 +178,8 @@ This generates the statistics as `data/stat-ljspeech.pt`.
 
 ```sh
 voice100-calc-stat \
-    --dataset {DATASET} \
-    --language {LANGUAGE}
+    --dataset ${DATASET} \
+    --language ${LANGUAGE}
 ```
 
 ### Train TTS align model
@@ -189,12 +189,12 @@ MODEL=ttsaudio_en_conv_base
 
 voice100-train-ttsaudio \
   --gpus 1 \
-  --dataset {DATASET} \
-  --language {LANGUAGE} \
+  --dataset ${DATASET} \
+  --language ${LANGUAGE} \
   --batch_size 32 \
   --precision 16 \
   --max_epochs 500 \
-  --default_root_dir ./model/{MODEL}
+  --default_root_dir ./model/${MODEL}
 ```
 
 ### Train ASR model
