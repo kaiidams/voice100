@@ -11,6 +11,7 @@ __all__ = [
     'AudioToCharCTC',
 ]
 
+
 class ConvBNActivate(nn.Sequential):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
         padding = ((kernel_size - 1) // 2) * dilation
@@ -22,6 +23,7 @@ class ConvBNActivate(nn.Sequential):
                 bias=False),
             nn.BatchNorm1d(out_channels),
             nn.ReLU6(inplace=True))
+
 
 class InvertedResidual(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
@@ -37,11 +39,13 @@ class InvertedResidual(nn.Module):
             nn.Conv1d(hidden_size, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm1d(out_channels)
         )
+
     def forward(self, x):
         if self.use_residual:
             return x + self.conv(x)
         else:
             return self.conv(x)
+
 
 class ConvVoiceEncoder(nn.Module):
 
@@ -68,6 +72,7 @@ class ConvVoiceEncoder(nn.Module):
     def output_length(self, embed_len) -> torch.Tensor:
         return torch.div(embed_len + 1, 2, rounding_mode='trunc')
 
+
 class LinearCharDecoder(nn.Module):
 
     def __init__(self, in_channels, out_channels):
@@ -78,6 +83,7 @@ class LinearCharDecoder(nn.Module):
 
     def forward(self, enc_out) -> torch.Tensor:
         return self.layers(enc_out)
+
 
 class AudioToCharCTC(pl.LightningModule):
 
@@ -95,13 +101,13 @@ class AudioToCharCTC(pl.LightningModule):
         enc_out = self.encoder(audio)
         logits = self.decoder(enc_out)
         logits = torch.transpose(logits, 1, 2)
-        #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
+        # assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return logits
 
     def output_length(self, audio_len) -> torch.Tensor:
         enc_out_len = self.encoder.output_length(audio_len)
         dec_out_len = enc_out_len
-        #assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
+        # assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return dec_out_len
 
     def _calc_batch_loss(self, batch):

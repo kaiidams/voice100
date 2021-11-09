@@ -123,7 +123,7 @@ prepare aligned texts for dataset to train the TTS models.
 Training align model with 
 [LJ Speech Corpus](https://keithito.com/LJ-Speech-Dataset/).
 
-```
+```sh
 MODEL=align_en_lstm_base_ctc
 DATASET=ljspeech
 LANGUAGE=en
@@ -145,12 +145,10 @@ voice100-train-align \
 
 ### Align text with align model
 
-This generates the aligned text as `data/align-ljspeech.txt`.
+This generates the aligned text as `data/align-${DATASET}.txt`.
 
-```
+```sh
 CHECKPOINT=align_en_lstm_base_ctc.ckpt
-DATASET=ljspeech
-LANGUAGE=en
 
 voice100-align-text \
     --batch_size 4 \
@@ -161,51 +159,52 @@ voice100-align-text \
 
 ### Train TTS align model
 
-```
+```sh
 MODEL=ttsalign_en_conv_base
-DATASET=ljspeech
-LANGUAGE=en
 
 voice100-train-ttsalign \
     --gpus 1 \
     --batch_size 256 \
     --precision 16 \
     --max_epochs 100 \
-    --dataset {DATASET} \
-    --language {LANGUAGE} \
+    --dataset ${DATASET} \
+    --language ${LANGUAGE} \
     --default_root_dir=model/{MODEL} \
 ```
 
 ### Compute audio statistics
 
-This generates the statistics as `data/stat-ljspeech.pt`.
+This generates the statistics as `data/stat-${DATASET}.pt`.
 
-```
-DATASET=ljspeech
-LANGUAGE=en
-
+```sh
 voice100-calc-stat \
-    --dataset {DATASET} \
-    --language {LANGUAGE}
+    --dataset ${DATASET} \
+    --language ${LANGUAGE}
 ```
 
-### Train TTS align model
+### Train TTS audio model
 
-```
-DATASET=ljspeech
-LANGUAGE=en
+```sh
 MODEL=ttsaudio_en_conv_base
 
 voice100-train-ttsaudio \
   --gpus 1 \
-  --dataset {DATASET} \
-  --language {LANGUAGE} \
+  --dataset ${DATASET} \
+  --language ${LANGUAGE} \
   --batch_size 32 \
   --precision 16 \
   --max_epochs 500 \
-  --default_root_dir ./model/{MODEL}
+  --default_root_dir ./model/${MODEL}
 ```
 
 ### Train ASR model
 
 TBD
+
+## Exporting to ONNX
+
+TBD
+
+## Inference
+
+Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
