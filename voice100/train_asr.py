@@ -11,6 +11,7 @@ MELSPEC_DIM = 64
 VOCAB_SIZE = DEFAULT_VOCAB_SIZE
 assert VOCAB_SIZE == 29
 
+
 def cli_main():
     pl.seed_everything(1234)
 
@@ -29,6 +30,7 @@ def cli_main():
         learning_rate=args.learning_rate)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, data)
+
 
 if __name__ == '__main__':
     cli_main()

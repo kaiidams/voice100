@@ -229,7 +229,10 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
 
-    def forward(self, aligntext):
+    def forward(
+        self, aligntext: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
         x = self.embedding(aligntext)
         x = torch.transpose(x, 1, 2)
         x = self.decoder(x)
@@ -245,6 +248,17 @@ class AlignTextToAudioModel(pl.LightningModule):
         hasf0_logits = hasf0_logits[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
         return hasf0_logits, f0_hat, logspc_hat, codeap_hat
+
+    def predict(
+        self, aligntext: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        hasf0, f0, logspc, codeap = self.forward(aligntext)
+        f0, logspc, codeap = self.norm.unnormalize(f0, logspc, codeap)
+        f0 = torch.where(
+            hasf0 < 0, torch.zeros(size=(1,), dtype=f0.dtype, device=f0.device), f0
+        )
+        return f0, logspc, codeap
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
         (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch

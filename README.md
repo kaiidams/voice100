@@ -203,7 +203,12 @@ TBD
 
 ## Exporting to ONNX
 
-TBD
+```sh
+voice100-export-onnx \
+    --model ttsaudio \
+    --checkpoint model/${MODEL}/lightning_logs/version_0/checkpoints/last.ckpt \
+    --output model/onnx/${MODEL}.onnx
+```
 
 ## Inference
 
