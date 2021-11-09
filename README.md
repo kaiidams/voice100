@@ -193,7 +193,7 @@ voice100-train-ttsaudio \
   --language ${LANGUAGE} \
   --batch_size 32 \
   --precision 16 \
-  --max_epochs 500 \
+  --max_epochs 150 \
   --default_root_dir ./model/${MODEL}
 ```
 
