@@ -145,7 +145,7 @@ voice100-train-align \
 
 ### Align text with align model
 
-This generates the aligned text as `data/align-ljspeech.txt`.
+This generates the aligned text as `data/align-${DATASET}.txt`.
 
 ```sh
 CHECKPOINT=align_en_lstm_base_ctc.ckpt
@@ -157,7 +157,7 @@ voice100-align-text \
     --checkpoint model/${CHECKPOINT}
 ```
 
-### Train TTS audio model
+### Train TTS align model
 
 ```sh
 MODEL=ttsalign_en_conv_base
@@ -174,7 +174,7 @@ voice100-train-ttsalign \
 
 ### Compute audio statistics
 
-This generates the statistics as `data/stat-ljspeech.pt`.
+This generates the statistics as `data/stat-${DATASET}.pt`.
 
 ```sh
 voice100-calc-stat \
@@ -182,7 +182,7 @@ voice100-calc-stat \
     --language ${LANGUAGE}
 ```
 
-### Train TTS align model
+### Train TTS audio model
 
 ```sh
 MODEL=ttsaudio_en_conv_base
@@ -200,3 +200,11 @@ voice100-train-ttsaudio \
 ### Train ASR model
 
 TBD
+
+## Exporting to ONNX
+
+TBD
+
+## Inference
+
+Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
