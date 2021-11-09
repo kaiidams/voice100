@@ -123,7 +123,7 @@ prepare aligned texts for dataset to train the TTS models.
 Training align model with 
 [LJ Speech Corpus](https://keithito.com/LJ-Speech-Dataset/).
 
-```
+```sh
 MODEL=align_en_lstm_base_ctc
 DATASET=ljspeech
 LANGUAGE=en
@@ -147,10 +147,8 @@ voice100-train-align \
 
 This generates the aligned text as `data/align-ljspeech.txt`.
 
-```
+```sh
 CHECKPOINT=align_en_lstm_base_ctc.ckpt
-DATASET=ljspeech
-LANGUAGE=en
 
 voice100-align-text \
     --batch_size 4 \
@@ -159,12 +157,10 @@ voice100-align-text \
     --checkpoint model/${CHECKPOINT}
 ```
 
-### Train TTS align model
+### Train TTS audio model
 
-```
+```sh
 MODEL=ttsalign_en_conv_base
-DATASET=ljspeech
-LANGUAGE=en
 
 voice100-train-ttsalign \
     --gpus 1 \
@@ -180,10 +176,7 @@ voice100-train-ttsalign \
 
 This generates the statistics as `data/stat-ljspeech.pt`.
 
-```
-DATASET=ljspeech
-LANGUAGE=en
-
+```sh
 voice100-calc-stat \
     --dataset {DATASET} \
     --language {LANGUAGE}
@@ -191,9 +184,7 @@ voice100-calc-stat \
 
 ### Train TTS align model
 
-```
-DATASET=ljspeech
-LANGUAGE=en
+```sh
 MODEL=ttsaudio_en_conv_base
 
 voice100-train-ttsaudio \
