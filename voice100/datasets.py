@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 from argparse import ArgumentParser
 from glob import glob
-from typing import Optional
+from typing import Text, Optional
 import torch
 from torch import nn
 import torchaudio
@@ -31,7 +31,7 @@ class MetafileDataset(Dataset):
     """
 
     def __init__(
-        self, root: str, metafile='validated.tsv', alignfile: str = None, sep='|',
+        self, root: Text, metafile='validated.tsv', alignfile: Text = None, sep='|',
         header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
         self._root = root
@@ -80,7 +80,7 @@ class LibriSpeechDataset(Dataset):
         root (str): Root directory of the dataset.
     """
 
-    def __init__(self, root: str):
+    def __init__(self, root: Text):
         self._root = root
         self._data = []
         for file in glob(os.path.join(root, '**', '*.txt'), recursive=True):
@@ -181,7 +181,7 @@ class AudioToCharProcessor(nn.Module):
 
     def __init__(
         self,
-        language: str,
+        language: Text,
         sample_rate: int = 16000,
         n_fft: int = 512,
         win_length: int = 400,
@@ -226,7 +226,7 @@ class CharToAudioProcessor(nn.Module):
 
     def __init__(
         self,
-        language: str,
+        language: Text,
         sample_rate: int,
         infer: bool = False
     ) -> None:
@@ -302,7 +302,7 @@ class AudioToAudioProcessor(nn.Module):
         return audio, target
 
 
-def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
+def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
     chained_ds = None
     alignfile = f'./data/align-{dataset}.txt' if needalign else None
     for dataset in dataset.split(','):
@@ -332,7 +332,7 @@ def get_dataset(dataset: str, needalign: bool = False) -> Dataset:
     return chained_ds
 
 
-def get_transform(task: str, sample_rate: int, language: str, infer: bool = False):
+def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = False):
     if task == 'asr':
         transform = AudioToCharProcessor(language=language)
     elif task == 'tts':
@@ -342,7 +342,7 @@ def get_transform(task: str, sample_rate: int, language: str, infer: bool = Fals
     return transform
 
 
-def get_phonemizer(language: str):
+def get_phonemizer(language: Text):
     if language == 'en':
         return BasicPhonemizer()
     elif language == 'ja':
@@ -412,10 +412,10 @@ def generate_audio_text_align_batch_(data_batch):
 class AlignInferDataModule(pl.LightningDataModule):
 
     def __init__(
-        self, dataset: str,
+        self, dataset: Text,
         sample_rate: int,
-        language: str,
-        cache: str, batch_size: int
+        language: Text,
+        cache: Text, batch_size: int
     ) -> None:
         super().__init__()
         self.task = 'asr'
@@ -483,9 +483,9 @@ def generate_audio_audio_batch(data_batch):
 class AudioTextDataModule(pl.LightningDataModule):
 
     def __init__(
-        self, task: str, dataset: str, valid_ratio: float,
+        self, task: Text, dataset: Text, valid_ratio: float,
         sample_rate: int,
-        language: str, cache: str,
+        language: Text, cache: Text,
         batch_size: int, test: bool
     ) -> None:
         super().__init__()
@@ -601,7 +601,7 @@ def generate_text_align_batch(data_batch):
 
 class AlignTextDataModule(pl.LightningDataModule):
 
-    def __init__(self, dataset: str, batch_size: int) -> None:
+    def __init__(self, dataset: Text, batch_size: int) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.dataset = dataset
@@ -649,7 +649,7 @@ class AlignTextDataModule(pl.LightningDataModule):
 
 class VCDataModule(pl.LightningDataModule):
 
-    def __init__(self, dataset: str, valid_ratio: float, language: str, repeat: int, cache: str, batch_size: int):
+    def __init__(self, dataset: Text, valid_ratio: float, language: Text, repeat: int, cache: Text, batch_size: int):
         super().__init__()
         self.dataset = dataset
         self.valid_ratio = valid_ratio

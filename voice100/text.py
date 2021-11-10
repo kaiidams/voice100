@@ -3,6 +3,7 @@
 import torch
 from torch import nn
 import re
+from typing import Text
 
 __all__ = [
     'BasicPhonemizer',
@@ -20,7 +21,7 @@ class BasicPhonemizer(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, text: str) -> str:
+    def forward(self, text: Text) -> Text:
         return NOT_DEFAULT_CHARACTERS_RX.sub('', text.lower())
 
 
@@ -34,20 +35,20 @@ class CharTokenizer(nn.Module):
         self._vocab = vocab
         self._v2i = {x: i for i, x in enumerate(vocab)}
 
-    def forward(self, text: str) -> torch.Tensor:
+    def forward(self, text: Text) -> torch.Tensor:
         return self.encode(text)
 
     def encode(self, text) -> torch.Tensor:
         encoded = [self._v2i[ch] for ch in text if ch in self._v2i]
         return torch.tensor(encoded, dtype=torch.long)
 
-    def decode(self, encoded) -> str:
+    def decode(self, encoded) -> Text:
         return ''.join([
             self._vocab[x]
             for x in encoded
             if 0 <= x < len(self._vocab)])
 
-    def merge_repeated(self, text: str) -> str:
+    def merge_repeated(self, text: Text) -> Text:
         text = re.sub(r'(.)\1+', r'\1', text)
         text = text.replace('_', '')
         if text == ' ':

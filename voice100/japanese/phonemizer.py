@@ -3,6 +3,7 @@
 
 import re
 import MeCab
+from typing import Text
 
 _CONVRULES = [
     # Conversion of 2 letters
@@ -306,6 +307,7 @@ _CONVRULES = [
 _COLON_RX = re.compile(':+')
 _REJECT_RX = re.compile('[^ a-zA-Z:,.?]')
 
+
 def _makerulemap():
     l = [tuple(x.split('/')) for x in _CONVRULES]
     return tuple(
@@ -313,9 +315,11 @@ def _makerulemap():
         for i in (1, 2)
     )
 
+
 _RULEMAP1, _RULEMAP2 = _makerulemap()
 
-def kata2phoneme(text: str) -> str:
+
+def kata2phoneme(text: Text) -> Text:
     """Convert katakana text to phonemes.
     """
     text = text.strip()
@@ -337,19 +341,23 @@ def kata2phoneme(text: str) -> str:
     res = _COLON_RX.sub(':', res)
     return res[1:]
 
+
 _KATAKANA = ''.join(chr(ch) for ch in range(ord('ァ'), ord('ン') + 1))
 _HIRAGANA = ''.join(chr(ch) for ch in range(ord('ぁ'), ord('ん') + 1))
 _HIRA2KATATRANS = str.maketrans(_HIRAGANA, _KATAKANA)
 
-def hira2kata(text: str) -> str:
+
+def hira2kata(text: Text) -> Text:
     text = text.translate(_HIRA2KATATRANS)
     return text.replace('う゛', 'ヴ')
+
 
 _SYMBOL_TOKENS = set(list('・、。？！'))
 _NO_YOMI_TOKENS = set(list('「」『』―（）［］[]　…'))
 _TAGGER = MeCab.Tagger()
 
-def text2kata(text: str) -> str:
+
+def text2kata(text: Text) -> Text:
     parsed = _TAGGER.parse(text)
     res = []
     for line in parsed.split('\n'):
@@ -371,7 +379,8 @@ def text2kata(text: str) -> str:
                 res.append(word)
     return hira2kata(''.join(res))
 
-def japanese_text_to_phonemes(text: str) -> str:
+
+def japanese_text_to_phonemes(text: Text) -> Text:
     """Convert Japanese text to phonemes.
     """
     res = text2kata(text)
