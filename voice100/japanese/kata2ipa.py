@@ -1,4 +1,5 @@
 import re
+from typing import Text
 
 _CONVRULES = [
     # Conversion of 2 letters
@@ -300,6 +301,7 @@ _CONVRULES = [
 
 _COLON_RX = re.compile(':+')
 
+
 def _makerulemap():
     l = [tuple(x.split('/')) for x in _CONVRULES]
     return tuple(
@@ -307,9 +309,11 @@ def _makerulemap():
         for i in (1, 2)
     )
 
+
 _RULEMAP1, _RULEMAP2 = _makerulemap()
 
-def kata2asciiipa(text: str) -> str:
+
+def kata2asciiipa(text: Text) -> Text:
     """Convert katakana text to ASCII IPA.
     """
     text = text.strip()

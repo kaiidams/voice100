@@ -13,6 +13,7 @@
 #   .yomi -> .voca
 
 import re
+from typing import Text
 
 # 3文字以上からなる変換規則
 _CONVRULES = [
@@ -140,7 +141,7 @@ _CONVRULES = [
     'ろぉ/ r o:',
     'わぁ/ w a:',
     'をぉ/ o:',
-    
+
     'う゛/ b u',
     'でぃ/ d i',
     'でぇ/ d e:',
@@ -322,6 +323,7 @@ _CONVRULES = [
 _COLON_RX = re.compile(':+')
 _REJECT_RX = re.compile('[^ a-zA-Z:,.?]')
 
+
 def _makerulemap():
     l = [tuple(x.split('/')) for x in _CONVRULES]
     return tuple(
@@ -329,9 +331,11 @@ def _makerulemap():
         for i in range(1, 4)
     )
 
+
 _rulemap1, _rulemap2, _rulemap3 = _makerulemap()
 
-def yomi2voca(text: str, ignore_error: bool) -> str:
+
+def yomi2voca(text: Text, ignore_error: bool) -> Text:
     """Convert yomi text to phonemes.
     """
     text = text.strip()

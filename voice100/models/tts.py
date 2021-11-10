@@ -154,7 +154,15 @@ class TextToAlignTextModel(pl.LightningModule):
         # x: [batch_size, text_len, 2]
         return x
 
-    def align(self, text, align, head=5, tail=5):
+    def align(
+        self,
+        text: torch.Tensor,
+        align: torch.Tensor,
+        head=5, tail=5
+    ) -> torch.Tensor:
+
+        assert text.dim() == 1
+        assert align.dim() == 2
         aligntext_len = head + int(torch.sum(align)) + tail
         aligntext = torch.zeros(aligntext_len, dtype=text.dtype)
         t = head
