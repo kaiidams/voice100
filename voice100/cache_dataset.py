@@ -2,6 +2,7 @@
 
 from argparse import ArgumentParser
 import pytorch_lightning as pl
+from tqdm import tqdm
 
 from .datasets import AudioTextDataModule
 
@@ -20,9 +21,9 @@ def cli_main():
 
     data = AudioTextDataModule.from_argparse_args(args)
     data.setup()
-    for _ in data.train_dataloader():
+    for _ in tqdm(data.val_dataloader()):
         pass
-    for _ in data.val_dataloader():
+    for _ in tqdm(data.train_dataloader()):
         pass
 
 
