@@ -22,7 +22,6 @@ class JapanesePhonemizer(nn.Module):
         text = text2kata(text)
         text = kata2phoneme(text)
         text = text.replace(' ', '')
-        print(text)
         text = text.replace(',', ' ')
         text = text.replace('.', ' ')
         text = _CHOON_RX.sub(r'\1\1', text)
