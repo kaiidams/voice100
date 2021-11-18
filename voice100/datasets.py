@@ -4,6 +4,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 """
 
 import os
+import logging
 from argparse import ArgumentParser
 from glob import glob
 from typing import Text, Optional
@@ -21,6 +22,8 @@ from .text import BasicPhonemizer, CharTokenizer
 from .audio import SpectrogramAugumentation
 
 BLANK_IDX = 0
+
+logger = logging.getLogger(__name__)
 
 
 class MetafileDataset(Dataset):
@@ -131,8 +134,8 @@ class EncodedCacheDataset(Dataset):
         if os.path.exists(cachefile):
             try:
                 encoded_data = torch.load(cachefile)
-            except Exception as ex:
-                print(ex)
+            except Exception:
+                logger.warn("Failed to load audio", exc_info=True)
         if encoded_data is None:
             encoded_data = self._transform(*data)
             try:
@@ -143,8 +146,8 @@ class EncodedCacheDataset(Dataset):
                     audio = f0, mcep, codeap
                     encoded_data = audio, text, aligntext
                 torch.save(encoded_data, cachefile)
-            except Exception as ex:
-                print(ex)
+            except Exception:
+                logger.warn("Failed to save audio cache", exc_info=True)
         if self.save_mcep:
             audio, text, aligntext = encoded_data
             f0, mcep, codeap = audio
@@ -334,7 +337,7 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
 
 def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = False):
     if task == 'asr':
-        transform = AudioToCharProcessor(language=language)
+        transform = AudioToCharProcessor(sample_rate=sample_rate, language=language)
     elif task == 'tts':
         transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, infer=infer)
     else:
@@ -427,7 +430,7 @@ class AlignInferDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, infer=True)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset)
