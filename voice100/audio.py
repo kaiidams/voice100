@@ -11,6 +11,7 @@ __all__ = [
 
 AUGUMENT_RATE = 0.2
 
+
 class SpectrogramAugumentation(nn.Module):
     def __init__(self):
         super().__init__()
@@ -19,7 +20,7 @@ class SpectrogramAugumentation(nn.Module):
     def forward(self, audio):
         assert len(audio.shape) == 2
         if random.random() < AUGUMENT_RATE:
-            pass # audio = self.timestretch(audio)
+            pass  # audio = self.timestretch(audio)
         if random.random() < AUGUMENT_RATE:
             audio = self.pitchshift(audio)
         if random.random() < AUGUMENT_RATE:
@@ -28,7 +29,7 @@ class SpectrogramAugumentation(nn.Module):
             audio = self.freqmask(audio)
         if random.random() < AUGUMENT_RATE:
             audio = self.mixnoise(audio)
-        return audio        
+        return audio
 
     def timestretch(self, audio):
         rate = 1.0 + random.random() * 0.3
@@ -68,6 +69,7 @@ class SpectrogramAugumentation(nn.Module):
         scale = torch.linspace(low, high, 64)[None, :]
         noise = torch.rand(audio.shape) * std + scale
         return torch.log(torch.exp(audio) + torch.exp(noise))
+
 
 class BatchSpectrogramAugumentation(nn.Module):
 

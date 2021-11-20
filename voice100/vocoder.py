@@ -8,8 +8,9 @@ from typing import Tuple
 
 __all__ = [
     "WORLDVocoder",
-    ]
-    
+]
+
+
 class WORLDVocoder(nn.Module):
 
     def __init__(
@@ -19,7 +20,7 @@ class WORLDVocoder(nn.Module):
         n_fft: int = None,
         use_mc: bool = False,
         log_offset: float = 1e-15
-        ) -> None:
+    ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self.frame_period = frame_period
@@ -28,12 +29,14 @@ class WORLDVocoder(nn.Module):
             self.mcep_dim = 24
             self.mcep_alpha = 0.410
             self.codeap_dim = 1
-            if self.n_fft is None: self.n_fft = 512
+            if self.n_fft is None:
+                self.n_fft = 512
         elif sample_rate == 22050:
             self.mcep_dim = 34
             self.mcep_alpha = 0.455
             self.codeap_dim = 2
-            if self.n_fft is None: self.n_fft = 1024
+            if self.n_fft is None:
+                self.n_fft = 1024
         else:
             raise ValueError("Unsupported sample rate")
         self.use_mc = use_mc
@@ -52,9 +55,10 @@ class WORLDVocoder(nn.Module):
         self,
         waveform: torch.Tensor,
         f0_floor: float = 80.0, f0_ceil: float = 400.0
-        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         waveform = waveform.cpu().numpy().astype(np.double)
-        f0, time_axis = pyworld.dio(waveform, self.sample_rate, f0_floor=f0_floor,
+        f0, time_axis = pyworld.dio(
+            waveform, self.sample_rate, f0_floor=f0_floor,
             f0_ceil=f0_ceil, frame_period=self.frame_period)
         spc = pyworld.cheaptrick(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         logspc = np.log(spc + self.log_offset)
@@ -77,7 +81,7 @@ class WORLDVocoder(nn.Module):
 
     def decode(
         self, f0: torch.Tensor, logspc_or_mc: torch.Tensor, codeap: torch.Tensor
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
         f0 = f0.cpu().numpy().astype(np.double, order='C')
         if self.use_mc:
             mc = logspc_or_mc.cpu().numpy().astype(np.double)
@@ -90,6 +94,7 @@ class WORLDVocoder(nn.Module):
         waveform = pyworld.synthesize(f0, spc, ap, self.sample_rate, frame_period=self.frame_period)
         return waveform
 
+
 def create_sp2mc_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     """PySPTK compatible mel-cepstrum transform matrix
     https://pysptk.readthedocs.io/en/latest/_modules/pysptk/conversion.html#sp2mc"""
@@ -98,6 +103,7 @@ def create_sp2mc_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     c[:, 0] /= 2.0
     mc = freqt(c, order, alpha)
     return mc
+
 
 def create_mc2sp_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     """PySPTK compatible mel-cepstrum invert transform matrix
@@ -108,6 +114,7 @@ def create_mc2sp_matrix(fftlen: int, order: int, alpha: float) -> np.ndarray:
     c = np.concatenate([c[:, :], c[:, :0:-1]], axis=1)
     logsp = np.fft.rfft(c).real
     return logsp
+
 
 def freqt(ceps: np.ndarray, order=25, alpha=0.0) -> np.ndarray:
     """PySPTK compatible frequency transform

@@ -11,8 +11,15 @@ without recursion.
 
 ## Sample synthesis
 
-- [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
-- [Sample synthesis 2 (From JVS corpus)](docs/sample2.wav)
+- [Sample synthesis 1](docs/sample-en-1.wav)
+beginnings are apt to be determinative and when reinforced by continuous applications of similar influence
+- [Sample synthesis 2](docs/sample-en-2.wav)
+which had restored the courage of noirtier for ever since he had conversed with the priest his violent
+despair had yielded to a calm resignation which surprised all who knew his excessive affection
+- [Sample synthesis 1](docs/sample-ja-1.wav)
+また、東寺のように五大明王と呼ばれる主要な明王の中央に配されることも多い。
+- [Sample synthesis 2](docs/sample-ja-2.wav)
+ニューイングランド風は牛乳をベースとした白いクリームスープでありボストンクラムチャウダーとも呼ばれる
 
 ## Architecture
 
@@ -213,3 +220,25 @@ voice100-export-onnx \
 ## Inference
 
 Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
+
+## Pretrained models
+
+### Align model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
+
+### TTS align model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_en_conv_base-20210808.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_ja_conv_base-20211118.ckpt)
+
+### TTS audio model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsaudio_en_conv_base-20210811.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsaudio_ja_conv_base-20211118.ckpt)
+
+### ASR model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/stt_en_conv_base_ctc-20210619.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/stt_ja_conv_base_ctc-20210608.ckpt)
