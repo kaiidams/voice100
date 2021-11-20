@@ -11,8 +11,15 @@ without recursion.
 
 ## Sample synthesis
 
-- [Sample synthesis 1 (From eval datset)](docs/sample1.wav)
-- [Sample synthesis 2 (From JVS corpus)](docs/sample2.wav)
+- [Sample synthesis 1](docs/sample-en-1.wav)
+beginnings are apt to be determinative and when reinforced by continuous applications of similar influence
+- [Sample synthesis 2](docs/sample-en-2.wav)
+which had restored the courage of noirtier for ever since he had conversed with the priest his violent
+despair had yielded to a calm resignation which surprised all who knew his excessive affection
+- [Sample synthesis 1](docs/sample-ja-1.wav)
+また、東寺のように五大明王と呼ばれる主要な明王の中央に配されることも多い。
+- [Sample synthesis 2](docs/sample-ja-2.wav)
+ニューイングランド風は牛乳をベースとした白いクリームスープでありボストンクラムチャウダーとも呼ばれる
 
 ## Architecture
 
