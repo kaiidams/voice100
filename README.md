@@ -213,3 +213,25 @@ voice100-export-onnx \
 ## Inference
 
 Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
+
+## Pretrained models
+
+### Align model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
+
+### TTS align model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_en_conv_base-20210808.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_ja_conv_base-20211118.ckpt)
+
+### TTS audio model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsaudio_en_conv_base-20210811.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsaudio_ja_conv_base-20211118.ckpt)
+
+### ASR model
+
+- [English](https://github.com/kaiidams/voice100/releases/download/v0.7/stt_en_conv_base_ctc-20210619.ckpt)
+- [Japanese](https://github.com/kaiidams/voice100/releases/download/v0.7/stt_ja_conv_base_ctc-20210608.ckpt)
