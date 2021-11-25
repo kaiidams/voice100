@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 MAJOR = 0
-MINOR = 6
+MINOR = 7
 PATCH = 0
 PRE_RELEASE = ''
 

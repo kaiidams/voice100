@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="voice100",
-    version="0.6",
+    version="0.7",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
     description="Voice100",
@@ -17,6 +17,7 @@ setup(
             "voice100-cache-dataset=voice100.cache_dataset:cli_main",
             "voice100-export-onnx=voice100.export_onnx:cli_main",
             "voice100-train-align=voice100.train_align:cli_main",
+            "voice100-train-asr=voice100.train_asr:cli_main",
             "voice100-train-ttsalign=voice100.train_ttsalign:cli_main",
             "voice100-train-ttsaudio=voice100.train_ttsaudio:cli_main",
         ]
