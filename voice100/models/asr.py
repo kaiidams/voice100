@@ -66,10 +66,7 @@ class ConvVoiceEncoder(nn.Module):
             InvertedResidual(half_hidden_size, hidden_size, kernel_size=59, use_residual=False),
             InvertedResidual(hidden_size, hidden_size, kernel_size=67),
             InvertedResidual(hidden_size, hidden_size, kernel_size=75),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=83),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=81),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=91),
-            InvertedResidual(hidden_size, out_channels, kernel_size=99, use_residual=False))
+            InvertedResidual(hidden_size, out_channels, kernel_size=89, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -156,9 +153,10 @@ class AudioToCharCTC(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--learning_rate', type=float, default=0.001)
-        parser.add_argument('--hidden_size', type=float, default=256)
-        parser.add_argument('--embed_size', type=float, default=256)
+        parser.add_argument('--hidden_size', type=float, default=512)
+        parser.add_argument('--embed_size', type=float, default=512)
         return parser
 
     @staticmethod
