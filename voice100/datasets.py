@@ -566,7 +566,6 @@ class AudioTextDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--task', type=str, help='Task')
         parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
         parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')

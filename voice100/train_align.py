@@ -11,6 +11,7 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
+    parser.add_argument('--task', type=str, help='Task', default='asr')
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = AudioAlignCTC.add_model_specific_args(parser)
