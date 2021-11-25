@@ -62,11 +62,11 @@ class ConvVoiceEncoder(nn.Module):
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=19),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=27),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=35),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=51),
-            InvertedResidual(half_hidden_size, hidden_size, kernel_size=59, use_residual=False),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=51, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=59),
             InvertedResidual(hidden_size, hidden_size, kernel_size=67),
             InvertedResidual(hidden_size, hidden_size, kernel_size=75),
-            InvertedResidual(hidden_size, out_channels, kernel_size=89, use_residual=False))
+            InvertedResidual(hidden_size, out_channels, kernel_size=83, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
