@@ -2,33 +2,30 @@
 
 from argparse import ArgumentParser
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .datasets import ASRDataModule
-from .text import DEFAULT_VOCAB_SIZE
+from .datasets import AudioTextDataModule
 from .models.asr import AudioToCharCTC
-
-MELSPEC_DIM = 64
-VOCAB_SIZE = DEFAULT_VOCAB_SIZE
-assert VOCAB_SIZE == 29
 
 
 def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser = pl.Trainer.add_argparse_args(parser)
-    parser = ASRDataModule.add_data_specific_args(parser)
-    parser = AudioToCharCTC.add_model_specific_args(parser)
-    args = parser.parse_args()
+    parser.add_argument('--task', type=str, help='Task', default='asr')
+    args, _ = parser.parse_known_args()
 
-    data = ASRDataModule.from_argparse_args(args)
-    model = AudioToCharCTC(
-        audio_size=MELSPEC_DIM,
-        vocab_size=VOCAB_SIZE,
-        embed_size=args.embed_size,
-        hidden_size=args.hidden_size,
-        learning_rate=args.learning_rate)
-    trainer = pl.Trainer.from_argparse_args(args)
+    parser = pl.Trainer.add_argparse_args(parser)
+    parser = AudioTextDataModule.add_data_specific_args(parser)
+    parser = AudioToCharCTC.add_model_specific_args(parser)
+    args = parser.parse_args(namespace=args)
+
+    data = AudioTextDataModule.from_argparse_args(args)
+    model = AudioToCharCTC.from_argparse_args(args)
+    checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)
+    trainer = pl.Trainer.from_argparse_args(
+        args,
+        callbacks=[checkpoint_callback])
     trainer.fit(model, data)
 
 

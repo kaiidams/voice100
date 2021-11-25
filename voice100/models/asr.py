@@ -6,6 +6,11 @@ from torch import nn
 import pytorch_lightning as pl
 
 from ..audio import BatchSpectrogramAugumentation
+from ..text import DEFAULT_VOCAB_SIZE
+
+MELSPEC_DIM = 64
+VOCAB_SIZE = DEFAULT_VOCAB_SIZE
+assert VOCAB_SIZE == 29
 
 __all__ = [
     'AudioToCharCTC',
@@ -155,3 +160,12 @@ class AudioToCharCTC(pl.LightningModule):
         parser.add_argument('--hidden_size', type=float, default=256)
         parser.add_argument('--embed_size', type=float, default=256)
         return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return AudioToCharCTC(
+            audio_size=MELSPEC_DIM,
+            vocab_size=VOCAB_SIZE,
+            embed_size=args.embed_size,
+            hidden_size=args.hidden_size,
+            learning_rate=args.learning_rate)
