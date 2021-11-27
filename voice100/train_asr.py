@@ -11,10 +11,11 @@ from .models.asr import AudioToCharCTC
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser()
+    parser = ArgumentParser(add_help=False)
     parser.add_argument('--task', type=str, help='Task', default='asr')
     args, _ = parser.parse_known_args()
 
+    parser = ArgumentParser(parents=[parser])
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_data_specific_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)

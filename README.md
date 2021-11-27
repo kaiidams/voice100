@@ -100,6 +100,9 @@ of the input.
 
 ### ASR
 
+The ASR model is 9-layer CNN which is trained to predict on
+CTC loss.
+
 ![ASR](./docs/asr.png)
 
 ### Align model
