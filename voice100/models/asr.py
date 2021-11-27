@@ -147,7 +147,7 @@ class AudioToCharCTC(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 3)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
