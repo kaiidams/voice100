@@ -319,7 +319,9 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
                 sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
-            ds = MetafileDataset(root)
+            ds = MetafileDataset(
+                root,
+                sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
             ds = MetafileDataset(
