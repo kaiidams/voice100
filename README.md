@@ -100,8 +100,9 @@ of the input.
 
 ### ASR
 
-The ASR model is 9-layer CNN which is trained to predict on
-CTC loss.
+The ASR model is 9-layer MobileNet-like inverted residual which is
+trained to predict on
+[CTC loss](https://pytorch.org/docs/stable/generated/torch.nn.CTCLoss.html).
 
 ![ASR](./docs/asr.png)
 
@@ -209,7 +210,20 @@ voice100-train-ttsaudio \
 
 ### Train ASR model
 
-TBD
+```sh
+DATASET=librispeech
+LANGUAGE=en
+MODEL=stt_en_conv_base_ctc
+
+voice100-train-asr \
+  --gpus 1 \
+  --dataset ${DATASET} \
+  --language ${LANGUAGE} \
+  --batch_size 32 \
+  --precision 16 \
+  --max_epochs 100 \
+  --default_root_dir ./model/${MODEL}
+```
 
 ## Exporting to ONNX
 

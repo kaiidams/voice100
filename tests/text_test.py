@@ -2,7 +2,8 @@
 
 import unittest
 import torch
-from .text import *
+from voice100.text import BasicPhonemizer, CharTokenizer
+
 
 class TestEncoder(unittest.TestCase):
     def test(self):
@@ -17,7 +18,7 @@ class TestEncoder(unittest.TestCase):
         print(encoded)
 
     def test2(self):
-        from .japanese import JapanesePhonemizer
+        from voice100.japanese import JapanesePhonemizer
         phonemizer = JapanesePhonemizer()
         tokenizer = CharTokenizer()
 
@@ -31,6 +32,7 @@ class TestEncoder(unittest.TestCase):
         text = "やっぱりヴォイス？"
         phoneme = phonemizer(text)
         print(phoneme)
+
 
 if __name__ == '__main__':
     unittest.main()
