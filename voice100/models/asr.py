@@ -89,7 +89,7 @@ class LinearCharDecoder(nn.Module):
 
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.embed_size = embed_size
@@ -146,15 +146,16 @@ class AudioToCharCTC(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.learning_rate,
-            weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 3)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+            weight_decay=self.hparams.weight_decay)
+        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 3)
+        return optimizer# {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--weight_decay', type=float, default=0.00004)
         parser.add_argument('--hidden_size', type=float, default=512)
         parser.add_argument('--embed_size', type=float, default=512)
         return parser
