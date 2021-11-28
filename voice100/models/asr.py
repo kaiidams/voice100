@@ -167,4 +167,5 @@ class AudioToCharCTC(pl.LightningModule):
             vocab_size=VOCAB_SIZE,
             embed_size=args.embed_size,
             hidden_size=args.hidden_size,
-            learning_rate=args.learning_rate)
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay)
