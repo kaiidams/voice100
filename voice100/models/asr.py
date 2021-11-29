@@ -6,6 +6,11 @@ from torch import nn
 import pytorch_lightning as pl
 
 from ..audio import BatchSpectrogramAugumentation
+from ..text import DEFAULT_VOCAB_SIZE
+
+MELSPEC_DIM = 64
+VOCAB_SIZE = DEFAULT_VOCAB_SIZE
+assert VOCAB_SIZE == 29
 
 __all__ = [
     'AudioToCharCTC',
@@ -57,14 +62,11 @@ class ConvVoiceEncoder(nn.Module):
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=19),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=27),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=35),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=51),
-            InvertedResidual(half_hidden_size, hidden_size, kernel_size=59, use_residual=False),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=51, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=59),
             InvertedResidual(hidden_size, hidden_size, kernel_size=67),
             InvertedResidual(hidden_size, hidden_size, kernel_size=75),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=83),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=81),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=91),
-            InvertedResidual(hidden_size, out_channels, kernel_size=99, use_residual=False))
+            InvertedResidual(hidden_size, out_channels, kernel_size=83, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -87,7 +89,7 @@ class LinearCharDecoder(nn.Module):
 
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.embed_size = embed_size
@@ -144,14 +146,26 @@ class AudioToCharCTC(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.learning_rate,
-            weight_decay=0.00004)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 5)
+            weight_decay=self.hparams.weight_decay)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98 ** 2)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--learning_rate', type=float, default=0.001)
-        parser.add_argument('--hidden_size', type=float, default=256)
-        parser.add_argument('--embed_size', type=float, default=256)
+        parser.add_argument('--weight_decay', type=float, default=0.00004)
+        parser.add_argument('--hidden_size', type=float, default=512)
+        parser.add_argument('--embed_size', type=float, default=512)
         return parser
+
+    @staticmethod
+    def from_argparse_args(args):
+        return AudioToCharCTC(
+            audio_size=MELSPEC_DIM,
+            vocab_size=VOCAB_SIZE,
+            embed_size=args.embed_size,
+            hidden_size=args.hidden_size,
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay)

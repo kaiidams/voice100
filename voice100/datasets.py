@@ -319,7 +319,9 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
                 sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
-            ds = MetafileDataset(root)
+            ds = MetafileDataset(
+                root,
+                sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
             ds = MetafileDataset(
@@ -566,8 +568,6 @@ class AudioTextDataModule(pl.LightningDataModule):
     @staticmethod
     def add_data_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--task', type=str, help='Task')
-        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
         parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
         parser.add_argument('--cache', default='./cache', help='Cache directory')
         parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')

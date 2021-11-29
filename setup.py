@@ -35,6 +35,8 @@ setup(
         "tts": [
             'pyworld>=0.2.12',
         ],
+        "lang-en": [
+        ],
         "lang-ja": [
             'mecab-python3',
             'unidic-lite',
