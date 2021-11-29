@@ -23,7 +23,6 @@ def cli_main():
 
     data = AudioTextDataModule.from_argparse_args(args)
     model = AudioToCharCTC.from_argparse_args(args)
-    #checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     trainer = pl.Trainer.from_argparse_args(
         args,
