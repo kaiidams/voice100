@@ -311,6 +311,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
