@@ -122,7 +122,8 @@ class WORLDLoss(nn.Module):
         mask = generate_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_logits, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
-        logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
+        logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
+        #logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
