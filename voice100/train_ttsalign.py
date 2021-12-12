@@ -11,7 +11,7 @@ from .models.tts import TextToAlignTextModel
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser()
+    parser = ArgumentParser(add_help=False)
     parser.add_argument('--task', type=str, help='Task', default='align')
     args, _ = parser.parse_known_args()
 
