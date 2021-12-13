@@ -27,10 +27,6 @@ def cli_main():
     trainer = pl.Trainer.from_argparse_args(
         args,
         callbacks=[checkpoint_callback])
-    #model.load_from_checkpoint("model/ttsaudio_en_conv_base-20210811.ckpt")
-    import torch
-    state = torch.load("model/ttsaudio_en_conv_base-20210811.ckpt", map_location="cpu")
-    model.load_state_dict(state["state_dict"], strict=False)
     trainer.fit(model, data)
 
 
