@@ -110,7 +110,6 @@ class EncodedCacheDataset(Dataset):
         self._dataset = dataset
         self._salt = salt
         self._cachedir = cachedir
-        self._repeat = 1
         self._transform = transform
         self.save_mcep = hasattr(self._transform, "vocoder")
         if self.save_mcep:
@@ -119,11 +118,10 @@ class EncodedCacheDataset(Dataset):
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
 
     def __len__(self):
-        return len(self._dataset) * self._repeat
+        return len(self._dataset)
 
     def __getitem__(self, index):
-        orig_index = index // self._repeat
-        data = self._dataset[orig_index]
+        data = self._dataset[index]
         h = hashlib.sha1(self._salt)
         h.update((data[0] + '@' + data[1]).encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())
