@@ -155,7 +155,7 @@ class EncodedCacheDataset(Dataset):
 
 class AlignTextDataset(Dataset):
 
-    def __init__(self, file):
+    def __init__(self, file: Text) -> None:
         self.tokenizer = CharTokenizer()
         self.data = []
         with open(file, 'r') as f:
@@ -322,10 +322,8 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
         else:
             raise ValueError("Unknown dataset")
 
-        if chained_ds is None:
-            chained_ds = ds
-        else:
-            chained_ds += ds
+        chained_ds = chained_ds + ds if chained_ds is not None else ds
+
     return chained_ds
 
 
