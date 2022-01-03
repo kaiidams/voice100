@@ -328,6 +328,10 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
 
 
 def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = False):
+    """
+        Args:
+            infer: True to avoid decoding audio for TTS inference
+    """
     if task == 'asr':
         transform = AudioToCharProcessor(sample_rate=sample_rate, language=language)
     elif task == 'tts':
@@ -404,55 +408,6 @@ def generate_audio_text_align_batch_(data_batch):
     return (audio_batch, audio_len), (text_batch, text_len)
 
 
-class AlignInferDataModule(pl.LightningDataModule):
-    """Data module to read text and audio pairs for inference.
-
-        Args:
-            dataset: Dataset to use
-            sample_rate: Sampling rate of audio
-            language: Language
-            cache: Cache directory
-            batch_size: Batch size
-            valid_ratio: Validation split ratio
-    """
-
-    def __init__(
-        self,
-        dataset: Text = "ljspeech",
-        sample_rate: int = 16000,
-        language: Text = "en",
-        cache: Text = "./cache",
-        batch_size: int = 128
-    ) -> None:
-
-        super().__init__()
-        self.task = 'asr'
-        self.dataset = dataset
-        self.sample_rate = sample_rate
-        self.language = language
-        self.cache = cache
-        self.cache_salt = self.task.encode('utf-8')
-        self.batch_size = batch_size
-        self.num_workers = 2
-        self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, infer=True)
-
-    def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset)
-        os.makedirs(self.cache, exist_ok=True)
-        self.infer_ds = EncodedCacheDataset(
-            ds, self.cache_salt, transform=self.transform,
-            cachedir=self.cache)
-
-    def infer_dataloader(self):
-        return DataLoader(
-            self.infer_ds,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            collate_fn=self.collate_fn)
-
-
 def generate_audio_audio_batch(data_batch):
     melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
     for melspec_item, (f0_item, spec_item, codeap_item) in data_batch:
@@ -480,7 +435,7 @@ class AudioTextDataModule(pl.LightningDataModule):
             cache: Cache directory
             batch_size: Batch size
             valid_ratio: Validation split ratio
-            test: Test mode
+            test: Unit test mode
     """
 
     def __init__(
@@ -504,20 +459,27 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, test)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, infer=test)
         self.test = test
         if test:
             self.cache_salt += b'-test'
         self.vocab_size = VOCAB_SIZE
         self.audio_size = MELSPEC_DIM
+        self.train_ds = None
+        self.valid_ds = None
+        self.test_ds = None
+        self.predict_ds = None
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset, needalign=self.task == 'tts')
         os.makedirs(self.cache, exist_ok=True)
 
-        if self.test:
-            self.train_ds = None
-            self.valid_ds = None
+        if stage == "predict":
+            self.predict_ds = EncodedCacheDataset(
+                ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+
+        elif self.test:
             self.test_ds = EncodedCacheDataset(
                 ds, self.cache_salt, transform=self.transform,
                 cachedir=self.cache)
@@ -535,7 +497,6 @@ class AudioTextDataModule(pl.LightningDataModule):
             self.valid_ds = EncodedCacheDataset(
                 valid_ds, self.cache_salt, transform=self.transform,
                 cachedir=self.cache)
-            self.test_ds = None
 
     def train_dataloader(self):
         if self.train_ds is None:
@@ -562,6 +523,16 @@ class AudioTextDataModule(pl.LightningDataModule):
             return None
         return DataLoader(
             self.test_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn)
+
+    def predict_dataloader(self):
+        if self.predict_ds is None:
+            return None
+        return DataLoader(
+            self.predict_ds,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
