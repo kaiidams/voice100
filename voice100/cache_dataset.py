@@ -11,15 +11,10 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--task', type=str, help='Task', default='tts')
-    args, _ = parser.parse_known_args()
-
-    parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioTextDataModule.add_data_specific_args(parser)
-    args = parser.parse_args(namespace=args)
-
-    data = AudioTextDataModule.from_argparse_args(args)
+    parser = AudioTextDataModule.add_argparse_args(parser)
+    args = parser.parse_args()
+    data = AudioTextDataModule.from_argparse_args(args, task="tts")
     data.setup()
     for _ in tqdm(data.val_dataloader()):
         pass

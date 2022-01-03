@@ -65,16 +65,11 @@ def calc_stat(data, stat_path):
 
 def cli_main():
     parser = ArgumentParser()
-    parser.add_argument('--task', type=str, help='Task', default='tts')
-    args, _ = parser.parse_known_args()
-
-    parser = ArgumentParser()
-    parser = AudioTextDataModule.add_data_specific_args(parser)
-    args = parser.parse_args(namespace=args)
-
-    data = AudioTextDataModule.from_argparse_args(args)
+    parser = AudioTextDataModule.add_argparse_args(parser)
+    args = parser.parse_args()
+    data = AudioTextDataModule.from_argparse_args(args, task="tts")
     data.setup()
-    stat_path = f'data/stat_{args.dataset}.pt'
+    stat_path = f'data/stat-{args.dataset}.pt'
     calc_stat(data, stat_path)
 
 

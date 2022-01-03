@@ -11,15 +11,18 @@ def cli_main():
     pl.seed_everything(1234)
 
     parser = ArgumentParser()
-    parser.add_argument('--task', type=str, help='Task', default='asr')
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioTextDataModule.add_data_specific_args(parser)
+    parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AudioAlignCTC.add_model_specific_args(parser)
-    parser.set_defaults(task='asr')
+    parser.set_defaults(batch_size=256)
     args = parser.parse_args()
-
-    data = AudioTextDataModule.from_argparse_args(args)
-    model = AudioAlignCTC.from_argparse_args(args)
+    data = AudioTextDataModule.from_argparse_args(
+        args,
+        task="asr")
+    model = AudioAlignCTC.from_argparse_args(
+        args,
+        audio_size=data.audio_size,
+        vocab_size=data.vocab_size)
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, data)
 

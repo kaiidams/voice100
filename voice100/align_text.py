@@ -11,7 +11,7 @@ from .datasets import AlignInferDataModule
 
 def cli_main():
     parser = ArgumentParser()
-    parser = AlignInferDataModule.add_data_specific_args(parser)
+    parser = AlignInferDataModule.add_argparse_args(parser)
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
     args = parser.parse_args()
     args.write_cache = False
