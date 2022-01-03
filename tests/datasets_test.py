@@ -1,10 +1,15 @@
+import argparse
 from tqdm import tqdm
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from voice100.datasets import ASRDataModule
-data = ASRDataModule('kokoro_small', 0.1, 'ja', 10, 'cache', 128)
-#data = ASRDataModule('librispeech', 0.1, 'en', 10, 'cache', 128)
+from voice100.datasets import AudioTextDataModule
+parser = argparse.ArgumentParser()
+AudioTextDataModule.add_argparse_args(parser)
+# args = parser.parse_args("--help".split())
+args = parser.parse_args("--dataset kokoro_small --language ja".split())
+# data = ASRDataModule('librispeech', 0.1, 'en', 10, 'cache', 128)
+data = AudioTextDataModule.from_argparse_args(args, task="asr")
 data.setup()
 
 from voice100.audio import BatchSpectrogramAugumentation

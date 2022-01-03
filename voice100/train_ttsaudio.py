@@ -11,18 +11,13 @@ from .datasets import AudioTextDataModule
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser(add_help=False)
-    parser.add_argument('--task', type=str, help='Task', default='tts')
-    args, _ = parser.parse_known_args()
-
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioTextDataModule.add_data_specific_args(parser)
+    parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
-    args = parser.parse_args(namespace=args)
-
-    data = AudioTextDataModule.from_argparse_args(args)
-    model = AlignTextToAudioModel.from_argparse_args(args)
+    args = parser.parse_args()
+    data = AudioTextDataModule.from_argparse_args(args, task="tts")
+    model = AlignTextToAudioModel.from_argparse_args(args, vocab_size=data.vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)
     trainer = pl.Trainer.from_argparse_args(
         args,

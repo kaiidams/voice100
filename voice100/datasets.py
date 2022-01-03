@@ -5,9 +5,8 @@ r"""Definition of Dataset for reading data from speech datasets.
 
 import os
 import logging
-from argparse import ArgumentParser
 from glob import glob
-from typing import Text, Optional
+from typing import List, Text, Optional
 import torch
 from torch import nn
 import torchaudio
@@ -17,10 +16,12 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import DEFAULT_VOCAB_SIZE
-from .text import BasicPhonemizer, CharTokenizer
+from .text import BasicPhonemizer, CharTokenizer, DEFAULT_VOCAB_SIZE
 
 BLANK_IDX = 0
+MELSPEC_DIM = 64
+VOCAB_SIZE = DEFAULT_VOCAB_SIZE
+assert VOCAB_SIZE == 29
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,7 @@ class AudioToCharProcessor(nn.Module):
         n_fft: int = 512,
         win_length: int = 400,
         hop_length: int = 160,
-        n_mels: int = 64,
+        n_mels: int = MELSPEC_DIM,
         log_offset: float = 1e-6
     ) -> None:
         super().__init__()
@@ -408,13 +409,26 @@ def generate_audio_text_align_batch_(data_batch):
 
 
 class AlignInferDataModule(pl.LightningDataModule):
+    """Data module to read text and audio pairs for inference.
+
+        Args:
+            dataset: Dataset to use
+            sample_rate: Sampling rate of audio
+            language: Language
+            cache: Cache directory
+            batch_size: Batch size
+            valid_ratio: Validation split ratio
+    """
 
     def __init__(
-        self, dataset: Text,
-        sample_rate: int,
-        language: Text,
-        cache: Text, batch_size: int
+        self,
+        dataset: Text = "ljspeech",
+        sample_rate: int = 16000,
+        language: Text = "en",
+        cache: Text = "./cache",
+        batch_size: int = 128
     ) -> None:
+
         super().__init__()
         self.task = 'asr'
         self.dataset = dataset
@@ -442,25 +456,6 @@ class AlignInferDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=self.collate_fn)
 
-    @staticmethod
-    def add_data_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
-        parser.add_argument('--cache', default='./cache', help='Cache directory')
-        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
-        parser.add_argument('--language', default='en', type=str, help='Language')
-        return parser
-
-    @staticmethod
-    def from_argparse_args(args):
-        return AlignInferDataModule(
-            dataset=args.dataset,
-            sample_rate=args.sample_rate,
-            language=args.language,
-            cache=args.cache,
-            batch_size=args.batch_size)
-
 
 def generate_audio_audio_batch(data_batch):
     melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
@@ -479,12 +474,28 @@ def generate_audio_audio_batch(data_batch):
 
 
 class AudioTextDataModule(pl.LightningDataModule):
+    """Data module to read text and audio pairs and optionally aligned texts.
+
+        Args:
+            task: ``asr`` or ``tts``
+            dataset: Dataset to use
+            sample_rate: Sampling rate of audio
+            language: Language
+            cache: Cache directory
+            batch_size: Batch size
+            valid_ratio: Validation split ratio
+            test: Test mode
+    """
 
     def __init__(
-        self, task: Text, dataset: Text, valid_ratio: float,
-        sample_rate: int,
-        language: Text, cache: Text,
-        batch_size: int, test: bool
+        self, task: Text,
+        dataset: Text = "ljspeech",
+        sample_rate: int = 16000,
+        language: Text = "en",
+        cache: Text = './cache',
+        batch_size: int = 128,
+        valid_ratio: float = 0.1,
+        test: bool = False
     ) -> None:
         super().__init__()
         self.task = task
@@ -501,6 +512,8 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.test = test
         if test:
             self.cache_salt += b'-test'
+        self.vocab_size = VOCAB_SIZE
+        self.audio_size = MELSPEC_DIM
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset, needalign=self.task == 'tts')
@@ -559,28 +572,8 @@ class AudioTextDataModule(pl.LightningDataModule):
             collate_fn=self.collate_fn)
 
     @staticmethod
-    def add_data_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
-        parser.add_argument('--cache', default='./cache', help='Cache directory')
-        parser.add_argument('--sample_rate', default=16000, type=int, help='Sampling rate')
-        parser.add_argument('--language', default='en', type=str, help='Language')
-        parser.add_argument('--valid_ratio', default=0.1, type=float, help='Validation split ratio')
-        parser.add_argument('--test', action='store_true', help='Test mode')
-        return parser
-
-    @staticmethod
-    def from_argparse_args(args):
-        args.vocab_size = DEFAULT_VOCAB_SIZE
-        return AudioTextDataModule(
-            task=args.task,
-            sample_rate=args.sample_rate,
-            dataset=args.dataset,
-            valid_ratio=args.valid_ratio,
-            language=args.language,
-            cache=args.cache,
-            batch_size=args.batch_size,
-            test=args.test)
+    def get_deprecated_arg_names() -> List[Text]:
+        return ["task", "test"]
 
 
 def generate_text_align_batch(data_batch):
@@ -596,13 +589,24 @@ def generate_text_align_batch(data_batch):
 
 
 class AlignTextDataModule(pl.LightningDataModule):
+    """Data module to read text and audio pairs and optionally aligned texts.
 
-    def __init__(self, dataset: Text, batch_size: int) -> None:
+        Args:
+            dataset: Dataset to use
+            batch_size: Batch size
+    """
+
+    def __init__(
+        self,
+        dataset: Text = "ljspeech",
+        batch_size: int = 256
+    ) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.dataset = dataset
         self.num_workers = 2
         self.collate_fn = generate_text_align_batch
+        self.vocab_size = VOCAB_SIZE
 
     def setup(self, stage: Optional[str] = None):
         ds = AlignTextDataset(f'data/align-{self.dataset}.txt')
@@ -628,16 +632,3 @@ class AlignTextDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return None
-
-    @staticmethod
-    def add_data_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
-        parser.add_argument('--dataset', default='ljspeech', help='Dataset to use')
-        parser.add_argument('--language', default='en', type=str, help='Language')
-        return parser
-
-    @staticmethod
-    def from_argparse_args(args):
-        args.vocab_size = DEFAULT_VOCAB_SIZE
-        return AlignTextDataModule(args.dataset, args.batch_size)

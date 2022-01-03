@@ -210,11 +210,11 @@ class TextToAlignTextModel(pl.LightningModule):
         return parser
 
     @staticmethod
-    def from_argparse_args(args):
+    def from_argparse_args(args, **kwargs):
         return TextToAlignTextModel(
-            vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
-            learning_rate=args.learning_rate)
+            learning_rate=args.learning_rate,
+            **kwargs)
 
 
 class AlignTextToAudioModel(pl.LightningModule):
@@ -311,17 +311,16 @@ class AlignTextToAudioModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
         parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
     @staticmethod
-    def from_argparse_args(args):
+    def from_argparse_args(args, **kwargs):
         model = AlignTextToAudioModel(
-            vocab_size=args.vocab_size,
             hidden_size=args.hidden_size,
-            learning_rate=args.learning_rate)
+            learning_rate=args.learning_rate,
+            **kwargs)
         if not args.resume_from_checkpoint:
             args.audio_stat = f'data/stat_{args.dataset}.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))

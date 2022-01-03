@@ -5,7 +5,7 @@ from tqdm import tqdm
 from .vocoder import WORLDVocoder
 
 
-def main():
+def cli_main():
     vocoder = WORLDVocoder()
     for file in tqdm(glob('data/LJSpeech-1.1/wavs/*.flac')):
         waveform, sr = torchaudio.sox_effects.apply_effects_file(file, effects=[
@@ -17,4 +17,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cli_main()

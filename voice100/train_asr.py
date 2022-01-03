@@ -11,18 +11,19 @@ from .models.asr import AudioToCharCTC
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser(add_help=False)
-    parser.add_argument('--task', type=str, help='Task', default='asr')
-    args, _ = parser.parse_known_args()
-
-    parser = ArgumentParser(parents=[parser])
+    parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = AudioTextDataModule.add_data_specific_args(parser)
+    parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)
-    args = parser.parse_args(namespace=args)
-
-    data = AudioTextDataModule.from_argparse_args(args)
-    model = AudioToCharCTC.from_argparse_args(args)
+    parser.set_defaults(batch_size=32)
+    args = parser.parse_args()
+    data = AudioTextDataModule.from_argparse_args(
+        args,
+        task="asr")
+    model = AudioToCharCTC.from_argparse_args(
+        args,
+        audio_size=data.audio_size,
+        vocab_size=data.vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     trainer = pl.Trainer.from_argparse_args(
         args,
