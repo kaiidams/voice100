@@ -378,6 +378,7 @@ def get_dataset(
             ds = MergeDataset(ds, phone_ds=phone_ds)
 
         chained_ds = chained_ds + ds if chained_ds is not None else ds
+
     return chained_ds
 
 

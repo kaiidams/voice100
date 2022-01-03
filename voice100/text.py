@@ -39,7 +39,7 @@ class BasicPhonemizer(nn.Module):
 
 class CharTokenizer(nn.Module):
 
-    def __init__(self, vocab=None):
+    def __init__(self, vocab=None) -> None:
         super().__init__()
         if vocab is None:
             vocab = DEFAULT_CHARACTERS
