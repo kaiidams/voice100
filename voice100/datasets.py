@@ -71,9 +71,9 @@ class MetafileDataset(Dataset):
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         if self._aligntexts is not None:
             aligntext = self._aligntexts[index]
-            return audioid, audiopath, text, aligntext
+            return clipid, audiopath, text, aligntext
         else:
-            return audioid, audiopath, text
+            return clipid, audiopath, text
 
 
 class LibriSpeechDataset(Dataset):
@@ -112,9 +112,9 @@ class TextDataset(Dataset):
         with open(file, 'r') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
-                audioid = parts[idcol]
+                clipid = parts[idcol]
                 text = parts[textcol]
-                self._data.append((audioid, text))
+                self._data.append((clipid, text))
 
     def __len__(self) -> int:
         return len(self._data)
@@ -251,7 +251,7 @@ class AudioToCharProcessor(nn.Module):
         self._phonemizer = get_phonemizer(language, use_phone)
         self.encoder = get_tokenizer(language, use_phone)
 
-    def forward(self, audioid: Text, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, clipid: Text, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
