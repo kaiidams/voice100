@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import List, Tuple, Text, Optional
+from typing import Tuple, List, Text, Optional
 import torch
 from torch import nn
 import torchaudio
