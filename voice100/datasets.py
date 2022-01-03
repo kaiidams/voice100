@@ -19,7 +19,6 @@ import hashlib
 
 from .text import DEFAULT_VOCAB_SIZE
 from .text import BasicPhonemizer, CharTokenizer
-from .audio import SpectrogramAugumentation
 
 BLANK_IDX = 0
 
@@ -111,9 +110,7 @@ class EncodedCacheDataset(Dataset):
         self._salt = salt
         self._cachedir = cachedir
         self._repeat = 1
-        self._augment = False
         self._transform = transform
-        self._spec_augment = SpectrogramAugumentation()
         self.save_mcep = hasattr(self._transform, "vocoder")
         if self.save_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
@@ -154,10 +151,6 @@ class EncodedCacheDataset(Dataset):
             logspc = mcep @ self.mc2sp_matrix
             audio = f0, logspc, codeap
             encoded_data = audio, text, aligntext
-        if self._augment:
-            encoded_audio, encoded_text = encoded_data
-            encoded_audio = self._spec_augment(encoded_audio)
-            return encoded_audio, encoded_text
         return encoded_data
 
 
