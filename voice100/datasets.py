@@ -16,7 +16,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import BasicPhonemizer, CharTokenizer, DEFAULT_VOCAB_SIZE
+from .text import BasicPhonemizer, CharTokenizer, CMUTokenizer, DEFAULT_VOCAB_SIZE
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
@@ -71,9 +71,9 @@ class MetafileDataset(Dataset):
         audiopath = os.path.join(self._root, self._wavsdir, audioid + self._ext)
         if self._aligntexts is not None:
             aligntext = self._aligntexts[index]
-            return audiopath, text, aligntext
+            return audioid, audiopath, text, aligntext
         else:
-            return audiopath, text
+            return audioid, audiopath, text
 
 
 class LibriSpeechDataset(Dataset):
@@ -155,9 +155,56 @@ class EncodedCacheDataset(Dataset):
         return encoded_data
 
 
+class MergeDataset(Dataset):
+    def __init__(
+        self,
+        audiotext_ds: Dataset,
+        align_ds: Optional[Dataset] = None,
+        phone_ds: Optional[Dataset] = None
+    ) -> None:
+        super().__init__()
+        if align_ds is not None:
+            assert len(audiotext_ds) == len(align_ds)
+        if phone_ds is not None:
+            assert len(audiotext_ds) == len(phone_ds)
+        self.audiotext_ds = audiotext_ds
+        self.align_ds = align_ds
+        self.phone_ds = phone_ds
+
+    def __len__(self):
+        return self.audiotext_ds
+
+    def __getitem__(self, index):
+        id1, audio, _ = self.audiotext_ds[index]
+        if self.phone_ds is not None:
+            id2, phonetext = self.phone_ds[index]
+            assert id1 == id2
+            return id1, audio, phonetext
+
+
+class TextDataset(Dataset):
+
+    def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
+        self.tokenizer = CMUTokenizer()
+        self.data = []
+        with open(file, 'r') as f:
+            for line in f:
+                parts = line.rstrip('\r\n').split('|')
+                id_ = parts[idcol]
+                text = parts[textcol]
+                self.data.append((id_, text))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        id_, text = self.data[index]
+        return id_, self.tokenizer(text)
+
+
 class AlignTextDataset(Dataset):
 
-    def __init__(self, file):
+    def __init__(self, file: Text) -> None:
         self.tokenizer = CharTokenizer()
         self.data = []
         with open(file, 'r') as f:
@@ -299,9 +346,13 @@ class AudioToAudioProcessor(nn.Module):
         return audio, target
 
 
-def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
+def get_dataset(
+    dataset: Text,
+    use_align: bool = False,
+    use_phone: bool = False
+) -> Dataset:
     chained_ds = None
-    alignfile = f'./data/align-{dataset}.txt' if needalign else None
+    alignfile = f'./data/align-{dataset}.txt' if use_align else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
@@ -324,10 +375,12 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
         else:
             raise ValueError("Unknown dataset")
 
-        if chained_ds is None:
-            chained_ds = ds
-        else:
-            chained_ds += ds
+        if use_phone:
+            phonefile = f'./data/phone-{dataset}.txt'
+            phone_ds = TextDataset(phonefile)
+            ds = MergeDataset(ds, phone_ds=phone_ds)
+
+        chained_ds = chained_ds + ds if chained_ds is not None else ds
     return chained_ds
 
 
@@ -481,6 +534,7 @@ class AudioTextDataModule(pl.LightningDataModule):
             dataset: Dataset to use
             sample_rate: Sampling rate of audio
             language: Language
+            use_phone: Use phoneme for input
             cache: Cache directory
             batch_size: Batch size
             valid_ratio: Validation split ratio
@@ -492,6 +546,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",
+        use_phone: bool = False,
         cache: Text = './cache',
         batch_size: int = 128,
         valid_ratio: float = 0.1,
@@ -503,6 +558,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.valid_ratio = valid_ratio
         self.sample_rate = sample_rate
         self.language = language
+        self.use_phone = use_phone
         self.cache = cache
         self.cache_salt = self.task.encode('utf-8')
         self.batch_size = batch_size
@@ -516,7 +572,10 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.audio_size = MELSPEC_DIM
 
     def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset, needalign=self.task == 'tts')
+        ds = get_dataset(
+            self.dataset,
+            use_align=self.task == 'tts',
+            use_phone=self.use_phone)
         os.makedirs(self.cache, exist_ok=True)
 
         if self.test:
