@@ -577,8 +577,11 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.test = test
         if test:
             self.cache_salt += b'-test'
-        self.vocab_size = VOCAB_SIZE
         self.audio_size = MELSPEC_DIM
+
+    @property
+    def vocab_size(self) -> int:
+        return self.transform.encoder.vocab_size
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(

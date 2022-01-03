@@ -29,8 +29,13 @@ class DatasetTest(unittest.TestCase):
         args = parser.parse_args(ARGS.split())
         data = AudioTextDataModule.from_argparse_args(args, task="asr")
         data.setup()
-        # tokenizer = CharTokenizer()
-        tokenizer = CMUTokenizer()
+        use_phone = '--use_phone' in ARGS
+        if use_phone:
+            tokenizer = CMUTokenizer()
+        else:
+            tokenizer = CharTokenizer()
+        print("vocab_size:", data.vocab_size)
+        self.assertEqual(data.vocab_size, tokenizer.vocab_size)
 
         for batch in tqdm(data.train_dataloader()):
             # print(batch)
@@ -46,6 +51,7 @@ class DatasetTest(unittest.TestCase):
                     t = text[i, :text_len[i]]
                     print(tokenizer.decode(t))
             break
+
 
 if __name__ == "__main__":
     # DatasetTest().test_dataset()
