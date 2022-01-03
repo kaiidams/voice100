@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import List, Text, Optional
+from typing import Tuple, List, Text, Optional
 import torch
 from torch import nn
 import torchaudio
@@ -205,7 +205,7 @@ class AudioToCharProcessor(nn.Module):
         self._phonemizer = get_phonemizer(language)
         self.encoder = CharTokenizer()
 
-    def forward(self, audiopath, text):
+    def forward(self, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
@@ -297,9 +297,9 @@ class AudioToAudioProcessor(nn.Module):
         return audio, target
 
 
-def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
+def get_dataset(dataset: Text, use_align: bool = False) -> Dataset:
     chained_ds = None
-    alignfile = f'./data/align-{dataset}.txt' if needalign else None
+    alignfile = f'./data/align-{dataset}.txt' if use_align else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
@@ -471,7 +471,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.predict_ds = None
 
     def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset, needalign=self.task == 'tts')
+        ds = get_dataset(self.dataset, use_align=self.task == 'tts')
         os.makedirs(self.cache, exist_ok=True)
 
         if stage == "predict":
