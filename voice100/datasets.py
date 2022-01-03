@@ -49,9 +49,9 @@ class MetafileDataset(Dataset):
                 f.readline()
             for line in f:
                 parts = line.rstrip('\r\n').split(self._sep)
-                audioid = parts[self._idcol]
+                clipid = parts[self._idcol]
                 text = parts[self._textcol]
-                self._data.append((audioid, text))
+                self._data.append((clipid, text))
         if alignfile:
             self._aligntexts = []
             with open(alignfile) as f:
@@ -67,8 +67,8 @@ class MetafileDataset(Dataset):
         return len(self._data)
 
     def __getitem__(self, index):
-        audioid, text = self._data[index]
-        audiopath = os.path.join(self._root, self._wavsdir, audioid + self._ext)
+        clipid, text = self._data[index]
+        audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         if self._aligntexts is not None:
             aligntext = self._aligntexts[index]
             return audioid, audiopath, text, aligntext
@@ -92,16 +92,16 @@ class LibriSpeechDataset(Dataset):
             dirpath = os.path.relpath(dirpath, start=self._root)
             with open(file) as f:
                 for line in f:
-                    audioid, _, text = line.rstrip('\r\n').partition(' ')
-                    audioid = os.path.join(dirpath, audioid + '.flac')
-                    self._data.append((audioid, text))
+                    clipid, _, text = line.rstrip('\r\n').partition(' ')
+                    clipid = os.path.join(dirpath, clipid + '.flac')
+                    self._data.append((clipid, text))
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, index):
-        audioid, text = self._data[index]
-        audiopath = os.path.join(self._root, audioid)
+        clipid, text = self._data[index]
+        audiopath = os.path.join(self._root, clipid)
         return audiopath, text
 
 
