@@ -6,25 +6,28 @@ import os
 from tqdm import tqdm
 
 from .models.align import AudioAlignCTC
-from .datasets import AlignInferDataModule
+from .datasets import AudioTextDataModule
 
 
 def cli_main():
     parser = ArgumentParser()
-    parser = AlignInferDataModule.add_argparse_args(parser)
+    parser = AudioTextDataModule.add_argparse_args(parser)
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
     args = parser.parse_args()
     args.write_cache = False
     args.timing = True
-    args.output = f'data/align-{args.dataset}.txt'
+    if args.use_phone:
+        args.output = f'data/phone_align-{args.dataset}.txt'
+    else:
+        args.output = f'data/align-{args.dataset}.txt'
 
-    data = AlignInferDataModule.from_argparse_args(args)
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, task="asr")
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
-    data.setup()
+    data.setup("predict")
     encoder = data.transform.encoder
     model.eval()
     with open(args.output, 'w') as f:
-        for idx, batch in enumerate(tqdm(data.infer_dataloader())):
+        for idx, batch in enumerate(tqdm(data.predict_dataloader())):
             (audio, audio_len), (text, text_len) = batch
             score, hist, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
             if args.write_cache:
