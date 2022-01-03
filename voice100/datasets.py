@@ -328,6 +328,10 @@ def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
 
 
 def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = False):
+    """
+        Args:
+            infer: True to avoid decoding audio for TTS inference
+    """
     if task == 'asr':
         transform = AudioToCharProcessor(sample_rate=sample_rate, language=language)
     elif task == 'tts':
@@ -455,45 +459,44 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, test)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, infer=test)
         self.test = test
         if test:
             self.cache_salt += b'-test'
         self.vocab_size = VOCAB_SIZE
         self.audio_size = MELSPEC_DIM
+        self.train_ds = None
+        self.valid_ds = None
+        self.test_ds = None
+        self.predict_ds = None
 
     def setup(self, stage: Optional[str] = None):
+        ds = get_dataset(self.dataset, needalign=self.task == 'tts')
+        os.makedirs(self.cache, exist_ok=True)
+
         if stage == "predict":
-            ds = get_dataset(self.dataset)
-            os.makedirs(self.cache, exist_ok=True)
             self.predict_ds = EncodedCacheDataset(
                 ds, self.cache_salt, transform=self.transform,
                 cachedir=self.cache)
+
+        elif self.test:
+            self.test_ds = EncodedCacheDataset(
+                ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+
         else:
-            ds = get_dataset(self.dataset, needalign=self.task == 'tts')
-            os.makedirs(self.cache, exist_ok=True)
+            # Split the dataset
+            total_len = len(ds)
+            valid_len = int(total_len * self.valid_ratio)
+            train_len = total_len - valid_len
+            train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
-            if self.test:
-                self.train_ds = None
-                self.valid_ds = None
-                self.test_ds = EncodedCacheDataset(
-                    ds, self.cache_salt, transform=self.transform,
-                    cachedir=self.cache)
-
-            else:
-                # Split the dataset
-                total_len = len(ds)
-                valid_len = int(total_len * self.valid_ratio)
-                train_len = total_len - valid_len
-                train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
-
-                self.train_ds = EncodedCacheDataset(
-                    train_ds, self.cache_salt, transform=self.transform,
-                    cachedir=self.cache)
-                self.valid_ds = EncodedCacheDataset(
-                    valid_ds, self.cache_salt, transform=self.transform,
-                    cachedir=self.cache)
-                self.test_ds = None
+            self.train_ds = EncodedCacheDataset(
+                train_ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
+            self.valid_ds = EncodedCacheDataset(
+                valid_ds, self.cache_salt, transform=self.transform,
+                cachedir=self.cache)
 
     def train_dataloader(self):
         if self.train_ds is None:
@@ -526,6 +529,8 @@ class AudioTextDataModule(pl.LightningDataModule):
             collate_fn=self.collate_fn)
 
     def predict_dataloader(self):
+        if self.predict_ds is None:
+            return None
         return DataLoader(
             self.predict_ds,
             batch_size=self.batch_size,
