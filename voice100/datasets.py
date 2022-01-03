@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import List, Text, Optional
+from typing import List, Tuple, Text, Optional
 import torch
 from torch import nn
 import torchaudio
@@ -105,6 +105,51 @@ class LibriSpeechDataset(Dataset):
         return audiopath, text
 
 
+class TextDataset(Dataset):
+
+    def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
+        self._data = []
+        with open(file, 'r') as f:
+            for line in f:
+                parts = line.rstrip('\r\n').split('|')
+                audioid = parts[idcol]
+                text = parts[textcol]
+                self._data.append((audioid, text))
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __getitem__(self, index: int) -> Tuple[Text, Text]:
+        return self._data[index]
+
+
+class MergeDataset(Dataset):
+    def __init__(
+        self,
+        audiotext_ds: Dataset,
+        align_ds: Optional[Dataset] = None,
+        phone_ds: Optional[Dataset] = None
+    ) -> None:
+        super().__init__()
+        if align_ds is not None:
+            assert len(audiotext_ds) == len(align_ds)
+        if phone_ds is not None:
+            assert len(audiotext_ds) == len(phone_ds)
+        self._audiotext_ds = audiotext_ds
+        self._align_ds = align_ds
+        self._phone_ds = phone_ds
+
+    def __len__(self) -> int:
+        return len(self._audiotext_ds)
+
+    def __getitem__(self, index: int):
+        id1, audio, _ = self._audiotext_ds[index]
+        if self._phone_ds is not None:
+            id2, phonetext = self._phone_ds[index]
+            assert id1 == id2
+            return id1, audio, phonetext
+
+
 class EncodedCacheDataset(Dataset):
     def __init__(self, dataset, salt, transform, cachedir=None):
         self._dataset = dataset
@@ -153,53 +198,6 @@ class EncodedCacheDataset(Dataset):
         return encoded_data
 
 
-class MergeDataset(Dataset):
-    def __init__(
-        self,
-        audiotext_ds: Dataset,
-        align_ds: Optional[Dataset] = None,
-        phone_ds: Optional[Dataset] = None
-    ) -> None:
-        super().__init__()
-        if align_ds is not None:
-            assert len(audiotext_ds) == len(align_ds)
-        if phone_ds is not None:
-            assert len(audiotext_ds) == len(phone_ds)
-        self.audiotext_ds = audiotext_ds
-        self.align_ds = align_ds
-        self.phone_ds = phone_ds
-
-    def __len__(self):
-        return self.audiotext_ds
-
-    def __getitem__(self, index):
-        id1, audio, _ = self.audiotext_ds[index]
-        if self.phone_ds is not None:
-            id2, phonetext = self.phone_ds[index]
-            assert id1 == id2
-            return id1, audio, phonetext
-
-
-class TextDataset(Dataset):
-
-    def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
-        self.tokenizer = CMUTokenizer()
-        self.data = []
-        with open(file, 'r') as f:
-            for line in f:
-                parts = line.rstrip('\r\n').split('|')
-                id_ = parts[idcol]
-                text = parts[textcol]
-                self.data.append((id_, text))
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        id_, text = self.data[index]
-        return id_, self.tokenizer(text)
-
-
 class AlignTextDataset(Dataset):
 
     def __init__(self, file: Text) -> None:
@@ -224,6 +222,7 @@ class AudioToCharProcessor(nn.Module):
     def __init__(
         self,
         language: Text,
+        use_phone: bool,
         sample_rate: int = 16000,
         n_fft: int = 512,
         win_length: int = 400,
@@ -249,16 +248,16 @@ class AudioToCharProcessor(nn.Module):
             win_length=self.win_length,
             hop_length=self.hop_length,
             n_mels=self.n_mels)
-        self._phonemizer = get_phonemizer(language)
-        self.encoder = CharTokenizer()
+        self._phonemizer = get_phonemizer(language, use_phone)
+        self.encoder = get_tokenizer(language, use_phone)
 
-    def forward(self, audiopath, text):
+    def forward(self, audioid: Text, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
 
-        phoneme = self._phonemizer(text)
+        phoneme = self._phonemizer(text) if self._phonemizer is not None else text
         encoded = self.encoder.encode(phoneme)
 
         return audio, encoded
@@ -382,9 +381,9 @@ def get_dataset(
     return chained_ds
 
 
-def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = False):
+def get_transform(task: Text, sample_rate: int, language: Text, use_phone: bool, infer: bool = False):
     if task == 'asr':
-        transform = AudioToCharProcessor(sample_rate=sample_rate, language=language)
+        transform = AudioToCharProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone)
     elif task == 'tts':
         transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, infer=infer)
     else:
@@ -392,7 +391,10 @@ def get_transform(task: Text, sample_rate: int, language: Text, infer: bool = Fa
     return transform
 
 
-def get_phonemizer(language: Text):
+def get_phonemizer(language: Text, use_phone: bool):
+    if use_phone:
+        assert language == "en"
+        return None
     if language == 'en':
         return BasicPhonemizer()
     elif language == 'ja':
@@ -400,6 +402,13 @@ def get_phonemizer(language: Text):
         return JapanesePhonemizer()
     else:
         raise ValueError(f"Unsupported language {language}")
+
+
+def get_tokenizer(language: Text, use_phone: bool):
+    if use_phone:
+        assert language == "en"
+        return CMUTokenizer()
+    return CharTokenizer()
 
 
 def get_collate_fn(task):
@@ -476,6 +485,7 @@ class AlignInferDataModule(pl.LightningDataModule):
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",
+        use_phone: bool = False,
         cache: Text = "./cache",
         batch_size: int = 128
     ) -> None:
@@ -490,7 +500,7 @@ class AlignInferDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, infer=True)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, use_phone=use_phone, infer=True)
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(self.dataset)
@@ -562,7 +572,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, test)
+        self.transform = get_transform(self.task, self.sample_rate, self.language, use_phone=use_phone, infer=test)
         self.test = test
         if test:
             self.cache_salt += b'-test'
