@@ -16,12 +16,10 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import BasicPhonemizer, CharTokenizer, CMUTokenizer, DEFAULT_VOCAB_SIZE
+from .text import BasicPhonemizer, CharTokenizer, CMUTokenizer
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
-VOCAB_SIZE = DEFAULT_VOCAB_SIZE
-assert VOCAB_SIZE == 29
 
 logger = logging.getLogger(__name__)
 
@@ -640,19 +638,29 @@ class AlignTextDataModule(pl.LightningDataModule):
     def __init__(
         self,
         dataset: Text = "ljspeech",
+        language: Text = "en",
+        use_phone: bool = False,
+        valid_ratio: float = 0.1,
         batch_size: int = 256
     ) -> None:
         super().__init__()
-        self.batch_size = batch_size
         self.dataset = dataset
+        self.valid_ratio = valid_ratio
         self.num_workers = 2
         self.collate_fn = generate_text_align_batch
-        self.vocab_size = VOCAB_SIZE
+        self.encoder = get_tokenizer(language, use_phone)
+        self.batch_size = batch_size
+
+    @property
+    def vocab_size(self) -> int:
+        return self.encoder.vocab_size
 
     def setup(self, stage: Optional[str] = None):
-        ds = AlignTextDataset(f'data/align-{self.dataset}.txt')
-        valid_len = len(ds) // 10
-        train_len = len(ds) - valid_len
+        ds = AlignTextDataset(f'./data/align-{self.dataset}.txt')
+        # Split the dataset
+        total_len = len(ds)
+        valid_len = int(total_len * self.valid_ratio)
+        train_len = total_len - valid_len
         self.train_ds, self.valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
 
     def train_dataloader(self):
