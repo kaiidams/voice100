@@ -6,11 +6,12 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import Tuple, List, Text, Optional
+from typing import Union, Tuple, List, Text, Optional
 import torch
 from torch import nn
 import torchaudio
 from torchaudio.transforms import MelSpectrogram
+import torch.utils.data
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
@@ -198,10 +199,10 @@ class EncodedCacheDataset(Dataset):
 
 class AlignTextDataset(Dataset):
 
-    def __init__(self, file: Text) -> None:
-        self.tokenizer = CharTokenizer()
+    def __init__(self, file: Text, encoder: Union[CharTokenizer, CMUTokenizer]) -> None:
+        self.tokenizer = encoder
         self.data = []
-        with open(file, 'r') as f:
+        with open(file, 'rt') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
                 text = self.tokenizer(parts[0])
@@ -645,6 +646,7 @@ class AlignTextDataModule(pl.LightningDataModule):
     ) -> None:
         super().__init__()
         self.dataset = dataset
+        self.use_phone = use_phone
         self.valid_ratio = valid_ratio
         self.num_workers = 2
         self.collate_fn = generate_text_align_batch
@@ -656,7 +658,11 @@ class AlignTextDataModule(pl.LightningDataModule):
         return self.encoder.vocab_size
 
     def setup(self, stage: Optional[str] = None):
-        ds = AlignTextDataset(f'./data/align-{self.dataset}.txt')
+        if self.use_phone:
+            file = f"./data/phone_align-{self.dataset}.txt"
+        else:
+            file = f"./data/align-{self.dataset}.txt"
+        ds = AlignTextDataset(file, encoder=self.encoder)
         # Split the dataset
         total_len = len(ds)
         valid_len = int(total_len * self.valid_ratio)
@@ -678,6 +684,3 @@ class AlignTextDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             collate_fn=self.collate_fn)
-
-    def test_dataloader(self):
-        return None
