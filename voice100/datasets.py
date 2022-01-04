@@ -33,7 +33,7 @@ class MetafileDataset(Dataset):
     """
 
     def __init__(
-        self, root: Text, metafile='validated.tsv', alignfile: Text = None, sep='|',
+        self, root: Text, metafile='validated.tsv', sep='|',
         header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
         self._root = root
@@ -51,16 +51,6 @@ class MetafileDataset(Dataset):
                 clipid = parts[self._idcol]
                 text = parts[self._textcol]
                 self._data.append((clipid, text))
-        if alignfile:
-            self._aligntexts = []
-            with open(alignfile) as f:
-                for line in f:
-                    parts = line.rstrip('\r\n').split('|')
-                    aligntext = parts[1]
-                    self._aligntexts.append(aligntext)
-            assert len(self._aligntexts) == len(self._data)
-        else:
-            self._aligntexts = None
 
     def __len__(self):
         return len(self._data)
@@ -68,11 +58,7 @@ class MetafileDataset(Dataset):
     def __getitem__(self, index):
         clipid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
-        if self._aligntexts is not None:
-            aligntext = self._aligntexts[index]
-            return clipid, audiopath, text, aligntext
-        else:
-            return clipid, audiopath, text
+        return clipid, audiopath, text
 
 
 class LibriSpeechDataset(Dataset):
@@ -111,7 +97,7 @@ class TextDataset(Dataset):
         with open(file, 'r') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
-                clipid = parts[idcol]
+                clipid = parts[idcol] if idcol >= 0 else ""
                 text = parts[textcol]
                 self._data.append((clipid, text))
 
@@ -143,6 +129,9 @@ class MergeDataset(Dataset):
 
     def __getitem__(self, index: int):
         id1, audio, _ = self._audiotext_ds[index]
+        if self._align_ds is not None:
+            _, aligntext = self._align_ds[index]
+            return id1, audio, aligntext
         if self._phone_ds is not None:
             id2, phonetext = self._phone_ds[index]
             assert id1 == id2
@@ -180,20 +169,20 @@ class EncodedCacheDataset(Dataset):
             encoded_data = self._transform(*data)
             try:
                 if self.save_mcep:
-                    audio, text, aligntext = encoded_data
+                    audio, aligntext = encoded_data
                     f0, logspc, codeap = audio
                     mcep = logspc @ self.sp2mc_matrix
                     audio = f0, mcep, codeap
-                    encoded_data = audio, text, aligntext
+                    encoded_data = audio, aligntext
                 torch.save(encoded_data, cachefile)
             except Exception:
                 logger.warn("Failed to save audio cache", exc_info=True)
         if self.save_mcep:
-            audio, text, aligntext = encoded_data
+            audio, aligntext = encoded_data
             f0, mcep, codeap = audio
             logspc = mcep @ self.mc2sp_matrix
             audio = f0, logspc, codeap
-            encoded_data = audio, text, aligntext
+            encoded_data = audio, aligntext
         return encoded_data
 
 
@@ -267,6 +256,7 @@ class CharToAudioProcessor(nn.Module):
     def __init__(
         self,
         language: Text,
+        use_phone: bool,
         sample_rate: int,
         infer: bool = False
     ) -> None:
@@ -277,7 +267,7 @@ class CharToAudioProcessor(nn.Module):
             ["rate", f"{self.sample_rate}"],
         ]
 
-        self._phonemizer = get_phonemizer(language)
+        self._phonemizer = get_phonemizer(language, use_phone)
         if infer:
             self.vocoder = None
         else:
@@ -285,8 +275,9 @@ class CharToAudioProcessor(nn.Module):
             self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
         self.encoder = CharTokenizer()
 
-    def forward(self, audiopath, text, aligntext):
-        text = self.encoder.encode(self._phonemizer(text))
+    def forward(
+        self, clipid: Text, audiopath: Text, aligntext: Text
+    ):
         aligntext = self.encoder.encode(aligntext)
 
         if self.vocoder is not None:
@@ -298,7 +289,7 @@ class CharToAudioProcessor(nn.Module):
             logspc = torch.zeros([f0_len, 257], dtype=torch.float32)
             codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
 
-        return (f0, logspc, codeap), text, aligntext
+        return (f0, logspc, codeap), aligntext
 
 
 class AudioToAudioProcessor(nn.Module):
@@ -348,7 +339,6 @@ def get_dataset(
     use_phone: bool = False
 ) -> Dataset:
     chained_ds = None
-    alignfile = f'./data/align-{dataset}.txt' if use_align else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
@@ -356,7 +346,7 @@ def get_dataset(
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
             ds = MetafileDataset(
-                root, metafile='metadata.csv', alignfile=alignfile,
+                root, metafile='metadata.csv',
                 sep='|', header=False, idcol=0, ext='.flac')
         elif dataset == 'cv_ja':
             root = './data/cv-corpus-6.1-2020-12-11/ja'
@@ -366,10 +356,18 @@ def get_dataset(
         elif dataset == 'kokoro_small':
             root = './data/kokoro-speech-v1_1-small'
             ds = MetafileDataset(
-                root, metafile='metadata.csv', alignfile=alignfile,
+                root, metafile='metadata.csv',
                 sep='|', header=False, idcol=0, ext='.flac')
         else:
             raise ValueError("Unknown dataset")
+
+        if use_align:
+            if use_phone:
+                alignfile = f'./data/phone_align-{dataset}.txt'
+            else:
+                alignfile = f'./data/align-{dataset}.txt'
+            align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
+            ds = MergeDataset(ds, align_ds=align_ds)
 
         if use_phone:
             phonefile = f'./data/phone-{dataset}.txt'
@@ -389,7 +387,7 @@ def get_transform(task: Text, sample_rate: int, language: Text, use_phone: bool,
     if task == 'asr':
         transform = AudioToCharProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone)
     elif task == 'tts':
-        transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, infer=infer)
+        transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone, infer=infer)
     else:
         raise ValueError('Unknown task')
     return transform
@@ -439,11 +437,10 @@ def generate_audio_text_batch(data_batch):
 
 def generate_audio_text_align_batch(data_batch):
     f0_batch, spec_batch, codeap_batch, aligntext_batch, text_batch = [], [], [], [], []
-    for (f0_item, spec_item, codeap_item), text_item, aligntext_item in data_batch:
+    for (f0_item, spec_item, codeap_item), aligntext_item in data_batch:
         f0_batch.append(f0_item)
         spec_batch.append(spec_item)
         codeap_batch.append(codeap_item)
-        text_batch.append(text_item)
         aligntext_batch.append(aligntext_item)
 
     f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
@@ -453,7 +450,6 @@ def generate_audio_text_align_batch(data_batch):
     f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
     spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=BLANK_IDX)
 
     return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (aligntext_batch, aligntext_len)
