@@ -178,7 +178,7 @@ class EncodedCacheDataset(Dataset):
             except Exception:
                 logger.warn("Failed to save audio cache", exc_info=True)
         else:
-            aligntext = self._transform.encoder(data[1])
+            aligntext = self._transform.encoder(data[2])
             encoded_data = encoded_data[0], aligntext
 
         if self.save_mcep:
