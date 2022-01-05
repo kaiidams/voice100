@@ -369,7 +369,7 @@ def get_dataset(
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds)
 
-        if use_phone:
+        elif use_phone:
             phonefile = f'./data/phone-{dataset}.txt'
             phone_ds = TextDataset(phonefile)
             ds = MergeDataset(ds, phone_ds=phone_ds)
