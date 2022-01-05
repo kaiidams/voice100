@@ -177,6 +177,10 @@ class EncodedCacheDataset(Dataset):
                 torch.save(encoded_data, cachefile)
             except Exception:
                 logger.warn("Failed to save audio cache", exc_info=True)
+        else:
+            aligntext = self._transform.encoder(data[1])
+            encoded_data = encoded_data[0], aligntext
+
         if self.save_mcep:
             audio, aligntext = encoded_data
             f0, mcep, codeap = audio
@@ -273,7 +277,7 @@ class CharToAudioProcessor(nn.Module):
         else:
             from .vocoder import WORLDVocoder
             self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
-        self.encoder = CharTokenizer()
+        self.encoder = get_tokenizer(language, use_phone)
 
     def forward(
         self, clipid: Text, audiopath: Text, aligntext: Text
