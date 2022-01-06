@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import List, Text, Optional
+from typing import Tuple, List, Text, Optional
 import torch
 from torch import nn
 import torchaudio
@@ -205,7 +205,7 @@ class AudioToCharProcessor(nn.Module):
         self._phonemizer = get_phonemizer(language)
         self.encoder = CharTokenizer()
 
-    def forward(self, audiopath, text):
+    def forward(self, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
@@ -256,50 +256,9 @@ class CharToAudioProcessor(nn.Module):
         return (f0, logspc, codeap), text, aligntext
 
 
-class AudioToAudioProcessor(nn.Module):
-
-    def __init__(self, target_sample_rate=22050):
-        from .vocoder import WORLDVocoder
-
-        super().__init__()
-        self.sample_rate = 16000
-        self.target_sample_rate = target_sample_rate
-        self.n_fft = 512
-        self.win_length = 400
-        self.hop_length = 160
-        self.n_mels = 64
-        self.log_offset = 1e-6
-        self.effects = [
-            ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
-        ]
-        self.target_effects = [
-            ["remix", "1"],
-            ["rate", f"{self.target_sample_rate}"],
-        ]
-        self.transform = MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            win_length=self.win_length,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels)
-
-        self.vocoder = WORLDVocoder(sample_rate=target_sample_rate)
-
-    def forward(self, audiopath, text):
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        audio = self.transform(waveform)
-        audio = torch.transpose(audio[0, :, :], 0, 1)
-        audio = torch.log(audio + self.log_offset)
-
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        target = self.vocoder(waveform[0])
-        return audio, target
-
-
-def get_dataset(dataset: Text, needalign: bool = False) -> Dataset:
+def get_dataset(dataset: Text, use_align: bool = False) -> Dataset:
     chained_ds = None
-    alignfile = f'./data/align-{dataset}.txt' if needalign else None
+    alignfile = f'./data/align-{dataset}.txt' if use_align else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
             root = './data/LibriSpeech/train-clean-100'
@@ -471,7 +430,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.predict_ds = None
 
     def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset, needalign=self.task == 'tts')
+        ds = get_dataset(self.dataset, use_align=self.task == 'tts')
         os.makedirs(self.cache, exist_ok=True)
 
         if stage == "predict":
