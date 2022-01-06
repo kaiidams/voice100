@@ -354,35 +354,6 @@ def generate_audio_text_align_batch(data_batch):
     return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (aligntext_batch, aligntext_len)
 
 
-def generate_audio_text_align_batch_(data_batch):
-    audio_batch, text_batch, aligntext_batch = [], [], []
-    for audio_item, text_item, aligntext_item in data_batch:
-        audio_batch.append(audio_item)
-        text_batch.append(text_item)
-        aligntext_batch.append(aligntext_item)
-    audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
-    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
-    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
-    return (audio_batch, audio_len), (text_batch, text_len)
-
-
-def generate_audio_audio_batch(data_batch):
-    melspec_batch, f0_batch, spec_batch, codeap_batch = [], [], [], []
-    for melspec_item, (f0_item, spec_item, codeap_item) in data_batch:
-        melspec_batch.append(melspec_item)
-        f0_batch.append(f0_item)
-        spec_batch.append(spec_item)
-        codeap_batch.append(codeap_item)
-    melspec_len = torch.tensor([len(x) for x in melspec_batch], dtype=torch.int32)
-    f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
-    melspec_batch = pad_sequence(melspec_batch, batch_first=True, padding_value=0)
-    f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
-    spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
-    codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
-    return (melspec_batch, melspec_len), (f0_batch, f0_len, spec_batch, codeap_batch)
-
-
 class AudioTextDataModule(pl.LightningDataModule):
     """Data module to read text and audio pairs and optionally aligned texts.
 
