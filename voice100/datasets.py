@@ -399,7 +399,7 @@ def generate_audio_text_batch(data_batch):
 
 
 def generate_audio_text_align_batch(data_batch):
-    f0_batch, spec_batch, codeap_batch, aligntext_batch, text_batch = [], [], [], [], []
+    f0_batch, spec_batch, codeap_batch, aligntext_batch = [], [], [], []
     for (f0_item, spec_item, codeap_item), aligntext_item in data_batch:
         f0_batch.append(f0_item)
         spec_batch.append(spec_item)
@@ -407,7 +407,6 @@ def generate_audio_text_align_batch(data_batch):
         aligntext_batch.append(aligntext_item)
 
     f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
-    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
     aligntext_len = torch.tensor([len(x) for x in aligntext_batch], dtype=torch.int32)
 
     f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
@@ -415,7 +414,7 @@ def generate_audio_text_align_batch(data_batch):
     codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
     aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=BLANK_IDX)
 
-    return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (aligntext_batch, aligntext_len)
+    return (f0_batch, f0_len, spec_batch, codeap_batch), (aligntext_batch, aligntext_len)
 
 
 class AudioTextDataModule(pl.LightningDataModule):
