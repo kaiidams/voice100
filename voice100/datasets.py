@@ -296,47 +296,6 @@ class CharToAudioProcessor(nn.Module):
         return (f0, logspc, codeap), aligntext
 
 
-class AudioToAudioProcessor(nn.Module):
-
-    def __init__(self, target_sample_rate=22050):
-        from .vocoder import WORLDVocoder
-
-        super().__init__()
-        self.sample_rate = 16000
-        self.target_sample_rate = target_sample_rate
-        self.n_fft = 512
-        self.win_length = 400
-        self.hop_length = 160
-        self.n_mels = 64
-        self.log_offset = 1e-6
-        self.effects = [
-            ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
-        ]
-        self.target_effects = [
-            ["remix", "1"],
-            ["rate", f"{self.target_sample_rate}"],
-        ]
-        self.transform = MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            win_length=self.win_length,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels)
-
-        self.vocoder = WORLDVocoder(sample_rate=target_sample_rate)
-
-    def forward(self, audiopath, text):
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        audio = self.transform(waveform)
-        audio = torch.transpose(audio[0, :, :], 0, 1)
-        audio = torch.log(audio + self.log_offset)
-
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        target = self.vocoder(waveform[0])
-        return audio, target
-
-
 def get_dataset(
     dataset: Text,
     use_align: bool = False,
