@@ -106,6 +106,20 @@ trained to predict on
 
 ![ASR](./docs/asr.png)
 
+```
+  | Name          | Type                          | Params
+----------------------------------------------------------------
+0 | encoder       | ConvVoiceEncoder              | 11.6 M
+1 | decoder       | LinearCharDecoder             | 14.9 K
+2 | loss_fn       | CTCLoss                       | 0     
+3 | batch_augment | BatchSpectrogramAugumentation | 0     
+----------------------------------------------------------------
+11.6 M    Trainable params
+0         Non-trainable params
+11.6 M    Total params
+23.243    Total estimated model params size (MB)
+```
+
 ### Align model
 
 The align model is 2-layer bi-directional LSTM which is trained to predict
