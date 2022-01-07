@@ -15,7 +15,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)
-    parser.set_defaults(batch_size=32)
+    parser.set_defaults(batch_size=32, dataset="librispeech")
     args = parser.parse_args()
     data = AudioTextDataModule.from_argparse_args(
         args,

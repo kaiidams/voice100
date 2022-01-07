@@ -71,23 +71,24 @@ class LibriSpeechDataset(Dataset):
     def __init__(self, root: Text):
         self._root = root
         self._data = []
-        for file in glob(os.path.join(root, '**', '*.txt'), recursive=True):
+        files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
+        for file in sorted(files):
             dirpath = os.path.dirname(file)
             assert dirpath.startswith(root)
             dirpath = os.path.relpath(dirpath, start=self._root)
             with open(file) as f:
                 for line in f:
                     clipid, _, text = line.rstrip('\r\n').partition(' ')
-                    clipid = os.path.join(dirpath, clipid + '.flac')
-                    self._data.append((clipid, text))
+                    audiopath = os.path.join(dirpath, clipid + '.flac')
+                    self._data.append((clipid, audiopath, text))
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, index):
-        clipid, text = self._data[index]
-        audiopath = os.path.join(self._root, clipid)
-        return audiopath, text
+        clipid, audiopath, text = self._data[index]
+        audiopath = os.path.join(self._root, audiopath)
+        return clipid, audiopath, text
 
 
 class TextDataset(Dataset):
