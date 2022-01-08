@@ -182,7 +182,8 @@ class AudioToCharProcessor(nn.Module):
         win_length: int = 400,
         hop_length: int = 160,
         n_mels: int = MELSPEC_DIM,
-        log_offset: float = 1e-6
+        log_offset: float = 1e-6,
+        std_offset: float = 1e-6,
     ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
@@ -191,6 +192,7 @@ class AudioToCharProcessor(nn.Module):
         self.hop_length = hop_length
         self.n_mels = n_mels
         self.log_offset = log_offset
+        self.std_offset = std_offset
         self.effects = [
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
@@ -210,6 +212,9 @@ class AudioToCharProcessor(nn.Module):
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
+        mean = torch.mean(audio, axis=1, keepdim=True)
+        std = torch.std(audio, axis=1, keepdim=True)
+        audio = (audio - mean) / (std + self.std_offset)
 
         phoneme = self._phonemizer(text)
         encoded = self.encoder.encode(phoneme)
@@ -256,12 +261,24 @@ class CharToAudioProcessor(nn.Module):
         return (f0, logspc, codeap), text, aligntext
 
 
-def get_dataset(dataset: Text, use_align: bool = False) -> Dataset:
+def get_dataset(
+    dataset: Text,
+    split: Text,
+    use_align: bool = False
+) -> Dataset:
     chained_ds = None
     alignfile = f'./data/align-{dataset}.txt' if use_align else None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
-            root = './data/LibriSpeech/train-clean-100'
+            root = "./data/LibriSpeech"
+            if split == "train":
+                root += "/train-clean-100"
+            elif split == "valid":
+                root += "/dev-clean"
+            elif split == "test":
+                root += "/test-clean"
+            else:
+                raise ValueError()
             ds = LibriSpeechDataset(root)
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
@@ -381,6 +398,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         super().__init__()
         self.task = task
         self.dataset = dataset
+        self.split_dataset = dataset != "librispeech"
         self.valid_ratio = valid_ratio
         self.sample_rate = sample_rate
         self.language = language
@@ -401,7 +419,10 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.predict_ds = None
 
     def setup(self, stage: Optional[str] = None):
-        ds = get_dataset(self.dataset, use_align=self.task == 'tts')
+        ds = get_dataset(
+            self.dataset,
+            split="train",
+            use_align=self.task == 'tts')
         os.makedirs(self.cache, exist_ok=True)
 
         if stage == "predict":
@@ -415,11 +436,19 @@ class AudioTextDataModule(pl.LightningDataModule):
                 cachedir=self.cache)
 
         else:
-            # Split the dataset
-            total_len = len(ds)
-            valid_len = int(total_len * self.valid_ratio)
-            train_len = total_len - valid_len
-            train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+            if self.split_dataset:
+                # Split the dataset
+                total_len = len(ds)
+                valid_len = int(total_len * self.valid_ratio)
+                train_len = total_len - valid_len
+                train_ds, valid_ds = torch.utils.data.random_split(ds, [train_len, valid_len])
+            else:
+                train_ds = ds
+                valid_ds = get_dataset(
+                    self.dataset,
+                    split="valid",
+                    use_align=self.task == "tts",
+                    use_phone=self.use_phone)
 
             self.train_ds = EncodedCacheDataset(
                 train_ds, self.cache_salt, transform=self.transform,
