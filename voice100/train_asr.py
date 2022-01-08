@@ -15,7 +15,10 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AudioToCharCTC.add_model_specific_args(parser)
-    parser.set_defaults(batch_size=32, dataset="librispeech")
+    parser.set_defaults(
+        batch_size=32,
+        dataset="librispeech",
+        max_epochs=100)
     args = parser.parse_args()
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args,
@@ -24,11 +27,6 @@ def cli_main():
         args,
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)
-
-    import torch
-    ckpt_path = './model/stt_en_conv_base_ctc-20211125/lightning_logs/version_1/checkpoints/last.ckpt'
-    state = torch.load(ckpt_path)
-    model.load_state_dict(state['state_dict'])
 
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     trainer = pl.Trainer.from_argparse_args(
