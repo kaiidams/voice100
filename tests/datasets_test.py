@@ -19,7 +19,7 @@ class DatasetTest(unittest.TestCase):
 
     def test_dataset(self):
         from voice100.datasets import get_dataset
-        ds = get_dataset("ljspeech", use_phone=True)
+        ds = get_dataset("ljspeech", split="test", use_phone=True)
         for x, y, z in ds:
             print(x, y, z)
 
