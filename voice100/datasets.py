@@ -447,8 +447,7 @@ class AudioTextDataModule(pl.LightningDataModule):
                 valid_ds = get_dataset(
                     self.dataset,
                     split="valid",
-                    use_align=self.task == "tts",
-                    use_phone=self.use_phone)
+                    use_align=self.task == "tts")
 
             self.train_ds = EncodedCacheDataset(
                 train_ds, self.cache_salt, transform=self.transform,
