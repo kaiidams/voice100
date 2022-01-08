@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from typing import Tuple
 import torch
 from torch import nn
 import random
@@ -18,7 +19,9 @@ class BatchSpectrogramAugumentation(nn.Module):
         self.do_timestretch = do_timestretch
 
     @torch.no_grad()
-    def forward(self, audio, audio_len):
+    def forward(
+        self, audio: torch.Tensor, audio_len: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert len(audio.shape) == 3
 
         if self.do_timestretch and random.random() < AUGUMENT_RATE:
@@ -33,7 +36,8 @@ class BatchSpectrogramAugumentation(nn.Module):
             audio = self.mixnoise(audio)
         if random.random() < AUGUMENT_RATE:
             audio = self.mixaudio(audio, audio_len)
-
+        else:
+            audio = self.maskaudio(audio, audio_len)
         return audio, audio_len
 
     def timestretch(self, audio, audio_len):
@@ -83,3 +87,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         x = torch.exp(audio) * audio_mask
         y = torch.cat([x[1:], x[:1]], axis=0)
         return torch.log(0.9 * x + 0.1 * y + 1e-15) * audio_mask
+
+    def maskaudio(self, audio, audio_len):
+        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
+        return audio * audio_mask
