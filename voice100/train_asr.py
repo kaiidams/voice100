@@ -24,7 +24,6 @@ def cli_main():
         args,
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)
-
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     trainer = pl.Trainer.from_argparse_args(
         args,
