@@ -212,9 +212,6 @@ class AudioToCharProcessor(nn.Module):
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
-        mean = torch.mean(audio, axis=1, keepdim=True)
-        std = torch.std(audio, axis=1, keepdim=True)
-        audio = (audio - mean) / (std + self.std_offset)
 
         phoneme = self._phonemizer(text)
         encoded = self.encoder.encode(phoneme)

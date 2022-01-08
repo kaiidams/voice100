@@ -92,6 +92,7 @@ class AudioToCharCTC(pl.LightningModule):
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
+        self.std_offset = 1e-5
 
     def forward(self, audio) -> torch.Tensor:
         audio = torch.transpose(audio, 1, 2)
@@ -112,6 +113,11 @@ class AudioToCharCTC(pl.LightningModule):
 
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
+
+        mean = torch.mean(audio, axis=1, keepdim=True)
+        std = torch.std(audio, axis=1, keepdim=True)
+        audio = (audio - mean) / (std + self.std_offset)
+
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         logits = self.forward(audio)
