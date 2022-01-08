@@ -12,6 +12,19 @@ __all__ = [
 ]
 
 
+def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
+    """
+    Args:
+        x: tensor of shape [batch_size, length, hidden_dim]
+        length: tensor of shape [batch_size]
+    Returns:
+        float tensor of shape [batch_size, length, 1]
+    """
+    assert x.dim() == 3
+    assert length.dim() == 1
+    return (torch.arange(x.shape[1], device=x.device)[None, :, None] < length[:, None, None]).to(x.dtype)
+
+
 class ConvBNActivate(nn.Sequential):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
         padding = ((kernel_size - 1) // 2) * dilation
@@ -108,15 +121,22 @@ class AudioToCharCTC(pl.LightningModule):
         # assert (audio.shape[1] + 1) // 2 == enc_out.shape[1]
         return dec_out_len
 
+    def normalize(self, audio, audio_len) -> torch.Tensor:
+        """Normalize per-feature"""
+        mask = generate_padding_mask(audio, audio_len)
+        mask_sum = audio_len[:, None, None].float()
+        mean = torch.sum(audio * mask, axis=1, keepdim=True) / mask_sum
+        std = torch.sqrt(torch.sum((audio - mean) ** 2, axis=1, keepdim=True) / mask_sum)
+        audio = mask * (audio - mean) / (std + self.std_offset)
+        return audio
+
     def _calc_batch_loss(self, batch):
         (audio, audio_len), (text, text_len) = batch
 
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
 
-        mean = torch.mean(audio, axis=1, keepdim=True)
-        std = torch.std(audio, axis=1, keepdim=True)
-        audio = (audio - mean) / (std + self.std_offset)
+        audio = self.normalize(audio, audio_len)
 
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
