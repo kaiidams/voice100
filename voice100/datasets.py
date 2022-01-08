@@ -183,7 +183,6 @@ class AudioToCharProcessor(nn.Module):
         hop_length: int = 160,
         n_mels: int = MELSPEC_DIM,
         log_offset: float = 1e-6,
-        std_offset: float = 1e-6,
     ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
@@ -192,7 +191,6 @@ class AudioToCharProcessor(nn.Module):
         self.hop_length = hop_length
         self.n_mels = n_mels
         self.log_offset = log_offset
-        self.std_offset = std_offset
         self.effects = [
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
