@@ -18,7 +18,8 @@ def cli_main():
     parser.set_defaults(
         batch_size=32,
         dataset="librispeech",
-        max_epochs=100)
+        max_epochs=100,
+        log_every_n_steps=20)
     args = parser.parse_args()
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args,
@@ -29,7 +30,7 @@ def cli_main():
         vocab_size=data.vocab_size)
 
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
-    trainer = pl.Trainer.from_argparse_args(
+    trainer: pl.Trainer = pl.Trainer.from_argparse_args(
         args,
         callbacks=[checkpoint_callback])
     trainer.fit(model, data)
