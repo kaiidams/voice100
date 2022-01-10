@@ -221,8 +221,7 @@ class AudioToCharProcessor(nn.Module):
         win_length: int = 400,
         hop_length: int = 160,
         n_mels: int = MELSPEC_DIM,
-        log_offset: float = 1e-6,
-        std_offset: float = 1e-6,
+        log_offset: float = 1e-6
     ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
@@ -231,7 +230,6 @@ class AudioToCharProcessor(nn.Module):
         self.hop_length = hop_length
         self.n_mels = n_mels
         self.log_offset = log_offset
-        self.std_offset = std_offset
         self.effects = [
             ["remix", "1"],
             ["rate", f"{self.sample_rate}"],
@@ -251,9 +249,6 @@ class AudioToCharProcessor(nn.Module):
         audio = self.transform(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
-        mean = torch.mean(audio, axis=1, keepdim=True)
-        std = torch.std(audio, axis=1, keepdim=True)
-        audio = (audio - mean) / (std + self.std_offset)
 
         phoneme = self._phonemizer(text) if self._phonemizer is not None else text
         encoded = self.encoder.encode(phoneme)
