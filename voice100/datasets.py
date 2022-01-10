@@ -549,6 +549,3 @@ class AlignTextDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             collate_fn=self.collate_fn)
-
-    def test_dataloader(self):
-        return None
