@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="voice100",
-    version="1.0",
+    version="1.0.1",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
     description="Voice100",
