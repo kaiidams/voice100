@@ -30,7 +30,7 @@ def cli_main():
         vocab_size=data.vocab_size)
 
     import torch
-    state = torch.load("./model/asr_en_phone_conv_base_ctc-20220107/lightning_logs/version_0/last.ckpt")
+    state = torch.load("./model/asr_en_phone_conv_base_ctc-20220107/lightning_logs/version_0/checkpoints/last.ckpt")
     model.load_state_dict(state["state_dict"])
 
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
