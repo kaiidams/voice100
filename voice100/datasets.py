@@ -343,7 +343,7 @@ def get_dataset(
             ds = MergeDataset(ds, align_ds=align_ds)
 
         elif use_phone:
-            phonefile = f'./data/phone-{dataset}.txt'
+            phonefile = f'./data/{dataset}-phone-{split}.txt'
             phone_ds = TextDataset(phonefile)
             ds = MergeDataset(ds, phone_ds=phone_ds)
 
