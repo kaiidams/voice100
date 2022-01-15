@@ -63,8 +63,9 @@ def export_onnx_ttsalign(args):
     model = TextToAlignTextModel.load_from_checkpoint(args.checkpoint)
     model.eval()
 
+    vocab_size = model.hparams["vocab_size"]
     text_len = 100
-    text = torch.randint(low=0, high=27, size=(BATCH_SIZE, text_len), requires_grad=False)
+    text = torch.randint(low=0, high=vocab_size, size=(BATCH_SIZE, text_len), requires_grad=False)
 
     torch.onnx.export(
         model,  # model being run
@@ -99,9 +100,10 @@ def export_onnx_ttsaudio(args):
     model.eval()
     model = AlignTextToAudioPredictModel(model)
 
+    vocab_size = model.hparams["vocab_size"]
     aligntext_len = 100
     aligntext = torch.randint(
-        low=0, high=27, size=(BATCH_SIZE, aligntext_len), requires_grad=False
+        low=0, high=vocab_size, size=(BATCH_SIZE, aligntext_len), requires_grad=False
     )
 
     torch.onnx.export(

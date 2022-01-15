@@ -8,6 +8,7 @@ from typing import Text
 __all__ = [
     'BasicPhonemizer',
     'CharTokenizer',
+    'CMUTokenizer'
 ]
 
 DEFAULT_CHARACTERS = "_ abcdefghijklmnopqrstuvwxyz'"
