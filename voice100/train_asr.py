@@ -29,10 +29,6 @@ def cli_main():
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)
 
-    import torch
-    state = torch.load("./model/asr_en_phone_conv_base_ctc-20220107/lightning_logs/version_0/checkpoints/last.ckpt")
-    model.load_state_dict(state["state_dict"])
-
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     trainer: pl.Trainer = pl.Trainer.from_argparse_args(
         args,
