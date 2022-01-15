@@ -20,9 +20,9 @@ def convert_phone_ljspeech() -> None:
 
 def convert_phone_librispeech() -> None:
     g2p = G2p()
-    root = './data/LibriSpeech/train-clean-100'
+    root = './data/LibriSpeech/dev-clean-100'
     files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
-    with open("./data/phone-librispeech.txt", "wt") as outf:
+    with open("./data/librispeech-phone-valid.txt", "wt") as outf:
         for file in tqdm(sorted(files)):
             with open(file, "rt") as f:
                 for line in f:
