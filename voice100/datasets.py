@@ -336,9 +336,9 @@ def get_dataset(
 
         if use_align:
             if use_phone:
-                alignfile = f'./data/phone_align-{dataset}.txt'
+                alignfile = f'./data/{dataset}-phone-align-{split}.txt'
             else:
-                alignfile = f'./data/align-{dataset}.txt'
+                alignfile = f'./data/{dataset}-align-{split}.txt'
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds)
 
