@@ -608,9 +608,9 @@ class AlignTextDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None):
         if self.use_phone:
-            file = f"./data/phone_align-{self.dataset}.txt"
+            file = f"./data/{self.dataset}-phone-align-train.txt"
         else:
-            file = f"./data/align-{self.dataset}.txt"
+            file = f"./data/{self.dataset}-align-train.txt"
         ds = AlignTextDataset(file, encoder=self.encoder)
         # Split the dataset
         total_len = len(ds)
