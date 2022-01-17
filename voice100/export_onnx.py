@@ -37,7 +37,6 @@ def export_onnx_asr(args):
 
     model = AudioToCharCTC.load_from_checkpoint(args.checkpoint)
     model.eval()
-    print(model.hparams)
 
     audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
 
@@ -98,10 +97,10 @@ def export_onnx_ttsaudio(args):
     from voice100.models.tts import AlignTextToAudioModel
 
     model = AlignTextToAudioModel.load_from_checkpoint(args.checkpoint)
+    vocab_size = model.hparams["vocab_size"]
     model.eval()
     model = AlignTextToAudioPredictModel(model)
 
-    vocab_size = model.hparams["vocab_size"]
     aligntext_len = 100
     aligntext = torch.randint(
         low=0, high=vocab_size, size=(BATCH_SIZE, aligntext_len), requires_grad=False
