@@ -248,6 +248,11 @@ voice100-export-onnx \
     --output model/onnx/${MODEL}.onnx
 ```
 
+## CMU models
+
+CMU models is a model that use the output of 
+[G2p_en](https://github.com/Kyubyong/g2p) as text representation instead of raw text.
+
 ## Inference
 
 Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
@@ -255,10 +260,13 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 ## Pretrained models
 
 - [English align](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
+- [English CMU align](https://github.com/kaiidams/voice100/releases/download/v1.0.2.pre1/align_en_phone_lstm_base_ctc-20220103.ckpt)
 - [Japanese align](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
 - [English TTS align](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_en_conv_base-20210808.ckpt)
+- [English CMU TTS align](https://github.com/kaiidams/voice100/releases/download/v1.0.2.pre1/ttsalign_en_phone_conv_base-20220104.ckpt)
 - [Japanese TTS align](https://github.com/kaiidams/voice100/releases/download/v0.7/ttsalign_ja_conv_base-20211118.ckpt)
 - [English TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.1/ttsaudio_en_conv_base-20220107.ckpt)
+- [English CMU TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.2.pre1/ttsaudio_en_phone_conv_base-20220105.ckpt)
 - [Japanese TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.2.pre1/ttsaudio_ja_conv_base-20220111.ckpt)
 - [English ASR](https://github.com/kaiidams/voice100/releases/download/v1.0.1/asr_en_conv_base_ctc-20220109.ckpt)
 - [Japanese ASR](https://github.com/kaiidams/voice100/releases/download/v0.8/stt_ja_conv_base_ctc-20211127.ckpt)
