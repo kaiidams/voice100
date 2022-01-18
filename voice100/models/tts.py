@@ -269,7 +269,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         return f0, logspc, codeap
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
-        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        (f0, f0_len, logspc, codeap), (aligntext, aligntext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
@@ -322,6 +322,6 @@ class AlignTextToAudioModel(pl.LightningModule):
             learning_rate=args.learning_rate,
             **kwargs)
         if not args.resume_from_checkpoint:
-            args.audio_stat = f'./data/stat-{args.dataset}.pt'
+            args.audio_stat = f'./data/{args.dataset}-stat.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model

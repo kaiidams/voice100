@@ -69,7 +69,7 @@ def cli_main():
     args = parser.parse_args()
     data = AudioTextDataModule.from_argparse_args(args, task="tts")
     data.setup()
-    stat_path = f'data/stat-{args.dataset}.pt'
+    stat_path = f'data/{args.dataset}-stat.pt'
     calc_stat(data, stat_path)
 
 
