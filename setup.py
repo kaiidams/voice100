@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="voice100",
-    version="1.0.1",
+    version="1.1.0",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
     description="Voice100",
@@ -36,6 +36,9 @@ setup(
             'pyworld>=0.2.12',
         ],
         "lang-en": [
+        ],
+        "lang-en_phone": [
+            "g2p-en"
         ],
         "lang-ja": [
             'mecab-python3',
