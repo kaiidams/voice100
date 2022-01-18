@@ -12,9 +12,9 @@ class TestEncoder(unittest.TestCase):
 
         text = "Hello World!"
         phoneme = phonemizer(text)
-        self.assertEqual("helloworld", phoneme)
+        self.assertEqual("hello world", phoneme)
         encoded = tokenizer(phoneme)
-        self.assertEqual(torch.Size([10]), encoded.shape)
+        self.assertEqual(torch.Size([11]), encoded.shape)
         print(encoded)
 
     def test2(self):
@@ -24,9 +24,9 @@ class TestEncoder(unittest.TestCase):
 
         text = "こんにちは世界！"
         phoneme = phonemizer(text)
-        self.assertEqual("konnichiwasekai", phoneme)
+        self.assertEqual("kon'nichiwasekai", phoneme)
         encoded = tokenizer(phoneme)
-        self.assertEqual(torch.Size([15]), encoded.shape)
+        self.assertEqual(torch.Size([16]), encoded.shape)
         print(encoded)
 
         text = "やっぱりヴォイス？"
