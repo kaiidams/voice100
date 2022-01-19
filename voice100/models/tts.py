@@ -26,14 +26,14 @@ class VoiceDecoder(nn.Module):
     def __init__(self, hidden_size, out_channels, out_channels2) -> None:
         super().__init__()
         half_hidden_size = hidden_size // 2
-        self.layers1 = nn.Sequential(
+        self.layer1 = nn.Sequential(
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=33),
             InvertedResidual(hidden_size, hidden_size, kernel_size=17),
             InvertedResidual(hidden_size, hidden_size, kernel_size=11))
         self.layer2 = nn.ConvTranspose1d(
             hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2)
-        self.layers3 = nn.Sequential(
+        self.layer3 = nn.Sequential(
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
@@ -43,7 +43,7 @@ class VoiceDecoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.layer1(x)
-        y = x
+        y = self.layer4(x)
         x = self.layer2(x)
         x = self.layer3(x)
         return x, y
