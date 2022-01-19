@@ -39,7 +39,7 @@ class VoiceDecoder(nn.Module):
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
         self.layer4 = nn.Conv1d(
-            half_hidden_size, out_channels2, kernel_size=1, bias=True)
+            hidden_size, out_channels2, kernel_size=1, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.layer1(x)
