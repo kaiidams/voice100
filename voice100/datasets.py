@@ -131,8 +131,13 @@ class MergeDataset(Dataset):
     def __getitem__(self, index: int):
         id1, audio, _ = self._audiotext_ds[index]
         if self._align_ds is not None:
-            _, aligntext = self._align_ds[index]
-            return id1, audio, aligntext
+            if self._phone_ds is not None:
+                _, aligntext = self._align_ds[index]
+                _, phonetext = self._phone_ds[index]
+                return id1, audio, aligntext, phonetext
+            else:
+                _, aligntext = self._align_ds[index]
+                return id1, audio, aligntext
         if self._phone_ds is not None:
             id2, phonetext = self._phone_ds[index]
             assert id1 == id2
@@ -140,12 +145,21 @@ class MergeDataset(Dataset):
 
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, salt, transform, cachedir=None):
+    def __init__(
+        self,
+        dataset: Dataset,
+        audio_transform,
+        text_transform,
+        target_text_transform=None,
+        cachedir: Text = None, salt: Text = None
+    ):
         self._dataset = dataset
+        self._audio_transform = audio_transform
+        self._text_transform = text_transform
+        self._target_text_transform = target_text_transform
         self._salt = salt
         self._cachedir = cachedir
-        self._transform = transform
-        self.save_mcep = hasattr(self._transform, "vocoder")
+        self.save_mcep = True  # hasattr(self._transform, "vocoder")
         if self.save_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
             self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
@@ -154,41 +168,45 @@ class EncodedCacheDataset(Dataset):
     def __len__(self):
         return len(self._dataset)
 
-    def __getitem__(self, index):
-        data = self._dataset[index]
+    def _get_cachefile(self, id_):
         h = hashlib.sha1(self._salt)
-        h.update((data[0] + '@' + data[1]).encode('utf-8'))
+        h.update(id_.encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
-        encoded_data = None
-        if os.path.exists(cachefile):
-            try:
-                encoded_data = torch.load(cachefile)
-            except Exception:
-                logger.warn("Failed to load audio", exc_info=True)
-        if encoded_data is None:
-            encoded_data = self._transform(*data)
-            try:
-                if self.save_mcep:
-                    audio, aligntext = encoded_data
-                    f0, logspc, codeap = audio
-                    mcep = logspc @ self.sp2mc_matrix
-                    audio = f0, mcep, codeap
-                    encoded_data = audio, aligntext
-                torch.save(encoded_data, cachefile)
-            except Exception:
-                logger.warn("Failed to save audio cache", exc_info=True)
-        else:
-            aligntext = self._transform.encoder(data[2])
-            encoded_data = encoded_data[0], aligntext
+        return cachefile
+
+    def __getitem__(self, index):
+        data = self._dataset[index]
+        id_ = data[0]
+        audio = data[1]
+        cachefile = self._get_cachefile(id_)
+        encoded_audio = None
+        if audio is not None:
+            if os.path.exists(cachefile):
+                try:
+                    encoded_audio = torch.load(cachefile)
+                except Exception:
+                    logger.warn("Failed to load audio", exc_info=True)
+            if encoded_audio is None:
+                encoded_audio = self._audio_transform(audio)
+                try:
+                    if self.save_mcep:
+                        f0, logspc, codeap = encoded_audio
+                        mcep = logspc @ self.sp2mc_matrix
+                        encoded_audio = f0, mcep, codeap
+                    torch.save(encoded_audio, cachefile)
+                except Exception:
+                    logger.warn("Failed to save audio cache", exc_info=True)
+
+        encoded_text = self._text_transform(data[2])
+        encoded_target_text = self._target_text_transform(data[3])
 
         if self.save_mcep:
-            audio, aligntext = encoded_data
-            f0, mcep, codeap = audio
+            f0, mcep, codeap = encoded_audio
             logspc = mcep @ self.mc2sp_matrix
-            audio = f0, logspc, codeap
-            encoded_data = audio, aligntext
-        return encoded_data
+            encoded_audio = f0, logspc, codeap
+
+        return encoded_audio, encoded_text, encoded_target_text
 
 
 class AlignTextDataset(Dataset):
@@ -256,14 +274,11 @@ class AudioToCharProcessor(nn.Module):
         return audio, encoded
 
 
-class CharToAudioProcessor(nn.Module):
+class AudioTranform(nn.Module):
 
     def __init__(
         self,
-        language: Text,
-        use_phone: bool,
         sample_rate: int,
-        infer: bool = False
     ) -> None:
         super().__init__()
         self.sample_rate = sample_rate
@@ -272,36 +287,20 @@ class CharToAudioProcessor(nn.Module):
             ["rate", f"{self.sample_rate}"],
         ]
 
-        self._phonemizer = get_phonemizer(language, use_phone)
-        if infer:
-            self.vocoder = None
-        else:
-            from .vocoder import WORLDVocoder
-            self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
-        self.encoder = get_tokenizer(language, use_phone)
+        from .vocoder import WORLDVocoder
+        self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
 
-    def forward(
-        self, clipid: Text, audiopath: Text, aligntext: Text
-    ):
-        aligntext = self.encoder.encode(aligntext)
-
-        if self.vocoder is not None:
-            waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-            f0, logspc, codeap = self.vocoder(waveform[0])
-        else:
-            f0_len = aligntext.shape[0] * 2 - 1
-            f0 = torch.zeros([f0_len], dtype=torch.float32)
-            logspc = torch.zeros([f0_len, 257], dtype=torch.float32)
-            codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
-
-        return (f0, logspc, codeap), aligntext
+    def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        return self.vocoder(waveform[0])
 
 
 def get_dataset(
     dataset: Text,
     split: Text,
     use_align: bool = False,
-    use_phone: bool = False
+    use_phone: bool = False,
+    use_multi: bool = False
 ) -> Dataset:
     chained_ds = None
     for dataset in dataset.split(','):
@@ -347,6 +346,13 @@ def get_dataset(
             phone_ds = TextDataset(phonefile)
             ds = MergeDataset(ds, phone_ds=phone_ds)
 
+        elif use_multi:
+            alignfile = f'./data/{dataset}-align-{split}.txt'
+            align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
+            phonefile = f'./data/{dataset}-phone-align-{split}.txt'
+            phone_ds = TextDataset(phonefile)
+            ds = MergeDataset(ds, align_ds=align_ds, phone_ds=phone_ds)
+
         chained_ds = chained_ds + ds if chained_ds is not None else ds
 
     return chained_ds
@@ -390,7 +396,7 @@ def get_collate_fn(task):
     if task == 'asr':
         collate_fn = generate_audio_text_batch
     elif task == 'tts':
-        collate_fn = generate_audio_text_align_batch
+        collate_fn = generate_audio_text_text_batch
     else:
         raise ValueError('Unknown task')
     return collate_fn
@@ -425,6 +431,48 @@ def generate_audio_text_align_batch(data_batch):
     aligntext_batch = pad_sequence(aligntext_batch, batch_first=True, padding_value=BLANK_IDX)
 
     return (f0_batch, f0_len, spec_batch, codeap_batch), (aligntext_batch, aligntext_len)
+
+
+def generate_audio_text_text_batch(data_batch):
+    f0_batch, spec_batch, codeap_batch, text_batch, target_text_batch = [], [], [], [], []
+    for (f0, spec, codeap), text, target_text in data_batch:
+        f0_batch.append(f0)
+        spec_batch.append(spec)
+        codeap_batch.append(codeap)
+        text_batch.append(text)
+        target_text_batch.append(target_text)
+
+    f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
+    text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
+    target_text_len = torch.tensor([len(x) for x in target_text_batch], dtype=torch.int32)
+
+    f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
+    spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
+    codeap_batch = pad_sequence(codeap_batch, batch_first=True, padding_value=0)
+    text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
+    target_text_batch = pad_sequence(target_text_batch, batch_first=True, padding_value=BLANK_IDX)
+
+    return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (target_text_batch, target_text_len)
+
+
+class TextTransform(nn.Module):
+    def __init__(self, use_phone: bool) -> None:
+        super().__init__()
+        if use_phone:
+            self.phonemizer = None
+            self.encoder = CMUTokenizer()
+        else:
+            self.phonemizer = None
+            self.encoder = CharTokenizer()
+
+    @property
+    def vocab_size(self) -> int:
+        return self.encoder.vocab_size
+
+    def forward(self, text: Text) -> torch.Tensor:
+        if self.phonemizer:
+            text = self.phonemizer(text)
+        return self.encoder(text)
 
 
 class AudioTextDataModule(pl.LightningDataModule):
@@ -466,7 +514,10 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, use_phone=use_phone, infer=test)
+        # self.transform = get_transform(self.task, self.sample_rate, self.language, use_phone=use_phone, infer=test)
+        self.audio_transform = AudioTranform(sample_rate)
+        self.text_transform = TextTransform(use_phone=False)
+        self.target_text_transform = TextTransform(use_phone=True)
         self.test = test
         if test:
             self.cache_salt += b'-test'
@@ -478,14 +529,17 @@ class AudioTextDataModule(pl.LightningDataModule):
 
     @property
     def vocab_size(self) -> int:
-        return self.transform.encoder.vocab_size
+        return self.text_transform.encoder.vocab_size
+
+    @property
+    def target_vocab_size(self) -> int:
+        return self.target_text_transform.vocab_size
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(
             self.dataset,
             split="train",
-            use_align=self.task == "tts",
-            use_phone=self.use_phone)
+            use_multi=True)
         os.makedirs(self.cache, exist_ok=True)
 
         if stage == "predict":
@@ -514,11 +568,17 @@ class AudioTextDataModule(pl.LightningDataModule):
                     use_phone=self.use_phone)
 
             self.train_ds = EncodedCacheDataset(
-                train_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                train_ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                target_text_transform=self.target_text_transform,
+                cachedir=self.cache, salt=self.cache_salt)
             self.valid_ds = EncodedCacheDataset(
-                valid_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                valid_ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                target_text_transform=self.target_text_transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
     def train_dataloader(self):
         if self.train_ds is None:

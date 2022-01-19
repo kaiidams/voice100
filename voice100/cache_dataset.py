@@ -17,6 +17,8 @@ def cli_main():
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, task="tts")
     data.setup()
     for _ in tqdm(data.val_dataloader()):
+        #print(_[1])
+        #print(_[2])
         pass
     for _ in tqdm(data.train_dataloader()):
         pass
