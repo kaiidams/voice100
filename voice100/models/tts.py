@@ -282,6 +282,8 @@ class AlignTextToAudioModel(pl.LightningModule):
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat,
             hasf0, f0, logspc, codeap)
 
+        print(target_logits.shape)
+        print(phonetext.shape)
         phone_loss = self.phone_criteria(target_logits, phonetext)
         mask = generate_padding_mask(phonetext, phonetext_len)
         mask_sum = torch.sum(mask)
