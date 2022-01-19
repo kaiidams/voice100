@@ -219,12 +219,13 @@ class TextToAlignTextModel(pl.LightningModule):
 
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
-        self, vocab_size: int, hidden_size: int, learning_rate: float
+        self, vocab_size: int, target_vocab_size: int, hidden_size: int, learning_rate: float
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
+        self.target_vocab_size = target_vocab_size
         self.sample_rate = 16000
         self.n_fft = 512
         self.hasf0_size = 1
@@ -233,9 +234,10 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.codeap_size = 1
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
-        self.decoder = VoiceDecoder(hidden_size, self.audio_size)
+        self.decoder = VoiceDecoder(hidden_size, self.audio_size + self.target_vocab_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
+        self.phone_criteria = nn.CrossEntropyLoss(reduction='none')
 
     def forward(
         self, aligntext: torch.Tensor
@@ -247,15 +249,16 @@ class AlignTextToAudioModel(pl.LightningModule):
         x = torch.transpose(x, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
-        hasf0_logits, f0_hat, logspc_hat, codeap_hat = torch.split(x, [
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = torch.split(x, [
             self.hasf0_size,
             self.f0_size,
             self.logspc_size,
-            self.codeap_size
+            self.codeap_size,
+            self.target_vocab_size
         ], dim=2)
         hasf0_logits = hasf0_logits[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
-        return hasf0_logits, f0_hat, logspc_hat, codeap_hat
+        return hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits
 
     def predict(
         self, aligntext: torch.Tensor
@@ -269,39 +272,46 @@ class AlignTextToAudioModel(pl.LightningModule):
         return f0, logspc, codeap
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
-        (f0, f0_len, logspc, codeap), (aligntext, aligntext_len) = batch
+        (f0, f0_len, logspc, codeap), (aligntext, aligntext_len), (phonetext, phonetext_len) = batch
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
-        hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext)
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
-            f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
+            f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits,
+            hasf0, f0, logspc, codeap, phonetext)
 
-        return hasf0_loss, f0_loss, logspc_loss, codeap_loss
+        phone_loss = self.phone_criteria(target_logits, phonetext)
+        mask = generate_padding_mask(phonetext, phonetext_len)
+        mask_sum = torch.sum(mask)
+        phone_loss = torch.sum(phone_loss * mask) / mask_sum
+
+        return hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss
 
     def training_step(self, batch, batch_idx) -> torch.Tensor:
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss
-        self._log_loss('train', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss = self._calc_batch_loss(batch)
+        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss + phone_loss
+        self._log_loss('train', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss
-        self._log_loss('val', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss = self._calc_batch_loss(batch)
+        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss + phone_loss
+        self._log_loss('val', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss)
 
     def test_step(self, batch, batch_idx):
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss
-        self._log_loss('test', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss)
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss = self._calc_batch_loss(batch)
+        loss = hasf0_loss + f0_loss + logspc_loss + codeap_loss + phone_loss
+        self._log_loss('test', loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss)
 
-    def _log_loss(self, task, loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss) -> None:
+    def _log_loss(self, task, loss, hasf0_loss, f0_loss, logspc_loss, codeap_loss, phone_loss) -> None:
         self.log(f'{task}_loss', loss)
         self.log(f'{task}_hasf0_loss', hasf0_loss)
         self.log(f'{task}_f0_loss', f0_loss)
         self.log(f'{task}_logspc_loss', logspc_loss)
         self.log(f'{task}_codeap_loss', codeap_loss)
+        self.log(f'{task}_phone_loss', phone_loss)
 
     def configure_optimizers(self):
         return torch.optim.Adam(
