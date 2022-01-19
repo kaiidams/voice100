@@ -279,8 +279,8 @@ class AlignTextToAudioModel(pl.LightningModule):
         hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
-            f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits,
-            hasf0, f0, logspc, codeap, phonetext)
+            f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat,
+            hasf0, f0, logspc, codeap)
 
         phone_loss = self.phone_criteria(target_logits, phonetext)
         mask = generate_padding_mask(phonetext, phonetext_len)
