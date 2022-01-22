@@ -115,12 +115,13 @@ def export_onnx_ttsaudio(args):
         opset_version=args.opset_version,  # the ONNX version to export the model to
         do_constant_folding=True,  # whether to execute constant folding for optimization
         input_names=["aligntext"],  # the model's input names
-        output_names=["f0", "logspc", "codeap"],  # the model's output names
+        output_names=["f0", "logspc", "codeap", "logits"],  # the model's output names
         dynamic_axes={
             "aligntext": {0: "batch_size", 1: "aligntext_len"},  # variable length axes
             "f0": {0: "batch_size", 1: "audio_len"},
             "logspc": {0: "batch_size", 1: "audio_len"},
             "codeap": {0: "batch_size", 1: "audio_len"},
+            "logits": {0: "batch_size", 1: "audio_len"},
         },
     )
 

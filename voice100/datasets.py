@@ -36,6 +36,7 @@ class MetafileDataset(Dataset):
         self, root: Text, metafile='validated.tsv', sep='|',
         header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         self._sep = sep
@@ -68,7 +69,8 @@ class LibriSpeechDataset(Dataset):
         root (str): Root directory of the dataset.
     """
 
-    def __init__(self, root: Text):
+    def __init__(self, root: Text) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
@@ -82,23 +84,24 @@ class LibriSpeechDataset(Dataset):
                     audiopath = os.path.join(dirpath, clipid + '.flac')
                     self._data.append((clipid, audiopath, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text]:
         clipid, audiopath, text = self._data[index]
         audiopath = os.path.join(self._root, audiopath)
         return clipid, audiopath, text
 
 
 class TextDataset(Dataset):
+    r"Reading columns separated by separaters."
 
     def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
         self._data = []
-        with open(file, 'r') as f:
+        with open(file, 'rt') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
-                clipid = parts[idcol] if idcol >= 0 else ""
+                clipid = parts[idcol] if idcol >= 0 else None
                 text = parts[textcol]
                 self._data.append((clipid, text))
 
@@ -110,6 +113,7 @@ class TextDataset(Dataset):
 
 
 class MergeDataset(Dataset):
+
     def __init__(
         self,
         audiotext_ds: Dataset,
@@ -132,43 +136,49 @@ class MergeDataset(Dataset):
         id1, audio, _ = self._audiotext_ds[index]
         if self._align_ds is not None:
             if self._phone_ds is not None:
+                # For TTS audio multitask model
                 _, aligntext = self._align_ds[index]
                 _, phonetext = self._phone_ds[index]
                 return id1, audio, aligntext, phonetext
             else:
+                # For TTS audio model
                 _, aligntext = self._align_ds[index]
                 return id1, audio, aligntext
-        if self._phone_ds is not None:
+        else:
+            assert self._phone_ds is not None
+            # For ASR or align model
             id2, phonetext = self._phone_ds[index]
             assert id1 == id2
             return id1, audio, phonetext
 
 
 class EncodedCacheDataset(Dataset):
+
     def __init__(
         self,
         dataset: Dataset,
-        audio_transform,
-        text_transform,
-        target_text_transform=None,
+        audio_transform: nn.Module,
+        text_transform: nn.Module,
+        target_text_transform: Optional[nn.Module] = None,
         cachedir: Text = None, salt: Text = None
-    ):
+    ) -> None:
+        super().__init__()
         self._dataset = dataset
         self._audio_transform = audio_transform
         self._text_transform = text_transform
         self._target_text_transform = target_text_transform
-        self._salt = salt
         self._cachedir = cachedir
+        self._salt = salt
         self.save_mcep = True  # hasattr(self._transform, "vocoder")
         if self.save_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
             self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._dataset)
 
-    def _get_cachefile(self, id_):
+    def _get_cachefile(self, id_: Text) -> Text:
         h = hashlib.sha1(self._salt)
         h.update(id_.encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())

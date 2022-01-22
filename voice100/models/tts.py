@@ -272,12 +272,12 @@ class AlignTextToAudioModel(pl.LightningModule):
         self, aligntext: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        hasf0, f0, logspc, codeap = self.forward(aligntext)
+        hasf0, f0, logspc, codeap, logits = self.forward(aligntext)
         f0, logspc, codeap = self.norm.unnormalize(f0, logspc, codeap)
         f0 = torch.where(
             hasf0 < 0, torch.zeros(size=(1,), dtype=f0.dtype, device=f0.device), f0
         )
-        return f0, logspc, codeap
+        return f0, logspc, codeap, logits
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
         (f0, f0_len, logspc, codeap), (aligntext, aligntext_len), (phonetext, phonetext_len) = batch
