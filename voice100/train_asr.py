@@ -20,7 +20,7 @@ def cli_main():
         batch_size=32,
         dataset="librispeech",
         max_epochs=100,
-        log_every_n_steps=20)
+        log_every_n_steps=10)
     args = parser.parse_args()
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args,
