@@ -308,7 +308,7 @@ def get_dataset(
         if dataset == 'librispeech':
             root = "./data/LibriSpeech"
             if split == "train":
-                root += "/train-clean-100"
+                root += "/train-clean-360"
             elif split == "valid":
                 root += "/dev-clean"
             elif split == "test":
