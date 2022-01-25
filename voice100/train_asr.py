@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor
 
 from .datasets import AudioTextDataModule
 from .models.asr import AudioToCharCTC
@@ -30,9 +31,10 @@ def cli_main():
         vocab_size=data.vocab_size)
 
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
     trainer: pl.Trainer = pl.Trainer.from_argparse_args(
         args,
-        callbacks=[checkpoint_callback])
+        callbacks=[lr_monitor, checkpoint_callback])
     trainer.fit(model, data)
 
 
