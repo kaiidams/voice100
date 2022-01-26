@@ -4,11 +4,12 @@ from tqdm import tqdm
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from voice100.datasets import AudioTextDataModule
+from voice100.datasets import MELSPEC_DIM, AudioTextDataModule
 from voice100.text import CMUTokenizer, CharTokenizer
 
 ARGS = "--dataset kokoro_small --language ja"
 ARGS = "--use_phone --batch_size 2"
+ARGS = "--batch_size 2 --dataset librispeech --language en"
 
 
 class DatasetTest(unittest.TestCase):
@@ -29,13 +30,16 @@ class DatasetTest(unittest.TestCase):
         args = parser.parse_args(ARGS.split())
         data = AudioTextDataModule.from_argparse_args(args, task="asr")
         data.setup()
+
         use_phone = '--use_phone' in ARGS
         if use_phone:
             tokenizer = CMUTokenizer()
         else:
             tokenizer = CharTokenizer()
-        print("vocab_size:", data.vocab_size)
+        print(f"audio_size={data.audio_size}")
+        print(f"vocab_size={data.vocab_size}")
         self.assertEqual(data.vocab_size, tokenizer.vocab_size)
+        self.assertEqual(data.audio_size, MELSPEC_DIM)
 
         for batch in tqdm(data.train_dataloader()):
             # print(batch)
