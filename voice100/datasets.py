@@ -53,10 +53,10 @@ class MetafileDataset(Dataset):
                 text = parts[self._textcol]
                 self._data.append((clipid, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         return clipid, audiopath, text
@@ -87,7 +87,7 @@ class LibriSpeechDataset(Dataset):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index) -> Tuple[Text, Text]:
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, audiopath, text = self._data[index]
         audiopath = os.path.join(self._root, audiopath)
         return clipid, audiopath, text
@@ -97,6 +97,7 @@ class TextDataset(Dataset):
     r"Reading columns separated by separaters."
 
     def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
+        super().__init__()
         self._data = []
         with open(file, 'rt') as f:
             for line in f:
@@ -554,13 +555,13 @@ class AudioTextDataModule(pl.LightningDataModule):
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
         elif self.test:
             self.test_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
         else:
             if self.split_dataset:
