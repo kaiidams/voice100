@@ -449,8 +449,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         use_phone: bool = False,
         cache: Text = './cache',
         batch_size: int = 128,
-        valid_ratio: float = 0.1,
-        test: bool = False
+        valid_ratio: float = 0.1
     ) -> None:
         super().__init__()
         self.task = task
@@ -467,9 +466,6 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.collate_fn = get_collate_fn(self.task)
         self.audio_transform = get_audio_transform(self.task, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_phone=use_phone)
-        self.test = test
-        if test:
-            self.cache_salt += b'-test'
         self.audio_size = MELSPEC_DIM
         self.train_ds = None
         self.valid_ds = None
@@ -490,13 +486,6 @@ class AudioTextDataModule(pl.LightningDataModule):
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
-                ds,
-                audio_transform=self.audio_transform,
-                text_transform=self.text_transform,
-                cachedir=self.cache, salt=self.cache_salt)
-
-        elif self.test:
-            self.test_ds = EncodedCacheDataset(
                 ds,
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
