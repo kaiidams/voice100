@@ -221,12 +221,9 @@ class AlignTextDataset(Dataset):
         return self.data[index]
 
 
-class AudioToCharProcessor(nn.Module):
-
+class MelSpectrogramAudioTransform(nn.Module):
     def __init__(
         self,
-        language: Text,
-        use_phone: bool,
         sample_rate: int = 16000,
         n_fft: int = 512,
         win_length: int = 400,
@@ -234,34 +231,42 @@ class AudioToCharProcessor(nn.Module):
         n_mels: int = MELSPEC_DIM,
         log_offset: float = 1e-6
     ) -> None:
-        super().__init__()
-        self.sample_rate = sample_rate
-        self.n_fft = n_fft
-        self.win_length = win_length
-        self.hop_length = hop_length
-        self.n_mels = n_mels
         self.log_offset = log_offset
         self.effects = [
             ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
+            ["rate", f"{sample_rate}"],
         ]
 
-        self.transform = MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            win_length=self.win_length,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels)
-        self._phonemizer = get_phonemizer(language, use_phone)
+        self.melspec = MelSpectrogram(
+            sample_rate=sample_rate,
+            n_fft=n_fft,
+            win_length=win_length,
+            hop_length=hop_length,
+            n_mels=n_mels)
+
+    def forward(self, audiopath: Text) -> torch.Tensor:
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(
+            audiopath, effects=self.effects)
+        audio = self.melspec(waveform)
+        audio = torch.transpose(audio[0, :, :], 0, 1)
+        audio = torch.log(audio + self.log_offset)
+        return audio
+
+
+class AudioToCharProcessor(nn.Module):
+    def __init__(
+        self,
+        language: Text,
+        use_phone: bool,
+    ) -> None:
+        super().__init__()
+        self.audio_transform = MelSpectrogramAudioTransform()
+        self.phonemizer = get_phonemizer(language, use_phone)
         self.encoder = get_tokenizer(language, use_phone)
 
     def forward(self, clipid: Text, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        audio = self.transform(waveform)
-        audio = torch.transpose(audio[0, :, :], 0, 1)
-        audio = torch.log(audio + self.log_offset)
-
-        phoneme = self._phonemizer(text) if self._phonemizer is not None else text
+        audio = self.audio_transform(audiopath)
+        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
         encoded = self.encoder.encode(phoneme)
 
         return audio, encoded

@@ -134,7 +134,7 @@ class AudioToCharCTC(pl.LightningModule):
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
 
-        audio = self.normalize(audio, audio_len)
+        # audio = self.normalize(audio, audio_len)
 
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
