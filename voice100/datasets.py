@@ -278,45 +278,24 @@ class TextProcessor(nn.Module):
         return self.encoder.vocab_size
 
 
-class CharToAudioProcessor(nn.Module):
+class WORLDAudioProcessor(nn.Module):
 
     def __init__(
         self,
-        language: Text,
-        use_phone: bool,
-        sample_rate: int,
-        infer: bool = False
+        sample_rate: int
     ) -> None:
+        from .vocoder import WORLDVocoder
         super().__init__()
-        self.sample_rate = sample_rate
         self.target_effects = [
             ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
+            ["rate", f"{sample_rate}"],
         ]
+        self.vocoder = WORLDVocoder(sample_rate=sample_rate)
 
-        self._phonemizer = get_phonemizer(language, use_phone)
-        if infer:
-            self.vocoder = None
-        else:
-            from .vocoder import WORLDVocoder
-            self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
-        self.encoder = get_tokenizer(language, use_phone)
-
-    def forward(
-        self, clipid: Text, audiopath: Text, aligntext: Text
-    ):
-        aligntext = self.encoder.encode(aligntext)
-
-        if self.vocoder is not None:
-            waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-            f0, logspc, codeap = self.vocoder(waveform[0])
-        else:
-            f0_len = aligntext.shape[0] * 2 - 1
-            f0 = torch.zeros([f0_len], dtype=torch.float32)
-            logspc = torch.zeros([f0_len, 257], dtype=torch.float32)
-            codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
-
-        return (f0, logspc, codeap), aligntext
+    def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        f0, logspc, codeap = self.vocoder(waveform[0])
+        return f0, logspc, codeap
 
 
 def get_dataset(
@@ -374,15 +353,11 @@ def get_dataset(
     return chained_ds
 
 
-def get_audio_transform(task: Text, sample_rate: int, infer: bool = False):
-    """
-        Args:
-            infer: True to avoid decoding audio for TTS inference
-    """
+def get_audio_transform(task: Text, sample_rate: int):
     if task == 'asr':
-        audio_transform = MelSpectrogramAudioTransform()
+        audio_transform = MelSpectrogramAudioTransform(sample_rate=sample_rate)
     elif task == 'tts':
-        audio_transform = CharToAudioProcessor(sample_rate=sample_rate, infer=infer)
+        audio_transform = WORLDAudioProcessor(sample_rate=sample_rate)
     else:
         raise ValueError('Unknown task')
     return audio_transform
@@ -492,7 +467,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.task)
-        self.audio_transform = get_audio_transform(self.task, self.sample_rate, infer=test)
+        self.audio_transform = get_audio_transform(self.task, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_phone=use_phone)
         self.test = test
         if test:
