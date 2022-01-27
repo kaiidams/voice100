@@ -36,6 +36,7 @@ class MetafileDataset(Dataset):
         self, root: Text, metafile='validated.tsv', sep='|',
         header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         self._sep = sep
@@ -52,10 +53,10 @@ class MetafileDataset(Dataset):
                 text = parts[self._textcol]
                 self._data.append((clipid, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         return clipid, audiopath, text
@@ -68,7 +69,8 @@ class LibriSpeechDataset(Dataset):
         root (str): Root directory of the dataset.
     """
 
-    def __init__(self, root: Text):
+    def __init__(self, root: Text) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
@@ -82,23 +84,25 @@ class LibriSpeechDataset(Dataset):
                     audiopath = os.path.join(dirpath, clipid + '.flac')
                     self._data.append((clipid, audiopath, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, audiopath, text = self._data[index]
         audiopath = os.path.join(self._root, audiopath)
         return clipid, audiopath, text
 
 
 class TextDataset(Dataset):
+    r"Reading columns separated by separaters."
 
     def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
+        super().__init__()
         self._data = []
-        with open(file, 'r') as f:
+        with open(file, 'rt') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
-                clipid = parts[idcol] if idcol >= 0 else ""
+                clipid = parts[idcol] if idcol >= 0 else None
                 text = parts[textcol]
                 self._data.append((clipid, text))
 
@@ -110,6 +114,7 @@ class TextDataset(Dataset):
 
 
 class MergeDataset(Dataset):
+
     def __init__(
         self,
         audiotext_ds: Dataset,
@@ -140,10 +145,16 @@ class MergeDataset(Dataset):
 
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, salt, transform, cachedir=None):
+    def __init__(
+        self,
+        dataset: Dataset,
+        transform: nn.Module,
+        cachedir: Text = None, salt: Text = None
+    ) -> None:
+        super().__init__()
         self._dataset = dataset
-        self._salt = salt
         self._cachedir = cachedir
+        self._salt = salt
         self._transform = transform
         self.save_mcep = hasattr(self._transform, "vocoder")
         if self.save_mcep:
@@ -151,7 +162,7 @@ class EncodedCacheDataset(Dataset):
             self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._dataset)
 
     def __getitem__(self, index):
@@ -490,13 +501,13 @@ class AudioTextDataModule(pl.LightningDataModule):
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
         elif self.test:
             self.test_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
         else:
             if self.split_dataset:
@@ -514,11 +525,11 @@ class AudioTextDataModule(pl.LightningDataModule):
                     use_phone=self.use_phone)
 
             self.train_ds = EncodedCacheDataset(
-                train_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                train_ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
             self.valid_ds = EncodedCacheDataset(
-                valid_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                valid_ds, transform=self.transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
     def train_dataloader(self):
         if self.train_ds is None:
