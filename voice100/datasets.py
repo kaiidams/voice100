@@ -374,7 +374,7 @@ def get_transform(task: Text, sample_rate: int, language: Text, use_phone: bool,
             infer: True to avoid decoding audio for TTS inference
     """
     if task == 'asr':
-        transform = AudioToCharProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone)
+        transform = AudioToCharProcessor(language=language, use_phone=use_phone)
     elif task == 'tts':
         transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone, infer=infer)
     else:
