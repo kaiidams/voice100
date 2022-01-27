@@ -179,7 +179,6 @@ class EncodedCacheDataset(Dataset):
         id_, audio, text = data
         cachefile = self._get_cachefile(id_)
         encoded_audio = None
-        print(cachefile)
         if os.path.exists(cachefile):
             try:
                 encoded_audio = torch.load(cachefile)
@@ -309,7 +308,7 @@ def get_dataset(
         if dataset == 'librispeech':
             root = "./data/LibriSpeech"
             if split == "train":
-                root += "/train-clean-100"
+                root += "/train-clean-360"
             elif split == "valid":
                 root += "/dev-clean"
             elif split == "test":
