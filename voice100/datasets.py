@@ -231,6 +231,7 @@ class MelSpectrogramAudioTransform(nn.Module):
         n_mels: int = MELSPEC_DIM,
         log_offset: float = 1e-6
     ) -> None:
+        super().__init__()
         self.log_offset = log_offset
         self.effects = [
             ["remix", "1"],
