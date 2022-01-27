@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import Union, Tuple, List, Text, Optional
+from typing import Union, Tuple, List, Text, Optional, Any
 import torch
 from torch import nn
 import torchaudio
@@ -114,7 +114,6 @@ class TextDataset(Dataset):
 
 
 class MergeDataset(Dataset):
-
     def __init__(
         self,
         audiotext_ds: Dataset,
@@ -206,7 +205,6 @@ class EncodedCacheDataset(Dataset):
 
 
 class AlignTextDataset(Dataset):
-
     def __init__(self, file: Text, encoder: Union[CharTokenizer, CMUTokenizer]) -> None:
         self.tokenizer = encoder
         self.data = []
@@ -257,28 +255,7 @@ class MelSpectrogramAudioTransform(nn.Module):
         return audio
 
 
-class TextProcessor(nn.Module):
-    def __init__(
-        self,
-        language: Text,
-        use_phone: bool,
-    ) -> None:
-        super().__init__()
-        self.phonemizer = get_phonemizer(language, use_phone)
-        self.encoder = get_tokenizer(language, use_phone)
-
-    def forward(self, text: Text) -> torch.Tensor:
-        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
-        encoded = self.encoder.encode(phoneme)
-        return encoded
-
-    @property
-    def vocab_size(self):
-        return self.encoder.vocab_size
-
-
 class WORLDAudioProcessor(nn.Module):
-
     def __init__(
         self,
         sample_rate: int
@@ -295,6 +272,26 @@ class WORLDAudioProcessor(nn.Module):
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
         f0, logspc, codeap = self.vocoder(waveform[0])
         return f0, logspc, codeap
+
+
+class TextProcessor(nn.Module):
+    def __init__(
+        self,
+        phonemizer: Any,
+        tokenizer: Any,
+    ) -> None:
+        super().__init__()
+        self.phonemizer = phonemizer
+        self.tokenizer = tokenizer
+
+    def forward(self, text: Text) -> torch.Tensor:
+        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
+        encoded = self.tokenizer(phoneme)
+        return encoded
+
+    @property
+    def vocab_size(self) -> int:
+        return self.tokenizer.vocab_size
 
 
 def get_dataset(
@@ -363,7 +360,9 @@ def get_audio_transform(task: Text, sample_rate: int):
 
 
 def get_text_transform(language: Text, use_phone: bool):
-    return TextProcessor(language=language, use_phone=use_phone)
+    phonemizer = get_phonemizer(language=language, use_phone=use_phone)
+    tokenizer = get_tokenizer(language=language, use_phone=use_phone)
+    return TextProcessor(phonemizer, tokenizer)
 
 
 def get_phonemizer(language: Text, use_phone: bool):
