@@ -29,6 +29,8 @@ class BatchSpectrogramAugumentation(nn.Module):
         if random.random() < AUGUMENT_RATE:
             audio = self.pitchshift(audio)
         if random.random() < AUGUMENT_RATE:
+            audio = self.ampshift(audio)
+        if random.random() < AUGUMENT_RATE:
             audio = self.timemask(audio)
         if random.random() < AUGUMENT_RATE:
             audio = self.freqmask(audio)
@@ -53,6 +55,10 @@ class BatchSpectrogramAugumentation(nn.Module):
         i = (torch.arange(audio.shape[2], device=audio.device) * rate).int()
         i = torch.clamp(i, 0, audio.shape[2] - 1)
         return torch.index_select(audio, 2, i)
+
+    def ampshift(self, audio):
+        rate = 1.0 + random.random() * 3.0
+        return audio - rate
 
     def timemask(self, audio):
         audio = audio.clone()

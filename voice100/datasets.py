@@ -165,12 +165,17 @@ class EncodedCacheDataset(Dataset):
     def __len__(self) -> int:
         return len(self._dataset)
 
-    def __getitem__(self, index):
-        data = self._dataset[index]
+    def _get_cachefile(self, id_: Text) -> Text:
         h = hashlib.sha1(self._salt)
-        h.update((data[0] + '@' + data[1]).encode('utf-8'))
+        h.update(id_.encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
+        return cachefile
+
+    def __getitem__(self, index):
+        data = self._dataset[index]
+        id_ = data[0]
+        cachefile = self._get_cachefile(id_)
         encoded_data = None
         if os.path.exists(cachefile):
             try:
