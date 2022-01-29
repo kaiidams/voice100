@@ -104,6 +104,7 @@ class AudioToCharCTC(pl.LightningModule):
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.loss_fn = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
+        self.do_normalize = False
 
     def forward(self, audio) -> torch.Tensor:
         audio = torch.transpose(audio, 1, 2)
@@ -134,7 +135,8 @@ class AudioToCharCTC(pl.LightningModule):
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
 
-        # audio = self.normalize(audio, audio_len)
+        if self.do_normalize:
+            audio = self.normalize(audio, audio_len)
 
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]

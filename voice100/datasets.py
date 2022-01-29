@@ -300,19 +300,12 @@ def get_dataset(
     use_align: bool = False,
     use_phone: bool = False
 ) -> Dataset:
-    chained_ds = None
+    chained_ds: Dataset = None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
-            root = "./data/LibriSpeech"
-            if split == "train":
-                root += "/train-clean-360"
-            elif split == "valid":
-                root += "/dev-clean"
-            elif split == "test":
-                root += "/test-clean"
-            else:
-                raise ValueError()
-            ds = LibriSpeechDataset(root)
+            ds = get_dataset_librispeech(split, variant="100")
+        elif dataset == 'librispeech_360':
+            ds = get_dataset_librispeech(split, variant="360")
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
             ds = MetafileDataset(
@@ -347,6 +340,19 @@ def get_dataset(
         chained_ds = chained_ds + ds if chained_ds is not None else ds
 
     return chained_ds
+
+
+def get_dataset_librispeech(split: Text, variant="100") -> Dataset:
+    root = "./data/LibriSpeech"
+    if split == "train":
+        root += "/train-clean-%s" % variant
+    elif split == "valid":
+        root += "/dev-clean"
+    elif split == "test":
+        root += "/test-clean"
+    else:
+        raise ValueError()
+    return LibriSpeechDataset(root)
 
 
 def get_audio_transform(task: Text, sample_rate: int):
