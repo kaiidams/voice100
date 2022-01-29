@@ -12,7 +12,7 @@ class TestEncoder(unittest.TestCase):
     def test(self):
 
         sess = ort.InferenceSession("model/onnx/stt_en_conv_base_ctc-20211125.onnx")
-        processor = get_transform(task="asr", sample_rate=16000, language="en", use_phone=False, infer=True)
+        processor = get_transform(vocoder="mel", sample_rate=16000, language="en", use_phone=False, infer=True)
 
         waveform, sr = librosa.load("test.flac", 16000)
         waveform = torch.from_numpy(waveform)

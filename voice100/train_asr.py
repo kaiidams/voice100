@@ -24,7 +24,7 @@ def cli_main():
     args = parser.parse_args()
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args,
-        task="asr")
+        vocoder="mel")
     model = AudioToCharCTC.from_argparse_args(
         args,
         audio_size=data.audio_size,

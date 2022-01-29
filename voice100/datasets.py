@@ -355,13 +355,13 @@ def get_dataset_librispeech(split: Text, variant="100") -> Dataset:
     return LibriSpeechDataset(root)
 
 
-def get_audio_transform(task: Text, sample_rate: int):
-    if task == 'asr':
+def get_audio_transform(vocoder: Text, sample_rate: int):
+    if vocoder == 'mel':
         audio_transform = MelSpectrogramAudioTransform(sample_rate=sample_rate)
-    elif task == 'tts':
+    elif vocoder == 'world':
         audio_transform = WORLDAudioProcessor(sample_rate=sample_rate)
     else:
-        raise ValueError('Unknown task')
+        raise ValueError('Unknown vocoder')
     return audio_transform
 
 
@@ -391,13 +391,13 @@ def get_tokenizer(language: Text, use_phone: bool):
     return CharTokenizer()
 
 
-def get_collate_fn(task):
-    if task == 'asr':
+def get_collate_fn(vocoder):
+    if vocoder == "mel":
         collate_fn = generate_audio_text_batch
-    elif task == 'tts':
+    elif vocoder == "world":
         collate_fn = generate_audio_text_align_batch
     else:
-        raise ValueError('Unknown task')
+        raise ValueError('Unknown vocoder')
     return collate_fn
 
 
@@ -436,7 +436,7 @@ class AudioTextDataModule(pl.LightningDataModule):
     """Data module to read text and audio pairs and optionally aligned texts.
 
         Args:
-            task: ``asr`` or ``tts``
+            task: ``mel`` or ``world``
             dataset: Dataset to use
             sample_rate: Sampling rate of audio
             language: Language
@@ -448,7 +448,8 @@ class AudioTextDataModule(pl.LightningDataModule):
     """
 
     def __init__(
-        self, task: Text,
+        self,
+        vocoder: Text,
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",
@@ -458,7 +459,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         valid_ratio: float = 0.1
     ) -> None:
         super().__init__()
-        self.task = task
+        self.vocoder = vocoder
         self.dataset = dataset
         self.split_dataset = dataset != "librispeech"
         self.valid_ratio = valid_ratio
@@ -466,11 +467,11 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.language = language
         self.use_phone = use_phone
         self.cache = cache
-        self.cache_salt = self.task.encode('utf-8')
+        self.cache_salt = self.vocoder.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
-        self.collate_fn = get_collate_fn(self.task)
-        self.audio_transform = get_audio_transform(self.task, self.sample_rate)
+        self.collate_fn = get_collate_fn(self.vocoder)
+        self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_phone=use_phone)
         self.audio_size = MELSPEC_DIM
         self.train_ds = None
@@ -486,7 +487,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         ds = get_dataset(
             self.dataset,
             split="train",
-            use_align=self.task == "tts",
+            use_align=self.vocoder == "world",
             use_phone=self.use_phone)
         os.makedirs(self.cache, exist_ok=True)
 
@@ -509,7 +510,7 @@ class AudioTextDataModule(pl.LightningDataModule):
                 valid_ds = get_dataset(
                     self.dataset,
                     split="valid",
-                    use_align=self.task == "tts",
+                    use_align=self.vocoder == "world",
                     use_phone=self.use_phone)
 
             self.train_ds = EncodedCacheDataset(

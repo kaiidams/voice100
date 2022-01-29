@@ -14,7 +14,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     args = parser.parse_args()
-    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, task="tts")
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="world")
     data.setup()
     for _ in tqdm(data.val_dataloader()):
         pass
