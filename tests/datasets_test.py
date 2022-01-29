@@ -34,8 +34,10 @@ class DatasetTest(unittest.TestCase):
             tokenizer = CMUTokenizer()
         else:
             tokenizer = CharTokenizer()
-        print("vocab_size:", data.vocab_size)
+        print(f"audio_size={data.audio_size}")
+        print(f"vocab_size={data.vocab_size}")
         self.assertEqual(data.vocab_size, tokenizer.vocab_size)
+        self.assertEqual(data.audio_size, 64)
 
         for batch in tqdm(data.train_dataloader()):
             # print(batch)
