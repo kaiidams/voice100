@@ -5,20 +5,21 @@ import torch
 import onnxruntime as ort
 import librosa
 
-from voice100.datasets import get_transform
+from voice100.datasets import get_audio_transform, get_text_transform
 
 
 class TestEncoder(unittest.TestCase):
     def test(self):
+        audio_file = './data/LibriSpeech/test-clean/1089/134686/1089-134686-0000.flac'
+        onnx_file = "model/onnx/asr_en_conv_base_ctc-20220126.onnx"
+        sess = ort.InferenceSession(onnx_file)
+        audio_transform = get_audio_transform(vocoder="mel", sample_rate=16000)
+        text_transform = get_text_transform(language="en", use_phone=False)
 
-        sess = ort.InferenceSession("model/onnx/stt_en_conv_base_ctc-20211125.onnx")
-        processor = get_transform(task="asr", sample_rate=16000, language="en", use_phone=False, infer=True)
-
-        waveform, sr = librosa.load("test.flac", 16000)
+        waveform, sr = librosa.load(audio_file, 16000)
         waveform = torch.from_numpy(waveform)
 
-        encoder = processor.encoder
-        audio = torch.log(processor.transform(waveform).T + processor.log_offset)
+        audio = torch.log(audio_transform.melspec(waveform).T + audio_transform.log_offset)
 
         ort_inputs = {
             "audio": audio[
@@ -37,7 +38,9 @@ class TestEncoder(unittest.TestCase):
 
         (logits,) = sess.run(["logits"], ort_inputs)
         pred = logits.argmax(-1)
-        print(encoder.merge_repeated(encoder.decode(pred[0])))
+        aligntext = text_transform.tokenizer.decode(pred[0])
+        text = text_transform.tokenizer.merge_repeated(aligntext)
+        print(text)
 
 
 if __name__ == '__main__':

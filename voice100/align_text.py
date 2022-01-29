@@ -22,7 +22,7 @@ def cli_main():
     else:
         args.output = f'data/{args.dataset}-align-{split}.txt'
 
-    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, task="asr")
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="mel")
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
     data.setup("predict")
     encoder = data.transform.encoder

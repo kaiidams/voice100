@@ -6,7 +6,7 @@ r"""Definition of Dataset for reading data from speech datasets.
 import os
 import logging
 from glob import glob
-from typing import Union, Tuple, List, Text, Optional
+from typing import Union, Tuple, List, Text, Optional, Any
 import torch
 from torch import nn
 import torchaudio
@@ -36,6 +36,7 @@ class MetafileDataset(Dataset):
         self, root: Text, metafile='validated.tsv', sep='|',
         header=True, idcol=1, textcol=2, wavsdir='wavs', ext='.wav'
     ) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         self._sep = sep
@@ -52,10 +53,10 @@ class MetafileDataset(Dataset):
                 text = parts[self._textcol]
                 self._data.append((clipid, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         return clipid, audiopath, text
@@ -68,7 +69,8 @@ class LibriSpeechDataset(Dataset):
         root (str): Root directory of the dataset.
     """
 
-    def __init__(self, root: Text):
+    def __init__(self, root: Text) -> None:
+        super().__init__()
         self._root = root
         self._data = []
         files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
@@ -82,23 +84,25 @@ class LibriSpeechDataset(Dataset):
                     audiopath = os.path.join(dirpath, clipid + '.flac')
                     self._data.append((clipid, audiopath, text))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
         clipid, audiopath, text = self._data[index]
         audiopath = os.path.join(self._root, audiopath)
         return clipid, audiopath, text
 
 
 class TextDataset(Dataset):
+    r"Reading columns separated by separaters."
 
     def __init__(self, file: Text, idcol: int = 0, textcol: int = 1) -> None:
+        super().__init__()
         self._data = []
-        with open(file, 'r') as f:
+        with open(file, 'rt') as f:
             for line in f:
                 parts = line.rstrip('\r\n').split('|')
-                clipid = parts[idcol] if idcol >= 0 else ""
+                clipid = parts[idcol] if idcol >= 0 else None
                 text = parts[textcol]
                 self._data.append((clipid, text))
 
@@ -140,59 +144,67 @@ class MergeDataset(Dataset):
 
 
 class EncodedCacheDataset(Dataset):
-    def __init__(self, dataset, salt, transform, cachedir=None):
+    def __init__(
+        self,
+        dataset: Dataset,
+        text_transform: nn.Module,
+        audio_transform: nn.Module,
+        cachedir: Text = None, salt: Text = None
+    ) -> None:
+        super().__init__()
         self._dataset = dataset
-        self._salt = salt
         self._cachedir = cachedir
-        self._transform = transform
-        self.save_mcep = hasattr(self._transform, "vocoder")
+        self._salt = salt
+        self.text_transform = text_transform
+        self.audio_transform = audio_transform
+        self.save_mcep = hasattr(self.audio_transform, "vocoder")
         if self.save_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
             self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._dataset)
+
+    def _get_cachefile(self, id_: Text) -> Text:
+        h = hashlib.sha1(self._salt)
+        h.update(id_.encode('utf-8'))
+        cachefile = '%s.pt' % (h.hexdigest())
+        cachefile = os.path.join(self._cachedir, cachefile)
+        return cachefile
 
     def __getitem__(self, index):
         data = self._dataset[index]
-        h = hashlib.sha1(self._salt)
-        h.update((data[0] + '@' + data[1]).encode('utf-8'))
-        cachefile = '%s.pt' % (h.hexdigest())
-        cachefile = os.path.join(self._cachedir, cachefile)
-        encoded_data = None
+        id_, audio, text = data
+        cachefile = self._get_cachefile(id_)
+        encoded_audio = None
         if os.path.exists(cachefile):
             try:
-                encoded_data = torch.load(cachefile)
+                encoded_audio = torch.load(cachefile)
             except Exception:
                 logger.warn("Failed to load audio", exc_info=True)
-        if encoded_data is None:
-            encoded_data = self._transform(*data)
+        if encoded_audio is None:
+            encoded_audio = self.audio_transform(audio)
             try:
                 if self.save_mcep:
-                    audio, aligntext = encoded_data
-                    f0, logspc, codeap = audio
+                    f0, logspc, codeap = encoded_audio
                     mcep = logspc @ self.sp2mc_matrix
-                    audio = f0, mcep, codeap
-                    encoded_data = audio, aligntext
-                torch.save(encoded_data, cachefile)
+                    encoded_audio = f0, mcep, codeap
+                torch.save(encoded_audio, cachefile)
             except Exception:
                 logger.warn("Failed to save audio cache", exc_info=True)
-        else:
-            aligntext = self._transform.encoder(data[2])
-            encoded_data = encoded_data[0], aligntext
+
+        encoded_text = self.text_transform(text)
 
         if self.save_mcep:
-            audio, aligntext = encoded_data
-            f0, mcep, codeap = audio
+            f0, mcep, codeap = encoded_audio
             logspc = mcep @ self.mc2sp_matrix
-            audio = f0, logspc, codeap
-            encoded_data = audio, aligntext
-        return encoded_data
+            encoded_audio = f0, logspc, codeap
+
+        return encoded_audio, encoded_text
 
 
 class AlignTextDataset(Dataset):
-
     def __init__(self, file: Text, encoder: Union[CharTokenizer, CMUTokenizer]) -> None:
         self.tokenizer = encoder
         self.data = []
@@ -210,12 +222,9 @@ class AlignTextDataset(Dataset):
         return self.data[index]
 
 
-class AudioToCharProcessor(nn.Module):
-
+class MelSpectrogramAudioTransform(nn.Module):
     def __init__(
         self,
-        language: Text,
-        use_phone: bool,
         sample_rate: int = 16000,
         n_fft: int = 512,
         win_length: int = 400,
@@ -224,77 +233,65 @@ class AudioToCharProcessor(nn.Module):
         log_offset: float = 1e-6
     ) -> None:
         super().__init__()
-        self.sample_rate = sample_rate
-        self.n_fft = n_fft
-        self.win_length = win_length
-        self.hop_length = hop_length
-        self.n_mels = n_mels
         self.log_offset = log_offset
         self.effects = [
             ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
+            ["rate", f"{sample_rate}"],
         ]
 
-        self.transform = MelSpectrogram(
-            sample_rate=self.sample_rate,
-            n_fft=self.n_fft,
-            win_length=self.win_length,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels)
-        self._phonemizer = get_phonemizer(language, use_phone)
-        self.encoder = get_tokenizer(language, use_phone)
+        self.melspec = MelSpectrogram(
+            sample_rate=sample_rate,
+            n_fft=n_fft,
+            win_length=win_length,
+            hop_length=hop_length,
+            n_mels=n_mels)
 
-    def forward(self, clipid: Text, audiopath: Text, text: Text) -> Tuple[torch.Tensor, torch.Tensor]:
-        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.effects)
-        audio = self.transform(waveform)
+    def forward(self, audiopath: Text) -> torch.Tensor:
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(
+            audiopath, effects=self.effects)
+        audio = self.melspec(waveform)
         audio = torch.transpose(audio[0, :, :], 0, 1)
         audio = torch.log(audio + self.log_offset)
-
-        phoneme = self._phonemizer(text) if self._phonemizer is not None else text
-        encoded = self.encoder.encode(phoneme)
-
-        return audio, encoded
+        return audio
 
 
-class CharToAudioProcessor(nn.Module):
-
+class WORLDAudioProcessor(nn.Module):
     def __init__(
         self,
-        language: Text,
-        use_phone: bool,
-        sample_rate: int,
-        infer: bool = False
+        sample_rate: int
     ) -> None:
+        from .vocoder import WORLDVocoder
         super().__init__()
-        self.sample_rate = sample_rate
         self.target_effects = [
             ["remix", "1"],
-            ["rate", f"{self.sample_rate}"],
+            ["rate", f"{sample_rate}"],
         ]
+        self.vocoder = WORLDVocoder(sample_rate=sample_rate)
 
-        self._phonemizer = get_phonemizer(language, use_phone)
-        if infer:
-            self.vocoder = None
-        else:
-            from .vocoder import WORLDVocoder
-            self.vocoder = WORLDVocoder(sample_rate=self.sample_rate)
-        self.encoder = get_tokenizer(language, use_phone)
+    def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
+        f0, logspc, codeap = self.vocoder(waveform[0])
+        return f0, logspc, codeap
 
-    def forward(
-        self, clipid: Text, audiopath: Text, aligntext: Text
-    ):
-        aligntext = self.encoder.encode(aligntext)
 
-        if self.vocoder is not None:
-            waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-            f0, logspc, codeap = self.vocoder(waveform[0])
-        else:
-            f0_len = aligntext.shape[0] * 2 - 1
-            f0 = torch.zeros([f0_len], dtype=torch.float32)
-            logspc = torch.zeros([f0_len, 257], dtype=torch.float32)
-            codeap = torch.zeros([f0_len, 1], dtype=torch.float32)
+class TextProcessor(nn.Module):
+    def __init__(
+        self,
+        phonemizer: Any,
+        tokenizer: Any,
+    ) -> None:
+        super().__init__()
+        self.phonemizer = phonemizer
+        self.tokenizer = tokenizer
 
-        return (f0, logspc, codeap), aligntext
+    def forward(self, text: Text) -> torch.Tensor:
+        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
+        encoded = self.tokenizer(phoneme)
+        return encoded
+
+    @property
+    def vocab_size(self) -> int:
+        return self.tokenizer.vocab_size
 
 
 def get_dataset(
@@ -303,19 +300,12 @@ def get_dataset(
     use_align: bool = False,
     use_phone: bool = False
 ) -> Dataset:
-    chained_ds = None
+    chained_ds: Dataset = None
     for dataset in dataset.split(','):
         if dataset == 'librispeech':
-            root = "./data/LibriSpeech"
-            if split == "train":
-                root += "/train-clean-100"
-            elif split == "valid":
-                root += "/dev-clean"
-            elif split == "test":
-                root += "/test-clean"
-            else:
-                raise ValueError()
-            ds = LibriSpeechDataset(root)
+            ds = get_dataset_librispeech(split, variant="100")
+        elif dataset == 'librispeech_360':
+            ds = get_dataset_librispeech(split, variant="360")
         elif dataset == 'ljspeech':
             root = './data/LJSpeech-1.1'
             ds = MetafileDataset(
@@ -352,18 +342,33 @@ def get_dataset(
     return chained_ds
 
 
-def get_transform(task: Text, sample_rate: int, language: Text, use_phone: bool, infer: bool = False):
-    """
-        Args:
-            infer: True to avoid decoding audio for TTS inference
-    """
-    if task == 'asr':
-        transform = AudioToCharProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone)
-    elif task == 'tts':
-        transform = CharToAudioProcessor(sample_rate=sample_rate, language=language, use_phone=use_phone, infer=infer)
+def get_dataset_librispeech(split: Text, variant="100") -> Dataset:
+    root = "./data/LibriSpeech"
+    if split == "train":
+        root += "/train-clean-%s" % variant
+    elif split == "valid":
+        root += "/dev-clean"
+    elif split == "test":
+        root += "/test-clean"
     else:
-        raise ValueError('Unknown task')
-    return transform
+        raise ValueError()
+    return LibriSpeechDataset(root)
+
+
+def get_audio_transform(vocoder: Text, sample_rate: int):
+    if vocoder == 'mel':
+        audio_transform = MelSpectrogramAudioTransform(sample_rate=sample_rate)
+    elif vocoder == 'world':
+        audio_transform = WORLDAudioProcessor(sample_rate=sample_rate)
+    else:
+        raise ValueError('Unknown vocoder')
+    return audio_transform
+
+
+def get_text_transform(language: Text, use_phone: bool):
+    phonemizer = get_phonemizer(language=language, use_phone=use_phone)
+    tokenizer = get_tokenizer(language=language, use_phone=use_phone)
+    return TextProcessor(phonemizer, tokenizer)
 
 
 def get_phonemizer(language: Text, use_phone: bool):
@@ -386,13 +391,13 @@ def get_tokenizer(language: Text, use_phone: bool):
     return CharTokenizer()
 
 
-def get_collate_fn(task):
-    if task == 'asr':
+def get_collate_fn(vocoder):
+    if vocoder == "mel":
         collate_fn = generate_audio_text_batch
-    elif task == 'tts':
+    elif vocoder == "world":
         collate_fn = generate_audio_text_align_batch
     else:
-        raise ValueError('Unknown task')
+        raise ValueError('Unknown vocoder')
     return collate_fn
 
 
@@ -431,7 +436,7 @@ class AudioTextDataModule(pl.LightningDataModule):
     """Data module to read text and audio pairs and optionally aligned texts.
 
         Args:
-            task: ``asr`` or ``tts``
+            task: ``mel`` or ``world``
             dataset: Dataset to use
             sample_rate: Sampling rate of audio
             language: Language
@@ -443,18 +448,18 @@ class AudioTextDataModule(pl.LightningDataModule):
     """
 
     def __init__(
-        self, task: Text,
+        self,
+        vocoder: Text,
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",
         use_phone: bool = False,
         cache: Text = './cache',
         batch_size: int = 128,
-        valid_ratio: float = 0.1,
-        test: bool = False
+        valid_ratio: float = 0.1
     ) -> None:
         super().__init__()
-        self.task = task
+        self.vocoder = vocoder
         self.dataset = dataset
         self.split_dataset = dataset != "librispeech"
         self.valid_ratio = valid_ratio
@@ -462,14 +467,12 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.language = language
         self.use_phone = use_phone
         self.cache = cache
-        self.cache_salt = self.task.encode('utf-8')
+        self.cache_salt = self.vocoder.encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = 2
-        self.collate_fn = get_collate_fn(self.task)
-        self.transform = get_transform(self.task, self.sample_rate, self.language, use_phone=use_phone, infer=test)
-        self.test = test
-        if test:
-            self.cache_salt += b'-test'
+        self.collate_fn = get_collate_fn(self.vocoder)
+        self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
+        self.text_transform = get_text_transform(self.language, use_phone=use_phone)
         self.audio_size = MELSPEC_DIM
         self.train_ds = None
         self.valid_ds = None
@@ -478,25 +481,22 @@ class AudioTextDataModule(pl.LightningDataModule):
 
     @property
     def vocab_size(self) -> int:
-        return self.transform.encoder.vocab_size
+        return self.text_transform.vocab_size
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(
             self.dataset,
             split="train",
-            use_align=self.task == "tts",
+            use_align=self.vocoder == "world",
             use_phone=self.use_phone)
         os.makedirs(self.cache, exist_ok=True)
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
-
-        elif self.test:
-            self.test_ds = EncodedCacheDataset(
-                ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
         else:
             if self.split_dataset:
@@ -510,15 +510,19 @@ class AudioTextDataModule(pl.LightningDataModule):
                 valid_ds = get_dataset(
                     self.dataset,
                     split="valid",
-                    use_align=self.task == "tts",
+                    use_align=self.vocoder == "world",
                     use_phone=self.use_phone)
 
             self.train_ds = EncodedCacheDataset(
-                train_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                train_ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                cachedir=self.cache, salt=self.cache_salt)
             self.valid_ds = EncodedCacheDataset(
-                valid_ds, self.cache_salt, transform=self.transform,
-                cachedir=self.cache)
+                valid_ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                cachedir=self.cache, salt=self.cache_salt)
 
     def train_dataloader(self):
         if self.train_ds is None:

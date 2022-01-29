@@ -19,7 +19,7 @@ def cli_main():
     args = parser.parse_args()
     data = AudioTextDataModule.from_argparse_args(
         args,
-        task="asr")
+        vocoder="mel")
     model = AudioAlignCTC.from_argparse_args(
         args,
         audio_size=data.audio_size,
