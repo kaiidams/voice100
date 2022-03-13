@@ -56,7 +56,7 @@ class MetafileDataset(Dataset):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
+    def __getitem__(self, index: int) -> Tuple[Text, Text, Text]:
         clipid, text = self._data[index]
         audiopath = os.path.join(self._root, self._wavsdir, clipid + self._ext)
         return clipid, audiopath, text
@@ -87,7 +87,7 @@ class LibriSpeechDataset(Dataset):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, index) -> Tuple[Text, Text, Text]:
+    def __getitem__(self, index: int) -> Tuple[Text, Text, Text]:
         clipid, audiopath, text = self._data[index]
         audiopath = os.path.join(self._root, audiopath)
         return clipid, audiopath, text
@@ -132,7 +132,7 @@ class MergeDataset(Dataset):
     def __len__(self) -> int:
         return len(self._audiotext_ds)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> Tuple[Text, Text, Text]:
         id1, audio, _ = self._audiotext_ds[index]
         if self._align_ds is not None:
             _, aligntext = self._align_ds[index]
