@@ -15,6 +15,7 @@ setup(
             "voice100-align-text=voice100.align_text:cli_main",
             "voice100-calc-stat=voice100.calc_stat:cli_main",
             "voice100-cache-dataset=voice100.cache_dataset:cli_main",
+            "voice100-convert-phone=voice100.convert_phone:cli_main",
             "voice100-export-onnx=voice100.export_onnx:cli_main",
             "voice100-train-align=voice100.train_align:cli_main",
             "voice100-train-asr=voice100.train_asr:cli_main",

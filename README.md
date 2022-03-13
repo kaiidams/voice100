@@ -253,6 +253,22 @@ voice100-export-onnx \
 CMU models is a model that use the output of 
 [G2p_en](https://github.com/Kyubyong/g2p) as text representation instead of raw text.
 
+### Training CMU models
+
+These commands convert texts in the dataset into `./data/[dataset]-phone-[split].txt`.
+Then run `voice100-train-[model]` with `--use-phone`.
+
+```sh
+voice100-convert-phone \
+    --dataset ljspeech
+voice100-convert-phone \
+    --dataset librispeech \
+    --split train
+voice100-convert-phone \
+    --dataset librispeech \
+    --split val
+```
+
 ## Inference
 
 Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
