@@ -1,17 +1,172 @@
+from typing import Text
+import os
+import random
+import numpy as np
+import soundfile as sf
 import argparse
 import unittest
 from tqdm import tqdm
+from tempfile import TemporaryDirectory
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from voice100.datasets import AudioTextDataModule
+from voice100.datasets import (
+    MergeDataset,
+    MetafileDataset,
+    TextDataset,
+    AudioTextDataModule
+)
 
 ARGS = "--dataset kokoro_small --language ja"
 ARGS = "--use_phone --batch_size 2"
 ARGS = "--batch_size 2 --dataset librispeech --language en"
 
+FAKE_VOCAB = "hello world good bye morning".split()
+FAKE_PHONE = "HH/AH0/L/OW1 W/ER1/L/D G/UH1/D B/AY1 M/AO1/R/N/IH0/NG".split()
+
+# <tmpdir>/fake/metadata.csv
+# <tmpdir>/fake/wavs/xxxx.wav
+# <tmpdir>/fake-phone-train.txt
+# <tmpdir>/fake-align-train.txt
+# <tmpdir>/fake-phone-align-train.txt
+
+
+def make_random_text():
+    k = random.randint(a=1, b=10)
+    return " ".join(random.choices(FAKE_VOCAB, k=k)).title()
+
+
+def make_random_phone():
+    k = random.randint(a=1, b=10)
+    return "/ /".join(random.choices(FAKE_PHONE, k=k)).title()
+
+
+def make_random_audio(
+    file: Text, duration: float = 5.0, rate: int = 16000
+) -> None:
+    t = np.linspace(0, duration, int(duration * rate))
+    freq = random.randint(100, 1000)
+    waveform = []
+    k = random.randint(a=2, b=10)
+    for i in range(1, k):
+        amp = random.random() * np.exp(-0.2 * i)
+        phrase = random.random() * 2 * np.pi
+        x = amp * np.sin(2 * np.pi * i * freq * t + phrase)
+        waveform.append(x)
+    waveform = np.sum(waveform, axis=0)
+    sf.write(file, waveform, rate)
+
+
+def make_fake_metadataset(dirpath: Text, n: int = 10) -> None:
+    metafile_file = os.path.join(dirpath, "metadata.csv")
+    wavs_path = os.path.join(dirpath, "wavs")
+    os.makedirs(wavs_path)
+    with open(metafile_file, "wt") as metafile_fp:
+        for i in range(n):
+            clipid = f"FAKE001-{i:04}"
+            audiopath = os.path.join(wavs_path, clipid + ".wav")
+            text = make_random_text()
+            transcript = text.lower()
+            metafile_fp.write(f"{clipid}|{text}|{transcript}\n")
+            make_random_audio(audiopath)
+
+
+def make_fake_aligntext_dataset(dirpath: Text, is_phone: bool, n: int = 10) -> None:
+    if is_phone:
+        text_file = os.path.join(dirpath, "fake-phone-align-train.txt")
+    else:
+        text_file = os.path.join(dirpath, "fake-align-train.txt")
+
+    with open(text_file, "wt") as phone_fp:
+        for i in range(n):
+            text = make_random_text()
+            if is_phone:
+                text = make_random_phone()
+                text = text.replace("/", "/_/")
+            else:
+                text = "_".join(make_random_text())
+            phone_fp.write(f"{text}|{text}|0,1,2,3\n")
+
+
+def make_fake_phonetext_dataset(dirpath: Text, n: int = 10) -> None:
+    text_file = os.path.join(dirpath, "fake-phone-train.txt")
+
+    with open(text_file, "wt") as phone_fp:
+        for i in range(n):
+            clipid = f"FAKE001-{i:04}"
+            text = make_random_phone()
+            phone_fp.write(f"{clipid}|{text}\n")
+
 
 class DatasetTest(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.tempdir = TemporaryDirectory()
+        self.data_path = (self.tempdir.name)
+        self.fake_path = os.path.join(self.data_path, "fake")
+        make_fake_metadataset(self.fake_path)
+        make_fake_aligntext_dataset(self.data_path, is_phone=False)
+        make_fake_aligntext_dataset(self.data_path, is_phone=True)
+        make_fake_phonetext_dataset(self.data_path)
+
+    def doCleanups(self) -> None:
+        super().doCleanups()
+        self.tempdir.cleanup()
+
+    def test_metafile_dataset(self):
+        dataset = MetafileDataset(
+            self.fake_path, metafile="metadata.csv", header=False,
+            idcol=0, textcol=2)
+        self.assertEqual(10, len(dataset))
+        for clipid, audiopath, text in dataset:
+            self.assertTrue(clipid.startswith("FAKE001-"))
+            waveform, rate = sf.read(audiopath)
+            self.assertIsInstance(waveform, np.ndarray)
+            self.assertEqual(16000, rate)
+            self.assertIsInstance(text, Text)
+
+    def test_text_dataset(self):
+        phone_file = os.path.join(self.data_path, "fake-phone-train.txt")
+        phone_ds = TextDataset(phone_file)
+        self.assertEqual(10, len(phone_ds))
+        for clipid, phone_text in phone_ds:
+            self.assertTrue(clipid.startswith("FAKE001-"))
+            self.assertIsInstance(phone_text, Text)
+
+    def test_merge_dataset_align(self):
+        dataset = MetafileDataset(
+            self.fake_path, metafile="metadata.csv", header=False,
+            idcol=0, textcol=2)
+        self.assertEqual(10, len(dataset))
+        alignfile = os.path.join(self.data_path, "fake-align-train.txt")
+        align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
+        self.assertEqual(10, len(align_ds))
+        ds = MergeDataset(dataset, align_ds=align_ds)
+        self.assertEqual(10, len(ds))
+        for clipid, audiopath, phonetext in ds:
+            self.assertTrue(clipid.startswith("FAKE001-"))
+            waveform, rate = sf.read(audiopath)
+            self.assertIsInstance(waveform, np.ndarray)
+            self.assertEqual(16000, rate)
+            self.assertIsInstance(phonetext, Text)
+
+    def test_merge_dataset_phone(self):
+        dataset = MetafileDataset(
+            self.fake_path, metafile="metadata.csv", header=False,
+            idcol=0, textcol=2)
+        self.assertEqual(10, len(dataset))
+        phone_file = os.path.join(self.data_path, "fake-phone-train.txt")
+        phone_ds = TextDataset(phone_file)
+        self.assertEqual(10, len(phone_ds))
+        ds = MergeDataset(dataset, phone_ds=phone_ds)
+        self.assertEqual(10, len(ds))
+        for clipid, audiopath, phonetext in ds:
+            self.assertTrue(clipid.startswith("FAKE001-"))
+            waveform, rate = sf.read(audiopath)
+            self.assertIsInstance(waveform, np.ndarray)
+            self.assertEqual(16000, rate)
+            self.assertIsInstance(phonetext, Text)
+
     def test_help(self):
         parser = argparse.ArgumentParser()
         AudioTextDataModule.add_argparse_args(parser)
@@ -21,12 +176,14 @@ class DatasetTest(unittest.TestCase):
         except SystemExit:
             pass
 
+    @unittest.skipUnless(os.path.exists("./data/LJSpeech-1.1"), "Need LJSpeech-1.1 dataset")
     def test_dataset(self):
         from voice100.datasets import get_dataset
         ds = get_dataset("ljspeech", split="train", use_phone=True)
         for x, y, z in ds:
             pass  # print(x, y, z)
 
+    @unittest.skipUnless(os.path.exists("./data/LJSpeech-1.1"), "Need LJSpeech-1.1 dataset")
     def test_data_module(self):
         parser = argparse.ArgumentParser()
         AudioTextDataModule.add_argparse_args(parser)
@@ -60,5 +217,5 @@ class DatasetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     # DatasetTest().test_dataset()
-    DatasetTest().test_data_module()
-    # DatasetTest().test()
+    # DatasetTest().test_data_module()
+    DatasetTest().test()
