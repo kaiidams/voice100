@@ -144,6 +144,7 @@ class MergeDataset(Dataset):
             # For multi-task TTS audio model
             _, aligntext = self._align_ds[index]
             _, targettext = self._target_ds[index]
+            print(len(aligntext), len(targettext))
             return id1, audio, aligntext, targettext
         elif self._align_ds is not None:
             # For TTS audio model
