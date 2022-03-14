@@ -144,6 +144,7 @@ class MergeDataset(Dataset):
             # For multi-task TTS audio model
             _, aligntext = self._align_ds[index]
             _, targettext = self._target_ds[index]
+            print(targettext)
             return id1, audio, aligntext, targettext
         elif self._align_ds is not None:
             # For TTS audio model
@@ -354,7 +355,7 @@ def get_dataset(
             alignfile = f'./data/{dataset}-align-{split}.txt'
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             phonealignfile = f'./data/{dataset}-phone-align-{split}.txt'
-            phonealign_ds = TextDataset(phonealignfile)
+            phonealign_ds = TextDataset(phonealignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds, target_ds=phonealign_ds)
 
         elif use_align:
