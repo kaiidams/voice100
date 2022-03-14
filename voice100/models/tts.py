@@ -415,9 +415,6 @@ class AlignTextToAudioMultitaskModel(pl.LightningModule):
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext)
-        print(aligntext.shape)
-        print(phonetext.shape)
-        print(target_logits.shape)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
