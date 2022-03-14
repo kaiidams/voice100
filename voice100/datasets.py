@@ -144,7 +144,6 @@ class MergeDataset(Dataset):
             # For multi-task TTS audio model
             _, aligntext = self._align_ds[index]
             _, targettext = self._target_ds[index]
-            print(aligntext, targettext)
             return id1, audio, aligntext, targettext
         elif self._align_ds is not None:
             # For TTS audio model
@@ -217,6 +216,7 @@ class EncodedCacheDataset(Dataset):
         encoded_text = self.text_transform(text)
         if self.targettext_transform is not None:
             encoded_targettext = self.targettext_transform(targettext)
+            print(type(self.targettext_transform), encoded_targettext.shape, len(targettext))
 
         if self.save_mcep:
             f0, mcep, codeap = encoded_audio
