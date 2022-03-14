@@ -21,6 +21,7 @@ setup(
             "voice100-train-asr=voice100.train_asr:cli_main",
             "voice100-train-ttsalign=voice100.train_ttsalign:cli_main",
             "voice100-train-ttsaudio=voice100.train_ttsaudio:cli_main",
+            "voice100-train-ttsmultitask=voice100.train_ttsmultitask:cli_main",
         ]
     },
     install_requires=[
