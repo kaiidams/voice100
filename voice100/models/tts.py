@@ -57,8 +57,9 @@ class VoiceMultitaskDecoder(nn.Module):
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
-        self.layer4 = nn.Conv1d(
-            hidden_size, secondary_channels, kernel_size=1, bias=True)
+        self.layer4 = nn.Sequential(
+            InvertedResidual(hidden_size, hidden_size, kernel_size=7),
+            nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x = self.layer1(x)
