@@ -144,7 +144,6 @@ class MergeDataset(Dataset):
             # For multi-task TTS audio model
             _, aligntext = self._align_ds[index]
             _, targettext = self._target_ds[index]
-            print(targettext)
             return id1, audio, aligntext, targettext
         elif self._align_ds is not None:
             # For TTS audio model
@@ -481,6 +480,7 @@ def generate_audio_text_align_target_batch(data_batch):
     f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
     targettext_len = torch.tensor([len(x) for x in targettext_batch], dtype=torch.int32)
+    print(text_len)
     print(targettext_len)
     hoge
 
