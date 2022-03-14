@@ -481,9 +481,6 @@ def generate_audio_text_align_target_batch(data_batch):
     f0_len = torch.tensor([len(x) for x in f0_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
     targettext_len = torch.tensor([len(x) for x in targettext_batch], dtype=torch.int32)
-    print(text_len)
-    print(targettext_len)
-    hoge
 
     f0_batch = pad_sequence(f0_batch, batch_first=True, padding_value=0)
     spec_batch = pad_sequence(spec_batch, batch_first=True, padding_value=0)
