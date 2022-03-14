@@ -216,7 +216,7 @@ class EncodedCacheDataset(Dataset):
         encoded_text = self.text_transform(text)
         if self.targettext_transform is not None:
             encoded_targettext = self.targettext_transform(targettext)
-            print(type(self.targettext_transform), encoded_text.shape, encoded_targettext.shape, len(targettext.split("/")))
+            print(type(self.targettext_transform.tokenizer), type(self.text_transform.tokenizer), len(text), encoded_text.shape, encoded_targettext.shape, len(targettext.split("/")))
 
         if self.save_mcep:
             f0, mcep, codeap = encoded_audio
