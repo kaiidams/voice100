@@ -355,7 +355,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         return model
 
 
-class AlignTextToAudioMultitaskModel(pl.LightningModule):
+class AlignTextToAudioMultiTaskModel(pl.LightningModule):
     def __init__(
         self, vocab_size: int, target_vocab_size: int, hidden_size: int, learning_rate: float
     ) -> None:
@@ -463,7 +463,7 @@ class AlignTextToAudioMultitaskModel(pl.LightningModule):
 
     @staticmethod
     def from_argparse_args(args, **kwargs):
-        model = AlignTextToAudioMultitaskModel(
+        model = AlignTextToAudioMultiTaskModel(
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             **kwargs)

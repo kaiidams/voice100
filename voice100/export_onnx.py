@@ -126,9 +126,9 @@ def export_onnx_ttsaudio(args):
 
 
 def export_onnx_ttsmultitask(args):
-    from voice100.models.tts import AlignTextToAudioMultitaskModel
+    from voice100.models.tts import AlignTextToAudioMultiTaskModel
 
-    model = AlignTextToAudioMultitaskModel.load_from_checkpoint(args.checkpoint)
+    model = AlignTextToAudioMultiTaskModel.load_from_checkpoint(args.checkpoint)
     vocab_size = model.hparams["vocab_size"]
     model.eval()
     model = AlignTextToAudioPredictModel(model)
