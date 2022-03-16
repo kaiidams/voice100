@@ -18,7 +18,7 @@ def cli_main():
     args = parser.parse_args()
     assert not args.use_phone
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
-        args, vocoder="world", use_target=True)
+        args, vocoder="world", use_target=True, use_align=True)
     model = AlignTextToAudioMultiTaskModel.from_argparse_args(
         args, vocab_size=data.vocab_size, target_vocab_size=data.target_vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)

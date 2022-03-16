@@ -398,8 +398,11 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
     return audio_transform
 
 
-def get_text_transform(language: Text, use_phone: bool):
-    phonemizer = get_phonemizer(language=language, use_phone=use_phone)
+def get_text_transform(language: Text, use_align: bool, use_phone: bool):
+    if use_align:
+        phonemizer = None
+    else:
+        phonemizer = get_phonemizer(language=language, use_phone=use_phone)
     tokenizer = get_tokenizer(language=language, use_phone=use_phone)
     return TextProcessor(phonemizer, tokenizer)
 
@@ -511,6 +514,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",
+        use_align: bool = False,
         use_phone: bool = False,
         use_target: bool = False,
         cache: Text = './cache',
@@ -532,9 +536,9 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.num_workers = 2
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
-        self.text_transform = get_text_transform(self.language, use_phone=use_phone)
+        self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)
         if use_target:
-            self.targettext_transform = get_text_transform(self.language, use_phone=True)
+            self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True)
         else:
             self.targettext_transform = None
         self.audio_size = MELSPEC_DIM
