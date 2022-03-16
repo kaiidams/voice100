@@ -125,7 +125,7 @@ def export_onnx_ttsaudio(args):
     )
 
 
-def export_onnx_ttsmultitask(args):
+def export_onnx_ttsaudio_mt(args):
     from voice100.models.tts import AlignTextToAudioMultiTaskModel
 
     model = AlignTextToAudioMultiTaskModel.load_from_checkpoint(args.checkpoint)
@@ -153,7 +153,7 @@ def export_onnx_ttsmultitask(args):
             "f0": {0: "batch_size", 1: "audio_len"},
             "logspc": {0: "batch_size", 1: "audio_len"},
             "codeap": {0: "batch_size", 1: "audio_len"},
-            "logits": {0: "batch_size", 1: "audio_len"},
+            "logits": {0: "batch_size", 1: "aligntext_len"},
         },
     )
 
@@ -162,7 +162,7 @@ def cli_main():
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--output", type=str, required=True)
-    parser.add_argument("--model", type=str, choices=["align", "asr", "ttsalign", "ttsaudio", "ttsmultitask"], required=True)
+    parser.add_argument("--model", type=str, choices=["align", "asr", "ttsalign", "ttsaudio", "ttsaudio_mt"], required=True)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--opset_version", type=int, default=13)
 
@@ -176,8 +176,8 @@ def cli_main():
         export_onnx_ttsalign(args)
     elif args.model == "ttsaudio":
         export_onnx_ttsaudio(args)
-    elif args.model == "ttsmultitask":
-        export_onnx_ttsmultitask(args)
+    elif args.model == "ttsaudio_mt":
+        export_onnx_ttsaudio_mt(args)
     else:
         raise ValueError()
 
