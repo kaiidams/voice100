@@ -16,10 +16,11 @@ def cli_main():
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
     args = parser.parse_args()
-    data = AudioTextDataModule.from_argparse_args(args, vocoder="world")
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
+        args, vocoder="world")
     model = AlignTextToAudioModel.from_argparse_args(args, vocab_size=data.vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)
-    trainer = pl.Trainer.from_argparse_args(
+    trainer: pl.Trainer = pl.Trainer.from_argparse_args(
         args,
         callbacks=[checkpoint_callback])
     trainer.fit(model, data)

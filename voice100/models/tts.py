@@ -41,31 +41,28 @@ class VoiceDecoder(nn.Module):
         return self.layers(x)
 
 
-class VoiceMultitaskDecoder(nn.Module):
+class VoiceMultiTaskDecoder(nn.Module):
     def __init__(self, hidden_size, out_channels, secondary_channels) -> None:
         super().__init__()
         half_hidden_size = hidden_size // 2
         self.layer1 = nn.Sequential(
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=47),
             InvertedResidual(hidden_size, hidden_size, kernel_size=33),
             InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11))
-        self.layer2 = nn.ConvTranspose1d(
-            hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2)
-        self.layer3 = nn.Sequential(
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=7))
+        self.layer2 = nn.Sequential(
+            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
-        self.layer4 = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=7),
-            nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True))
+        self.layer3 = nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x = self.layer1(x)
-        y = self.layer4(x)
+        y = self.layer3(x)
         x = self.layer2(x)
-        x = self.layer3(x)
         return x, y
 
 
@@ -372,7 +369,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         self.codeap_size = 1
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
-        self.decoder = VoiceMultitaskDecoder(hidden_size, self.audio_size, self.target_vocab_size)
+        self.decoder = VoiceMultiTaskDecoder(hidden_size, self.audio_size, self.target_vocab_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
         self.target_criteria = nn.CrossEntropyLoss(reduction='none')

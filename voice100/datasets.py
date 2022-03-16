@@ -399,7 +399,7 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
 
 
 def get_text_transform(language: Text, use_phone: bool):
-    phonemizer = None #get_phonemizer(language=language, use_phone=use_phone)
+    phonemizer = get_phonemizer(language=language, use_phone=use_phone)
     tokenizer = get_tokenizer(language=language, use_phone=use_phone)
     return TextProcessor(phonemizer, tokenizer)
 
