@@ -32,7 +32,25 @@ is generated from the text and the text alignments. The audio model predicts
 features (F0, spectral envelope, coded aperiodicity) given
 the aligned text.
 
-![TTS](./docs/tts.png)
+__Alignment network__
+```mermaid
+graph TD
+    A[Input text] -->|hello| B(Embedding)
+    B --> C(1D inverted residual x4)
+    C --> D(Convolution)
+    D -->|h:0,1 e:0,2 l:1,1 l:1,1 o:1,2| E[Alignment]
+```
+
+__Audio network__
+```mermaid
+graph TD
+    A[Aligned text] -->|_hee_l_l_oo| B(Embedding)
+    B --> C(1D inverted residual x4)
+    C --> D(1D transpose convolution)
+    D --> E(1D inverted residual x3)
+    E --> F(Convolution)
+    F --> G[WORLD parameters]
+```
 
 #### TTS align model
 
@@ -104,7 +122,13 @@ The ASR model is 9-layer MobileNet-like inverted residual which is
 trained to predict on
 [CTC loss](https://pytorch.org/docs/stable/generated/torch.nn.CTCLoss.html).
 
-![ASR](./docs/asr.png)
+__ASR network__
+```mermaid
+graph TD
+    A[Mel spectrogram] --> B(1D inverted residual x 12)
+    B --> C(Convolution)
+    C --> G[Logits of aligned text]
+```
 
 ```
   | Name          | Type                          | Params
