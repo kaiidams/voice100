@@ -125,11 +125,44 @@ def export_onnx_ttsaudio(args):
     )
 
 
+def export_onnx_ttsaudio_mt(args):
+    from voice100.models.tts import AlignTextToAudioMultiTaskModel
+
+    model = AlignTextToAudioMultiTaskModel.load_from_checkpoint(args.checkpoint)
+    vocab_size = model.hparams["vocab_size"]
+    model.eval()
+    model = AlignTextToAudioPredictModel(model)
+
+    aligntext_len = 100
+    aligntext = torch.randint(
+        low=0, high=vocab_size, size=(BATCH_SIZE, aligntext_len), requires_grad=False
+    )
+
+    torch.onnx.export(
+        model,  # model being run
+        aligntext,
+        args.output,
+        export_params=True,  # store the trained parameter weights inside the model file
+        verbose=args.verbose,
+        opset_version=args.opset_version,  # the ONNX version to export the model to
+        do_constant_folding=True,  # whether to execute constant folding for optimization
+        input_names=["aligntext"],  # the model's input names
+        output_names=["f0", "logspc", "codeap", "logits"],  # the model's output names
+        dynamic_axes={
+            "aligntext": {0: "batch_size", 1: "aligntext_len"},  # variable length axes
+            "f0": {0: "batch_size", 1: "audio_len"},
+            "logspc": {0: "batch_size", 1: "audio_len"},
+            "codeap": {0: "batch_size", 1: "audio_len"},
+            "logits": {0: "batch_size", 1: "aligntext_len"},
+        },
+    )
+
+
 def cli_main():
     parser = ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--output", type=str, required=True)
-    parser.add_argument("--model", type=str, choices=["align", "asr", "ttsalign", "ttsaudio"], required=True)
+    parser.add_argument("--model", type=str, choices=["align", "asr", "ttsalign", "ttsaudio", "ttsaudio_mt"], required=True)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--opset_version", type=int, default=13)
 
@@ -143,6 +176,8 @@ def cli_main():
         export_onnx_ttsalign(args)
     elif args.model == "ttsaudio":
         export_onnx_ttsaudio(args)
+    elif args.model == "ttsaudio_mt":
+        export_onnx_ttsaudio_mt(args)
     else:
         raise ValueError()
 

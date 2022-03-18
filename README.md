@@ -293,6 +293,30 @@ voice100-convert-phone \
     --split val
 ```
 
+## CMU multi-task model
+
+CMU multitask model is a variant of TTS audio model which input is an aligned text and outputs are
+WORLD vocoder parameters and CMU phonemes. To train CMU multi-task model, we need alignment data
+for English and CMU phonemes.
+
+- `./data/ljspeech-align-train.txt`
+- `./data/ljspeech-phone-align-train.txt`
+
+Then run 
+
+```sh
+MODEL=ttsaudio_en_mt_conv_base
+
+voice100-train-ttsaudio-mt \
+  --gpus 1 \
+  --dataset ${DATASET} \
+  --language ${LANGUAGE} \
+  --batch_size 32 \
+  --precision 16 \
+  --max_epochs 150 \
+  --default_root_dir ./model/${MODEL}
+```
+
 ## Inference
 
 Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exported ONNX files.
@@ -308,6 +332,7 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 - [English TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.1/ttsaudio_en_conv_base-20220107.ckpt)
 - [English CMU TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_en_phone_conv_base-20220105.ckpt)
 - [Japanese TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_ja_conv_base-20220111.ckpt)
+- [English CMU TTS multitask](https://github.com/kaiidams/voice100/releases/download/v1.2.0.pre1/ttsaudio_en_mt_conv_base-20220314.ckpt)
 - [English ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.1/asr_en_conv_base_ctc-20220126.ckpt)
 - [English CMU Phone ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.0/asr_en_phone_conv_base_ctc-20220107.ckpt)
 - [Japanese ASR](https://github.com/kaiidams/voice100/releases/download/v0.8/stt_ja_conv_base_ctc-20211127.ckpt)

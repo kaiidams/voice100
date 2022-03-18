@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .models.tts import AlignTextToAudioModel
+from .models.tts import AlignTextToAudioMultiTaskModel
 from .datasets import AudioTextDataModule
 
 
@@ -14,12 +14,13 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
-    parser = AlignTextToAudioModel.add_model_specific_args(parser)
+    parser = AlignTextToAudioMultiTaskModel.add_model_specific_args(parser)
     args = parser.parse_args()
+    assert not args.use_phone
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
-        args, vocoder="world")
-    model = AlignTextToAudioModel.from_argparse_args(
-        args, vocab_size=data.vocab_size, use_align=True)
+        args, vocoder="world", use_target=True, use_align=True)
+    model = AlignTextToAudioMultiTaskModel.from_argparse_args(
+        args, vocab_size=data.vocab_size, target_vocab_size=data.target_vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)
     trainer: pl.Trainer = pl.Trainer.from_argparse_args(
         args,
