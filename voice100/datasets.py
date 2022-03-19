@@ -217,7 +217,7 @@ class EncodedCacheDataset(Dataset):
         if self.targettext_transform is not None:
             encoded_targettext = self.targettext_transform(targettext)
 
-        if self.save_mcep:
+        if False and self.save_mcep:
             f0, mcep, codeap = encoded_audio
             logspc = mcep @ self.mc2sp_matrix
             encoded_audio = f0, logspc, codeap
@@ -327,27 +327,7 @@ def get_dataset(
 ) -> Dataset:
     chained_ds: Dataset = None
     for dataset in dataset.split(','):
-        if dataset == 'librispeech':
-            ds = get_dataset_librispeech(split, variant="100")
-        elif dataset == 'librispeech_360':
-            ds = get_dataset_librispeech(split, variant="360")
-        elif dataset == 'ljspeech':
-            root = './data/LJSpeech-1.1'
-            ds = MetafileDataset(
-                root, metafile='metadata.csv',
-                sep='|', header=False, idcol=0, ext='.flac')
-        elif dataset == 'cv_ja':
-            root = './data/cv-corpus-6.1-2020-12-11/ja'
-            ds = MetafileDataset(
-                root,
-                sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
-        elif dataset == 'kokoro_small':
-            root = './data/kokoro-speech-v1_1-small'
-            ds = MetafileDataset(
-                root, metafile='metadata.csv',
-                sep='|', header=False, idcol=0, ext='.flac')
-        else:
-            raise ValueError("Unknown dataset")
+        ds = get_base_dataset(dataset, split)
 
         if use_target:
             assert use_align
@@ -375,6 +355,31 @@ def get_dataset(
     return chained_ds
 
 
+def get_base_dataset(dataset: Text, split: Text):
+    if dataset == 'librispeech':
+        ds = get_dataset_librispeech(split, variant="100")
+    elif dataset == 'librispeech_360':
+        ds = get_dataset_librispeech(split, variant="360")
+    elif dataset == 'ljspeech':
+        root = './data/LJSpeech-1.1'
+        ds = MetafileDataset(
+            root, metafile='metadata.csv',
+            sep='|', header=False, idcol=0, ext='.flac')
+    elif dataset == 'cv_ja':
+        root = './data/cv-corpus-6.1-2020-12-11/ja'
+        ds = MetafileDataset(
+            root,
+            sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
+    elif dataset == 'kokoro_small':
+        root = './data/kokoro-speech-v1_1-small'
+        ds = MetafileDataset(
+            root, metafile='metadata.csv',
+            sep='|', header=False, idcol=0, ext='.flac')
+    else:
+        raise ValueError("Unknown dataset")
+    return ds
+
+
 def get_dataset_librispeech(split: Text, variant="100") -> Dataset:
     root = "./data/LibriSpeech"
     if split == "train":
@@ -399,15 +404,15 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
 
 
 def get_text_transform(language: Text, use_align: bool, use_phone: bool):
-    if use_align:
-        phonemizer = None
-    else:
-        phonemizer = get_phonemizer(language=language, use_phone=use_phone)
+    phonemizer = get_phonemizer(language=language, use_align=use_align, use_phone=use_phone)
     tokenizer = get_tokenizer(language=language, use_phone=use_phone)
     return TextProcessor(phonemizer, tokenizer)
 
 
-def get_phonemizer(language: Text, use_phone: bool):
+def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
+    if use_align:
+        # Aligned texts are already phonemized.
+        return None
     if use_phone:
         assert language == "en"
         return None
