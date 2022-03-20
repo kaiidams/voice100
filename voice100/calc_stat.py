@@ -34,7 +34,7 @@ def calc_stat(data, stat_path):
     f0_count = 0
     logspc_count = 0
     for batch_idx, batch in enumerate(tqdm(data.train_dataloader())):
-        (f0, f0_len, logspc, codeap), (text, text_len), (aligntext, aligntext_len) = batch
+        (f0, f0_len, logspc, codeap), (text, text_len) = batch
         with torch.no_grad():
             mask = generate_padding_mask(f0, f0_len)
             f0mask = (f0 > 30.0).float() * mask
