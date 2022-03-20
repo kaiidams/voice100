@@ -217,7 +217,7 @@ class EncodedCacheDataset(Dataset):
         if self.targettext_transform is not None:
             encoded_targettext = self.targettext_transform(targettext)
 
-        if False and self.save_mcep:
+        if self.save_mcep:
             f0, mcep, codeap = encoded_audio
             logspc = mcep @ self.mc2sp_matrix
             encoded_audio = f0, logspc, codeap
