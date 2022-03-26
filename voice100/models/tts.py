@@ -1,12 +1,12 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Tuple
+from typing import Tuple, Optional
 import pytorch_lightning as pl
 import torch
 from torch import nn
 
-from .asr import InvertedResidual
+from .asr import InvertedResidual, rename_keys
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
@@ -45,6 +45,8 @@ class VoiceMultiTaskDecoder(nn.Module):
     def __init__(self, hidden_size, out_channels, secondary_channels) -> None:
         super().__init__()
         half_hidden_size = hidden_size // 2
+        self.hidden_size = hidden_size
+        self.half_hidden_size = half_hidden_size
         self.layer1 = nn.Sequential(
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=47),
@@ -53,16 +55,33 @@ class VoiceMultiTaskDecoder(nn.Module):
             InvertedResidual(hidden_size, hidden_size, kernel_size=11),
             InvertedResidual(hidden_size, hidden_size, kernel_size=7))
         self.layer2 = nn.Sequential(
-            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
             nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
         self.layer3 = nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.layer1(x)
+        def rename_state_dict_keys(
+            state_dict, prefix,
+            local_metadata, strict, missing_keys, unexpected_keys,
+            error_msgs
+        ):
+            if not any([k.startswith(prefix + 'layer4') for k in state_dict.keys()]):
+                rename_keys(state_dict, prefix, 'layer3', 'layer4')
+                rename_keys(state_dict, prefix, 'layer2.1', 'layer3.0')
+                rename_keys(state_dict, prefix, 'layer2.2', 'layer3.1')
+                rename_keys(state_dict, prefix, 'layer2.3', 'layer3.2')
+                rename_keys(state_dict, prefix, 'layer2.0', 'layer2')
+
+        self._register_load_state_dict_pre_hook(rename_state_dict_keys)
+
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        x = self.layer1(x, mask)
         y = self.layer3(x)
-        x = self.layer2(x)
+        x = torch.reshape(x, shape=[x.shape[0], -1, self.half_hidden_size])
+        if mask is not None:
+            mask = torch.concat([mask, mask], axis=-1)
+            mask = torch.reshape([mask.shape[0], -1, 1])
+        x = self.layer2(x, mask)
         return x, y
 
 
@@ -375,12 +394,16 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         self.target_criteria = nn.CrossEntropyLoss(reduction='none')
 
     def forward(
-        self, aligntext: torch.Tensor
+        self, aligntext: torch.Tensor, aligntext_len: Optional[torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         x = self.embedding(aligntext)
+        if aligntext_len is not None:
+            mask = generate_padding_mask(aligntext, aligntext_len)
+        else:
+            mask = None
         x = torch.transpose(x, 1, 2)
-        x, y = self.decoder(x)
+        x, y = self.decoder(x, mask)
         x = torch.transpose(x, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
@@ -396,10 +419,9 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         return hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits
 
     def predict(
-        self, aligntext: torch.Tensor
+        self, aligntext: torch.Tensor, aligntext_len: Optional[torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-
-        hasf0, f0, logspc, codeap, logits = self.forward(aligntext)
+        hasf0, f0, logspc, codeap, logits = self.forward(aligntext, aligntext_len)
         f0, logspc, codeap = self.norm.unnormalize(f0, logspc, codeap)
         f0 = torch.where(
             hasf0 < 0, torch.zeros(size=(1,), dtype=f0.dtype, device=f0.device), f0
@@ -411,7 +433,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
-        hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext)
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext, aligntext_len)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
