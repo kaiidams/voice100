@@ -13,14 +13,14 @@ def cli_main():
     parser = ArgumentParser()
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
+    parser.add_argument("--split", required=True, type=str, help="Split to use")
     args = parser.parse_args()
     args.write_cache = False
     args.timing = True
-    split = "train"
     if args.use_phone:
-        args.output = f'data/{args.dataset}-phone-align-{split}.txt'
+        args.output = f'data/{args.dataset}-phone-align-{args.split}.txt'
     else:
-        args.output = f'data/{args.dataset}-align-{split}.txt'
+        args.output = f'data/{args.dataset}-align-{args.split}.txt'
 
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="mel")
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
