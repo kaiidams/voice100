@@ -47,17 +47,19 @@ class VoiceMultiTaskDecoder(nn.Module):
         half_hidden_size = hidden_size // 2
         self.hidden_size = hidden_size
         self.half_hidden_size = half_hidden_size
-        self.layer1 = nn.Sequential(
+        self.layer1 = nn.ModuleList([
             InvertedResidual(hidden_size, hidden_size, kernel_size=65),
             InvertedResidual(hidden_size, hidden_size, kernel_size=47),
             InvertedResidual(hidden_size, hidden_size, kernel_size=33),
             InvertedResidual(hidden_size, hidden_size, kernel_size=17),
             InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=7))
-        self.layer2 = nn.Sequential(
+            InvertedResidual(hidden_size, hidden_size, kernel_size=7)
+        ])
+        self.layer2 = nn.ModuleList([
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
+            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True)
+        ])
         self.layer3 = nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True)
 
         def rename_state_dict_keys(
@@ -75,13 +77,15 @@ class VoiceMultiTaskDecoder(nn.Module):
         self._register_load_state_dict_pre_hook(rename_state_dict_keys)
 
     def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.layer1(x, mask)
+        for m in self.layer1:
+            x = m(x, mask)
         y = self.layer3(x)
         x = torch.reshape(x, shape=[x.shape[0], -1, self.half_hidden_size])
         if mask is not None:
             mask = torch.concat([mask, mask], axis=-1)
             mask = torch.reshape([mask.shape[0], -1, 1])
-        x = self.layer2(x, mask)
+        for m in self.layer2:
+            x = m(x, mask)
         return x, y
 
 
