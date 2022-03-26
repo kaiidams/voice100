@@ -80,9 +80,9 @@ class VoiceMultiTaskDecoder(nn.Module):
         for m in self.layer1:
             x = m(x, mask)
         y = self.layer3(x)
-        x = torch.transpose(1, 2)
+        x = torch.transpose(x, 1, 2)
         x = torch.reshape(x, shape=[x.shape[0], -1, self.half_hidden_size])
-        x = torch.transpose(1, 2)
+        x = torch.transpose(x, 1, 2)
         if mask is not None:
             mask = torch.concat([mask, mask], axis=-1)
             mask = torch.reshape([mask.shape[0], 1, -1])
