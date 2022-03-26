@@ -185,17 +185,14 @@ class EncodedCacheDataset(Dataset):
         data = self._dataset[index]
         if self.targettext_transform is not None:
             id_, audio, text, targettext = data
-        else:
-            id_, audio, text = data
-            targettext = None
-        encoded_audio = self._get_encoded_audio(id_, audio)
-        encoded_text = self.text_transform(text)
-        if self.targettext_transform is not None:
+            encoded_audio = self._get_encoded_audio(id_, audio)
+            encoded_text = self.text_transform(text)
             encoded_targettext = self.targettext_transform(targettext)
-
-        if self.targettext_transform is not None:
             return encoded_audio, encoded_text, encoded_targettext
         else:
+            id_, audio, text = data
+            encoded_audio = self._get_encoded_audio(id_, audio)
+            encoded_text = self.text_transform(text)
             return encoded_audio, encoded_text
 
     def _get_encoded_audio(self, id_: Text, audio) -> Any:
