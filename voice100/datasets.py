@@ -181,13 +181,6 @@ class EncodedCacheDataset(Dataset):
     def __len__(self) -> int:
         return len(self._dataset)
 
-    def _get_cachefile(self, id_: Text) -> Text:
-        h = hashlib.sha1(self._salt)
-        h.update(id_.encode('utf-8'))
-        cachefile = '%s.pt' % (h.hexdigest())
-        cachefile = os.path.join(self._cachedir, cachefile)
-        return cachefile
-
     def __getitem__(self, index):
         data = self._dataset[index]
         if self.targettext_transform is not None:
@@ -195,6 +188,17 @@ class EncodedCacheDataset(Dataset):
         else:
             id_, audio, text = data
             targettext = None
+        encoded_audio = self._get_cachefile(id_, audio)
+        encoded_text = self.text_transform(text)
+        if self.targettext_transform is not None:
+            encoded_targettext = self.targettext_transform(targettext)
+
+        if self.targettext_transform is not None:
+            return encoded_audio, encoded_text, encoded_targettext
+        else:
+            return encoded_audio, encoded_text
+
+    def _get_encoded_audio(self, id_: Text, audio):
         cachefile = self._get_cachefile(id_)
         encoded_audio = None
         if os.path.exists(cachefile):
@@ -213,19 +217,19 @@ class EncodedCacheDataset(Dataset):
             except Exception:
                 logger.warn("Failed to save audio cache", exc_info=True)
 
-        encoded_text = self.text_transform(text)
-        if self.targettext_transform is not None:
-            encoded_targettext = self.targettext_transform(targettext)
-
         if self.save_mcep:
             f0, mcep, codeap = encoded_audio
             logspc = mcep @ self.mc2sp_matrix
             encoded_audio = f0, logspc, codeap
 
-        if self.targettext_transform is not None:
-            return encoded_audio, encoded_text, encoded_targettext
-        else:
-            return encoded_audio, encoded_text
+        return encoded_audio
+
+    def _get_cachefile(self, id_: Text) -> Text:
+        h = hashlib.sha1(self._salt)
+        h.update(id_.encode('utf-8'))
+        cachefile = '%s.pt' % (h.hexdigest())
+        cachefile = os.path.join(self._cachedir, cachefile)
+        return cachefile
 
 
 class AlignTextDataset(Dataset):
@@ -538,7 +542,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.cache = cache
         self.cache_salt = self.vocoder.encode('utf-8')
         self.batch_size = batch_size
-        self.num_workers = 2
+        self.num_workers = 3
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)
