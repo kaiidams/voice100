@@ -57,10 +57,10 @@ class VoiceMultiTaskDecoder(nn.Module):
         ])
         self.layer2 = nn.ModuleList([
             InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True)
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7)
         ])
         self.layer3 = nn.Conv1d(hidden_size, secondary_channels, kernel_size=1, bias=True)
+        self.layer4 = nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True)
 
         def rename_state_dict_keys(
             state_dict, prefix,
@@ -88,6 +88,7 @@ class VoiceMultiTaskDecoder(nn.Module):
             mask = torch.reshape(mask, shape=[mask.shape[0], 1, -1])
         for m in self.layer2:
             x = m(x, mask)
+        x = self.layer4(x)
         return x, y
 
 
