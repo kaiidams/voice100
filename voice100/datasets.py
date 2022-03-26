@@ -188,7 +188,7 @@ class EncodedCacheDataset(Dataset):
         else:
             id_, audio, text = data
             targettext = None
-        encoded_audio = self._get_cachefile(id_, audio)
+        encoded_audio = self._get_encoded_audio(id_, audio)
         encoded_text = self.text_transform(text)
         if self.targettext_transform is not None:
             encoded_targettext = self.targettext_transform(targettext)
@@ -198,7 +198,7 @@ class EncodedCacheDataset(Dataset):
         else:
             return encoded_audio, encoded_text
 
-    def _get_encoded_audio(self, id_: Text, audio):
+    def _get_encoded_audio(self, id_: Text, audio) -> Any:
         cachefile = self._get_cachefile(id_)
         encoded_audio = None
         if os.path.exists(cachefile):
