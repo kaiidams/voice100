@@ -80,10 +80,12 @@ class VoiceMultiTaskDecoder(nn.Module):
         for m in self.layer1:
             x = m(x, mask)
         y = self.layer3(x)
+        x = torch.transpose(1, 2)
         x = torch.reshape(x, shape=[x.shape[0], -1, self.half_hidden_size])
+        x = torch.transpose(1, 2)
         if mask is not None:
             mask = torch.concat([mask, mask], axis=-1)
-            mask = torch.reshape([mask.shape[0], -1, 1])
+            mask = torch.reshape([mask.shape[0], 1, -1])
         for m in self.layer2:
             x = m(x, mask)
         return x, y
@@ -402,11 +404,14 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         x = self.embedding(aligntext)
+        x = torch.transpose(x, 1, 2)
+        # x: [batch_size, hidden_size, aligntext_len]
         if aligntext_len is not None:
             mask = generate_padding_mask(aligntext, aligntext_len)
+            mask = torch.unsqueeze(mask, 1)
+            # mask: [batch_size, 1, aligntext_len]
         else:
             mask = None
-        x = torch.transpose(x, 1, 2)
         x, y = self.decoder(x, mask)
         x = torch.transpose(x, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
