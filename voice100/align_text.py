@@ -13,7 +13,7 @@ def cli_main():
     parser = ArgumentParser()
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
-    parser.add_argument("--split", required=True, type=str, help="Split to use")
+    parser.add_argument("--split", default="train", type=str, help="Split to use")
     args = parser.parse_args()
     args.write_cache = False
     args.timing = True
