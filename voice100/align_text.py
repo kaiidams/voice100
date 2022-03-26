@@ -25,7 +25,7 @@ def cli_main():
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="mel")
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
     data.setup("predict")
-    encoder = data.text_transform.encoder
+    encoder = data.text_transform.tokenizer
     model.eval()
     with open(args.output, 'w') as f:
         for idx, batch in enumerate(tqdm(data.predict_dataloader())):
