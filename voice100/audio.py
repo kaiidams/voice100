@@ -6,10 +6,10 @@ from torch import nn
 import random
 
 __all__ = [
-    'BatchSpectrogramAugumentation'
+    "BatchSpectrogramAugumentation"
 ]
 
-AUGUMENT_RATE = 0.2
+SPECTROGRAM_AUGUMENT_RATE = 0.2
 
 
 class BatchSpectrogramAugumentation(nn.Module):
@@ -24,19 +24,19 @@ class BatchSpectrogramAugumentation(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert len(audio.shape) == 3
 
-        if self.do_timestretch and random.random() < AUGUMENT_RATE:
+        if self.do_timestretch and random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.pitchshift(audio)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.ampshift(audio)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.timemask(audio)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.freqmask(audio)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.mixnoise(audio)
-        if random.random() < AUGUMENT_RATE:
+        if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.mixaudio(audio, audio_len)
         else:
             audio = self.maskaudio(audio, audio_len)
