@@ -539,7 +539,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.cache = cache
         self.cache_salt = self.vocoder.encode('utf-8')
         self.batch_size = batch_size
-        self.num_workers = 2
+        self.num_workers = 3
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)

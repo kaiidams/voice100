@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from typing import Optional
 from argparse import ArgumentParser
 import torch
 from torch import nn
@@ -10,6 +11,15 @@ from ..audio import BatchSpectrogramAugumentation
 __all__ = [
     'AudioToCharCTC',
 ]
+
+
+def rename_keys(state_dict, prefix, fromkey, tokey):
+    fromkey = prefix + fromkey
+    tokey = prefix + tokey
+    for k in list(state_dict.keys()):
+        if k.startswith(fromkey):
+            newkey = tokey + k[len(fromkey):]
+            state_dict[newkey] = state_dict.pop(k)
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
@@ -42,21 +52,36 @@ class InvertedResidual(nn.Module):
         super().__init__()
         hidden_size = in_channels * expand_ratio
         self.use_residual = use_residual
-        self.conv = nn.Sequential(
-            # pw
-            ConvBNActivate(in_channels, hidden_size, kernel_size=1),
-            # dw
-            ConvBNActivate(hidden_size, hidden_size, kernel_size=kernel_size, stride=stride, groups=hidden_size),
-            # pw-linear
-            nn.Conv1d(hidden_size, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm1d(out_channels)
-        )
+        self.pwconv = ConvBNActivate(in_channels, hidden_size, kernel_size=1)
+        self.dwconv = ConvBNActivate(hidden_size, hidden_size, kernel_size=kernel_size, stride=stride, groups=hidden_size)
+        self.pwlinear = nn.Conv1d(hidden_size, out_channels, kernel_size=1, bias=False)
+        self.batchnorm = nn.BatchNorm1d(out_channels)
 
-    def forward(self, x):
-        if self.use_residual:
-            return x + self.conv(x)
+        def rename_state_dict_keys(
+            state_dict, prefix,
+            local_metadata, strict, missing_keys, unexpected_keys,
+            error_msgs
+        ):
+            if not any([k.startswith(prefix + 'pwconv') for k in state_dict.keys()]):
+                rename_keys(state_dict, prefix, 'conv.0', 'pwconv')
+                rename_keys(state_dict, prefix, 'conv.1', 'dwconv')
+                rename_keys(state_dict, prefix, 'conv.2', 'pwlinear')
+                rename_keys(state_dict, prefix, 'conv.3', 'batchnorm')
+
+        self._register_load_state_dict_pre_hook(rename_state_dict_keys)
+
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        y = self.pwconv(x)
+        if mask is not None:
+            y = self.dwconv(y * mask)
         else:
-            return self.conv(x)
+            y = self.dwconv(y)
+        y = self.pwlinear(y)
+        y = self.batchnorm(y)
+        if self.use_residual:
+            return x + y
+        else:
+            return y
 
 
 class ConvVoiceEncoder(nn.Module):
