@@ -158,16 +158,24 @@ class WORLDLoss(nn.Module):
 
 
 class TextToAlignTextModel(pl.LightningModule):
-    def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
+    def __init__(self, vocab_size, hidden_size, version, learning_rate) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.embedding = nn.Embedding(vocab_size, hidden_size)
-        self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
+        if version == 2:
+            self.layers = nn.Sequential(
+                InvertedResidual(hidden_size, hidden_size, kernel_size=5),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=29),
+                nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
+        elif version == 1:
+            self.layers = nn.Sequential(
+                InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+                InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+                nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [batch_size, text_len]
@@ -230,7 +238,7 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--hidden_size', type=int, default=256)
+        parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -238,6 +246,7 @@ class TextToAlignTextModel(pl.LightningModule):
     def from_argparse_args(args, **kwargs):
         return TextToAlignTextModel(
             hidden_size=args.hidden_size,
+            version=2,
             learning_rate=args.learning_rate,
             **kwargs)
 
