@@ -176,6 +176,8 @@ class TextToAlignTextModel(pl.LightningModule):
                 InvertedResidual(hidden_size, hidden_size, kernel_size=17),
                 InvertedResidual(hidden_size, hidden_size, kernel_size=11),
                 nn.Conv1d(hidden_size, 2, kernel_size=1, bias=True))
+        else:
+            raise ValueError("Unknown version")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [batch_size, text_len]
@@ -223,7 +225,7 @@ class TextToAlignTextModel(pl.LightningModule):
         (text, text_len), (align, align_len) = batch
         align = align[:, :-1].reshape([align.shape[0], -1, 2])
         align_len = torch.div(align_len, 2, rounding_mode='trunc')
-        pred = torch.relu(self.forward(text))
+        pred = self.forward(text)
         logalign = torch.log((align + 1).to(pred.dtype))
         loss = torch.mean(torch.abs(logalign - pred), axis=2)
         mask = generate_padding_mask(text, text_len)
