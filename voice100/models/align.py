@@ -132,16 +132,12 @@ class AudioAlignCTC(pl.LightningModule):
         text_len: torch.Tensor = None, logits: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # logits [audio_len, batch_size, vocab_size]
-        import time
-        s = time.time()
         if logits is None:
             logits, logits_len = self.forward(audio, audio_len)
         else:
             logits_len = audio_len
         if text is None:
             return logits.argmax(axis=-1)
-        e = time.time()
-        print(e - s)
         score = []
         hist = []
         path = []
@@ -158,8 +154,6 @@ class AudioAlignCTC(pl.LightningModule):
         score = torch.tensor(one_path, dtype=torch.float32)
         hist = pad_sequence(hist, batch_first=True, padding_value=0)
         path = pad_sequence(path, batch_first=True, padding_value=0)
-        t = time.time()
-        print("######", e - s, t - e)
         return score, hist, path, logits_len
 
     @staticmethod
