@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 from typing import Tuple
 import torch
+import numpy as np
 from torch import nn
 import pytorch_lightning as pl
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
@@ -14,62 +15,55 @@ __all__ = [
 ]
 
 
-def ctc_best_path(logits, labels):
+def ctc_best_path(logits, labels, max_move=3):
+
+    logits_len = logits.shape[0]
+
     # Expand label with blanks
-    import numpy as np
     tmp = labels
-    labels = np.zeros(labels.shape[0] * 2 + 1, dtype=np.int32)
+    labels = np.zeros(labels.shape[0] * 2 + 1, dtype=labels.dtype)
     labels[1::2] = tmp
+    labels_len = labels.shape[0]
 
-    cands = [
-        (logits[0, labels[0]], [0], [labels[0]])
-    ]
-    for i in range(1, logits.shape[0]):
-        next_cands = []
+    beams = [np.array([-1, -1], dtype=np.int32)]
+    scores = np.array([logits[0, 0], logits[0, labels[0]]], logits.dtype)
 
-        # Forward one frame in time, but stays
-        # in the same position in the text.
-        for pos, (logit1, hist1, path1) in enumerate(cands):
-            logit1 = logit1 + logits[i, labels[pos]]
-            hist1 = hist1 + [pos]
-            path1 = path1 + [labels[pos]]
-            next_cands.append((logit1, hist1, path1))
+    for i in range(1, logits_len):
 
-        # Forward one frame in time, and also
-        # forward to the next position in the text.
-        for pos, (logit2, hist2, path2) in enumerate(cands):
-            if pos + 1 < len(labels):
-                logit2 = logit2 + logits[i, labels[pos + 1]]
-                hist2 = hist2 + [pos + 1]
-                path2 = path2 + [labels[pos + 1]]
-                if pos + 1 == len(next_cands):
-                    next_cands.append((logit2, hist2, path2))
-                else:
-                    logit, _, _ = next_cands[pos + 1]
-                    if logit2 > logit:
-                        next_cands[pos + 1] = (logit2, hist2, path2)
+        next_label_pos_min = 0
+        next_label_pos_max = min(scores.shape[0] + max_move - 1, labels_len)
 
-        # Forward one frame in time, and forward to the
-        # next non-blank token, skipping the next blank.
-        for pos, (logit3, hist3, path3) in enumerate(cands):
-            if pos + 2 < len(labels) and labels[pos + 1] == 0:
-                logit3 = logit3 + logits[i, labels[pos + 2]]
-                # We can append items as these lists are not shared.
-                hist3.append(pos + 2)
-                path3.append(labels[pos + 2])
-                if pos + 2 == len(next_cands):
-                    next_cands.append((logit3, hist3, path3))
-                else:
-                    logit, _, _ = next_cands[pos + 2]
-                    if logit3 > logit:
-                        next_cands[pos + 2] = (logit3, hist3, path3)
+        next_beam = np.zeros([max_move, next_label_pos_max - next_label_pos_min], dtype=np.int32)
+        next_scores = np.full([max_move, next_label_pos_max - next_label_pos_min], - np.inf, dtype=scores.dtype)
 
-        cands = next_cands
+        for j in range(max_move):
+            k = np.arange(min(scores.shape[0], labels_len - j))
+            v = k + j
 
-    logprob, best_hist, best_path = cands[-1]
-    best_hist = np.array(best_hist, dtype=np.int32)
-    best_path = np.array(best_path, dtype=np.uint8)
-    return logprob, best_hist, best_path
+            next_beam[j, v - next_label_pos_min] = k
+            next_scores[j, v - next_label_pos_min] = scores[k] + logits[i, labels[v]]
+
+            # Don't move from one blank to another blank.
+            if j > 0 and j % 2 == 0:
+                next_scores[j, labels[next_label_pos_min:next_label_pos_max] == 0] = -np.inf
+
+        k = np.argmax(next_scores, axis=0)
+        next_beam = np.choose(k, next_beam)
+        next_scores = np.choose(k, next_scores)
+
+        scores = next_scores.copy()
+        beams.append(next_beam.copy())
+
+    best_path = np.zeros(logits_len, dtype=np.int32)
+    j = labels_len + (-1 if scores[-1] > scores[-2] else -2)
+    best_score = scores[j]
+    for i in range(logits_len - 1, -1, -1):
+        best_path[i] = j
+        j = beams[i][j]
+
+    best_labels = labels[best_path]
+
+    return best_score, best_path, best_labels
 
 
 class AudioAlignCTC(pl.LightningModule):
