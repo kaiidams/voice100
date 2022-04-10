@@ -1,9 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from re import I
 from typing import Tuple
-from sympy import jacobi_poly
 import torch
 import numpy as np
 from torch import nn
@@ -152,10 +150,7 @@ class AudioAlignCTC(pl.LightningModule):
             one_logits = logits[:one_logits_len, i, :].cpu().numpy()
             one_text_len = text_len[i].cpu().numpy()
             one_text = text[i, :one_text_len].cpu().numpy()
-            # with open("test.npz", "wb") as f:
-            #     np.savez(f, logits=one_logits, labels=one_text)
             one_score, one_hist, one_path = ctc_best_path(one_logits, one_text)
-            # hoge
             assert one_path.shape[0] == one_logits_len
             score.append(float(one_score))
             hist.append(torch.from_numpy(one_hist))
