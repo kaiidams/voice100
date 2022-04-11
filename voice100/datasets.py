@@ -371,8 +371,9 @@ def get_base_dataset(dataset: Text, split: Text):
         ds = MetafileDataset(
             root,
             sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
-    elif dataset == 'kokoro_small':
-        root = './data/kokoro-speech-v1_1-small'
+    elif dataset.startswith("kokoro_"):
+        dataset_size = dataset.replace("kokoro_", "")
+        root = f'./data/kokoro-speech-v1_1-{dataset_size}'
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
