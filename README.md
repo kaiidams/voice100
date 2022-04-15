@@ -328,7 +328,7 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 - [Japanese align](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
 - [English TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_conv_base-20220409.ckpt)
 - [English CMU TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_phone_conv_base-20220409.ckpt)
-- [Japanese TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_ja_conv_base-20220409.ckpt)
+- [Japanese TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_ja_conv_base-20220411.ckpt)
 - [English TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.1/ttsaudio_en_conv_base-20220107.ckpt)
 - [English CMU TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_en_phone_conv_base-20220105.ckpt)
 - [Japanese TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_ja_conv_base-20220111.ckpt)
