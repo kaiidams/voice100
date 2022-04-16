@@ -57,13 +57,13 @@ graph TD
 ```
   | Name      | Type       | Params
 -----------------------------------------
-0 | embedding | Embedding  | 3.7 K 
-1 | layers    | Sequential | 614 K 
+0 | embedding | Embedding  | 14.8 K
+1 | layers    | Sequential | 8.6 M 
 -----------------------------------------
-618 K     Trainable params
+8.6 M     Trainable params
 0         Non-trainable params
-618 K     Total params
-1.237     Total estimated model params size (MB)
+8.6 M     Total params
+17.137    Total estimated model params size (MB)
 ```
 
 #### TTS audio model
