@@ -12,6 +12,7 @@ from voice100.models.tts import AlignTextToAudioMultiTaskModel
 from voice100.datasets import get_phonemizer, get_tokenizer
 from voice100.datasets import get_audio_transform
 
+
 def make_samples(
     align_model: Text,
     audio_model: Text,
@@ -106,7 +107,7 @@ def cli_main():
             language="en",
             mt=True,
         )
-    
+
     make_samples(
         align_model="ttsalign_ja_conv_base-20220411",
         audio_model="ttsaudio_ja_conv_base-20220416",
@@ -118,4 +119,5 @@ def cli_main():
     )
 
 
-cli_main()
+if __name__ == "__main__":
+    cli_main()

@@ -24,11 +24,18 @@ def cli_main():
 
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="mel")
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
-    data.setup("predict")
+    if args.split == "train":
+        data.setup("predict")
+    else:
+        data.setup()
     encoder = data.text_transform.tokenizer
     model.eval()
     with open(args.output, 'w') as f:
-        for idx, batch in enumerate(tqdm(data.predict_dataloader())):
+        if args.split == "train":
+            loader = data.predict_dataloader()
+        elif args.split == "valid":
+            loader = data.val_dataloader()
+        for idx, batch in enumerate(tqdm(loader)):
             (audio, audio_len), (text, text_len) = batch
             score, hist, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
             if args.write_cache:
