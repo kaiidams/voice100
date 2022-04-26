@@ -2,14 +2,18 @@ from setuptools import setup
 
 setup(
     name="voice100",
-    version="1.3.1",
+    version="1.3.2",
     author="Katsuya Iida",
     author_email="katsuya.iida@gmail.com",
-    description="Voice100",
+    description="Voice100 is a small TTS for English and Japanese.",
     license="MIT",
     url="https://github.com/kaiidams/voice100",
-    packages=['voice100'],
-    long_description="Voice100 is a small TTS for English and Japanese.",
+    packages=[
+        'voice100',
+        'voice100.models',
+        'voice100.japanese',
+    ],
+    long_description="Voice100 includes neural TTS/ASR models. Inference of Voice100 is low cost as its models are tiny and only depend on CNN without recursion.",
     entry_points={
         "console_scripts": [
             "voice100-align-text=voice100.align_text:cli_main",
