@@ -163,17 +163,22 @@ class EncodedCacheDataset(Dataset):
         audio_transform: nn.Module,
         text_transform: nn.Module,
         targettext_transform: Optional[nn.Module] = None,
-        cachedir: Text = None, salt: Text = None
+        targetaudio_transform: Optional[nn.Module] = None,
+        cachedir: Text = None, salt: Text = None,
+        targetsalt: Text = None
     ) -> None:
         super().__init__()
         self._dataset = dataset
         self.audio_transform = audio_transform
         self.text_transform = text_transform
         self.targettext_transform = targettext_transform
+        self.targetaudio_transform = targetaudio_transform
         self._cachedir = cachedir
         self._salt = salt
+        self._targetsalt = targetsalt
         self.save_mcep = isinstance(self.audio_transform, WORLDAudioProcessor)
-        if self.save_mcep:
+        self.save_target_mcep = isinstance(self.targetaudio_transform, WORLDAudioProcessor)
+        if self.save_mcep or self.save_target_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
             self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
@@ -189,6 +194,12 @@ class EncodedCacheDataset(Dataset):
             encoded_text = self.text_transform(text)
             encoded_targettext = self.targettext_transform(targettext)
             return encoded_audio, encoded_text, encoded_targettext
+        elif self.targetaudio_transform is not None:
+            id_, audio, text = data
+            encoded_audio = self._get_encoded_audio(id_, audio)
+            encoded_targetaudio = self._get_encoded_targetaudio(id_, audio)
+            encoded_text = self.text_transform(text)
+            return encoded_audio, encoded_targetaudio, encoded_text
         else:
             id_, audio, text = data
             encoded_audio = self._get_encoded_audio(id_, audio)
@@ -221,8 +232,41 @@ class EncodedCacheDataset(Dataset):
 
         return encoded_audio
 
+    def _get_encoded_targetaudio(self, id_: Text, audio) -> Any:
+        cachefile = self._get_targetcachefile(id_)
+        encoded_audio = None
+        if os.path.exists(cachefile):
+            try:
+                encoded_audio = torch.load(cachefile)
+            except Exception:
+                logger.warn("Failed to load audio", exc_info=True)
+        if encoded_audio is None:
+            encoded_audio = self.targetaudio_transform(audio)
+            try:
+                if self.save_target_mcep:
+                    f0, logspc, codeap = encoded_audio
+                    mcep = logspc @ self.sp2mc_matrix
+                    encoded_audio = f0, mcep, codeap
+                torch.save(encoded_audio, cachefile)
+            except Exception:
+                logger.warn("Failed to save audio cache", exc_info=True)
+
+        if self.save_target_mcep:
+            f0, mcep, codeap = encoded_audio
+            logspc = mcep @ self.mc2sp_matrix
+            encoded_audio = f0, logspc, codeap
+
+        return encoded_audio
+
     def _get_cachefile(self, id_: Text) -> Text:
         h = hashlib.sha1(self._salt)
+        h.update(id_.encode('utf-8'))
+        cachefile = '%s.pt' % (h.hexdigest())
+        cachefile = os.path.join(self._cachedir, cachefile)
+        return cachefile
+
+    def _get_targetcachefile(self, id_: Text) -> Text:
+        h = hashlib.sha1(self._targetsalt)
         h.update(id_.encode('utf-8'))
         cachefile = '%s.pt' % (h.hexdigest())
         cachefile = os.path.join(self._cachedir, cachefile)
