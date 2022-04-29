@@ -263,6 +263,7 @@ class MelSpectrogramAudioTransform(nn.Module):
             ["remix", "1"],
             ["rate", f"{sample_rate}"],
         ]
+        self.n_mels = n_mels
 
         self.melspec = MelSpectrogram(
             sample_rate=sample_rate,
@@ -270,6 +271,10 @@ class MelSpectrogramAudioTransform(nn.Module):
             win_length=win_length,
             hop_length=hop_length,
             n_mels=n_mels)
+
+    @property
+    def audio_size(self) -> int:
+        return self.n_mels
 
     def forward(self, audiopath: Text) -> torch.Tensor:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(
@@ -293,6 +298,10 @@ class WORLDAudioProcessor(nn.Module):
         ]
         self.vocoder = WORLDVocoder(sample_rate=sample_rate)
 
+    @property
+    def audio_size(self) -> int:
+        return 1 + (self.vocoder.n_fft // 2 + 1) + self.vocoder.codeap_dim
+
     def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
         f0, logspc, codeap = self.vocoder(waveform[0])
@@ -309,14 +318,14 @@ class TextProcessor(nn.Module):
         self.phonemizer = phonemizer
         self.tokenizer = tokenizer
 
+    @property
+    def vocab_size(self) -> int:
+        return self.tokenizer.vocab_size
+
     def forward(self, text: Text) -> torch.Tensor:
         phoneme = self.phonemizer(text) if self.phonemizer is not None else text
         encoded = self.tokenizer(phoneme)
         return encoded
-
-    @property
-    def vocab_size(self) -> int:
-        return self.tokenizer.vocab_size
 
 
 def get_dataset(
@@ -548,11 +557,14 @@ class AudioTextDataModule(pl.LightningDataModule):
             self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True)
         else:
             self.targettext_transform = None
-        self.audio_size = MELSPEC_DIM
         self.train_ds = None
         self.valid_ds = None
         self.test_ds = None
         self.predict_ds = None
+
+    @property
+    def audio_size(self) -> int:
+        return self.audio_transform.audio_size
 
     @property
     def vocab_size(self) -> int:
