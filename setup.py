@@ -47,7 +47,7 @@ setup(
             "g2p-en"
         ],
         "lang-ja": [
-            'mecab-python3',
+            'fugashi',
             'unidic-lite',
         ]
     })
