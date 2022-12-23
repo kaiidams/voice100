@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8.1"
 torch = "^1.13.1"
 torchaudio = "^0.13.0"
 pytorch_lightning = ">=1.4.0"
@@ -15,6 +15,12 @@ fugashi = {extras = ["lang-ja"], version = "^1.2.1"}
 unidic-lite = {extras = ["lang-ja"], version = "^1.0.8"}
 pyworld = {extras = ["tts"], version = "^0.3.2"}
 g2p-en = {extras = ["lang-en-phone"], version = "^2.1.0"}
+
+[tool.poetry.group.test]  # This part can be left out
+
+[tool.poetry.group.test.dependencies]
+pytest = "^6.0.0"
+flake8 = "^6.0.0"
 
 [build-system]
 requires = ["poetry-core"]
