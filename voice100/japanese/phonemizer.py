@@ -2,7 +2,7 @@
 # compatible with Julius https://github.com/julius-speech/segmentation-kit
 
 import re
-import MeCab
+import fugashi
 from typing import Text
 
 _CONVRULES = [
@@ -354,7 +354,7 @@ def hira2kata(text: Text) -> Text:
 
 _SYMBOL_TOKENS = set(list('・、。？！'))
 _NO_YOMI_TOKENS = set(list('「」『』―（）［］[]　…'))
-_TAGGER = MeCab.Tagger()
+_TAGGER = fugashi.Tagger()
 
 
 def text2kata(text: Text) -> Text:
