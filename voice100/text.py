@@ -8,7 +8,7 @@ from typing import Text, List, Optional
 __all__ = [
     'BasicPhonemizer',
     'CharTokenizer',
-    'CMUTokenizer'
+    'BasicTokenizer'
 ]
 
 DEFAULT_CHARACTERS = "_ abcdefghijklmnopqrstuvwxyz'"
@@ -27,6 +27,14 @@ CMU_VOCAB = [
     'OW2', 'OY0', 'OY1', 'OY2', 'P', 'R', 'S', 'SH', 'T', 'TH',
     'UH0', 'UH1', 'UH2', 'UW',
     'UW0', 'UW1', 'UW2', 'V', 'W', 'Y', 'Z', 'ZH']
+
+JA_VOCAB = [
+    '-', '!', ',', '.', '?', 'N', 'a', 'a:', 'b', 'by',
+    'ch', 'd', 'e', 'e:', 'f', 'g', 'gy', 'h', 'hy', 'i',
+    'i:', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'o:',
+    'p', 'py', 'q', 'r', 'ry', 's', 'sh', 't', 'ts', 'u',
+    'u:', 'w', 'y', 'z'
+]
 
 
 class BasicPhonemizer(nn.Module):
@@ -89,16 +97,21 @@ class CharTokenizer(nn.Module):
         return text
 
 
-class CMUTokenizer(nn.Module):
+class BasicTokenizer(nn.Module):
     """Tokenizer class to encode CMU phonemes.
-    Phonemes are separated by slashes (`/`)
+    Phonemes are separated by separators.
     """
 
-    def __init__(self, vocab: Optional[List[Text]] = None):
+    def __init__(self, language: Text):
         super().__init__()
-        if vocab is None:
+        if language == 'en':
             vocab = CMU_VOCAB
+            separator = '/'
+        else:
+            vocab = JA_VOCAB
+            separator = ' '
         self.vocab_size = len(vocab)
+        self._separator = separator
         self._vocab = vocab
         self._v2i = {x: i for i, x in enumerate(vocab)}
 
@@ -106,11 +119,11 @@ class CMUTokenizer(nn.Module):
         return self.encode(text)
 
     def encode(self, text: Text) -> torch.Tensor:
-        encoded = [self._v2i[ch] for ch in text.split('/') if ch in self._v2i]
+        encoded = [self._v2i[ch] for ch in text.split(self._separator) if ch in self._v2i]
         return torch.tensor(encoded, dtype=torch.long)
 
     def decode(self, encoded: torch.Tensor) -> Text:
-        return '/'.join([
+        return self._separator.join([
             self._vocab[x]
             for x in encoded
             if 0 <= x < len(self._vocab)])
