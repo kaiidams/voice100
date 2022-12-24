@@ -309,9 +309,9 @@ _REJECT_RX = re.compile('[^ a-zA-Z:,.?]')
 
 
 def _makerulemap():
-    l = [tuple(x.split('/')) for x in _CONVRULES]
+    rules = [tuple(x.split('/')) for x in _CONVRULES]
     return tuple(
-        {k: v for k, v in l if len(k) == i}
+        {k: v for k, v in rules if len(k) == i}
         for i in (1, 2)
     )
 
