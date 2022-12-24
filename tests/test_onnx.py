@@ -2,8 +2,11 @@
 
 import unittest
 import torch
-import onnxruntime as ort
-import librosa
+try:
+    import onnxruntime as ort
+    import librosa
+except ModuleNotFoundError:
+    pass
 
 from voice100.datasets import get_audio_transform, get_text_transform
 

@@ -22,7 +22,6 @@ g2p-en = {extras = ["lang-en-phone"], version = "^2.1.0"}
 pytest = "^6.0.0"
 flake8 = "^6.0.0"
 soundfile = "^0.11.0"
-onnxruntime = "^1.13.1"
 
 [build-system]
 requires = ["poetry-core"]
