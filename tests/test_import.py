@@ -13,7 +13,6 @@ import voice100.models.align
 import voice100.models.asr
 import voice100.train_ttsaudio
 import voice100.japanese.phonemizer
-import voice100.japanese.kata2ipa
 import voice100.align_text
 import voice100.train_ttsalign  # noqa: F401
 
