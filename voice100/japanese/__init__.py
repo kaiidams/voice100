@@ -14,6 +14,8 @@ _CLEAN_RX = re.compile(r"[^ a-z']")
 
 
 class JapanesePhonemizer(nn.Module):
+    """Phonemizer class that translates Japanese kana-kanji texts to Julius-style phonemes.
+    """
 
     def __init__(self):
         super().__init__()

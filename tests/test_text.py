@@ -1,38 +1,47 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-import unittest
 import torch
-from voice100.text import BasicPhonemizer, CharTokenizer
 
 
-class TestEncoder(unittest.TestCase):
-    def test(self):
-        phonemizer = BasicPhonemizer()
-        tokenizer = CharTokenizer()
+def test_text_en():
+    from voice100.text import BasicPhonemizer, CharTokenizer
+    phonemizer = BasicPhonemizer()
+    tokenizer = CharTokenizer()
 
-        text = "Hello World!"
-        phoneme = phonemizer(text)
-        self.assertEqual("hello world", phoneme)
-        encoded = tokenizer(phoneme)
-        self.assertEqual(torch.Size([11]), encoded.shape)
-        print(encoded)
-
-    def test2(self):
-        from voice100.japanese import JapanesePhonemizer
-        phonemizer = JapanesePhonemizer()
-        tokenizer = CharTokenizer()
-
-        text = "こんにちは世界！"
-        phoneme = phonemizer(text)
-        self.assertEqual("kon'nichiwasekai", phoneme)
-        encoded = tokenizer(phoneme)
-        self.assertEqual(torch.Size([16]), encoded.shape)
-        print(encoded)
-
-        text = "やっぱりヴォイス？"
-        phoneme = phonemizer(text)
-        print(phoneme)
+    text = "Hello World!"
+    phoneme = phonemizer(text)
+    assert phoneme == "hello world"
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([11])
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_text_en_phone():
+    from voice100.text import CMUPhonemizer, CMUTokenizer
+    phonemizer = CMUPhonemizer()
+    tokenizer = CMUTokenizer()
+
+    text = "Hello World!"
+    phoneme = phonemizer(text)
+    assert phoneme == "HH/AH0/L/OW1/ /W/ER1/L/D/ /!"
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([8])
+
+
+def test_text_ja():
+    from voice100.japanese import JapanesePhonemizer
+    from voice100.text import CharTokenizer
+    phonemizer = JapanesePhonemizer()
+    tokenizer = CharTokenizer()
+
+    text = "こんにちは世界！"
+    phoneme = phonemizer(text)
+    assert phoneme == "kon'nichiwasekai"
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([16])
+
+    text = "やっぱりヴォイス？"
+    phoneme = phonemizer(text)
+    assert phoneme == "ya'pariboisu"
+    print(phoneme)
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([12])

@@ -3,7 +3,7 @@
 import torch
 from torch import nn
 import re
-from typing import Text
+from typing import Text, List, Optional
 
 __all__ = [
     'BasicPhonemizer',
@@ -30,6 +30,9 @@ CMU_VOCAB = [
 
 
 class BasicPhonemizer(nn.Module):
+    """Phonemizer class that removes non-alphabet characters and keep
+    the others as it is.
+    """
 
     def __init__(self):
         super().__init__()
@@ -38,9 +41,26 @@ class BasicPhonemizer(nn.Module):
         return NOT_DEFAULT_CHARACTERS_RX.sub('', text.lower())
 
 
-class CharTokenizer(nn.Module):
+class CMUPhonemizer(nn.Module):
+    """Phonemizer class to translate English texts to CMU phonemes.
+    Phonemes are separated by slashes (`/`)
+    """
 
-    def __init__(self, vocab=None) -> None:
+    def __init__(self):
+        super().__init__()
+        from g2p_en import G2p
+        self.g2p = G2p()
+
+    def forward(self, text: Text) -> Text:
+        phone = self.g2p(text)
+        return '/'.join(phone)
+
+
+class CharTokenizer(nn.Module):
+    """Tokenizer class that encodes one character to one token.
+    """
+
+    def __init__(self, vocab: Optional[List[Text]] = None) -> None:
         super().__init__()
         if vocab is None:
             vocab = DEFAULT_CHARACTERS
@@ -70,7 +90,11 @@ class CharTokenizer(nn.Module):
 
 
 class CMUTokenizer(nn.Module):
-    def __init__(self, vocab=None):
+    """Tokenizer class to encode CMU phonemes.
+    Phonemes are separated by slashes (`/`)
+    """
+
+    def __init__(self, vocab: Optional[List[Text]] = None):
         super().__init__()
         if vocab is None:
             vocab = CMU_VOCAB
