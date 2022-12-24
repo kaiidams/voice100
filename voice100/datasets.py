@@ -377,7 +377,7 @@ def get_base_dataset(dataset: Text, split: Text):
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
-    elif dataset == 'commonvoice_ja':
+    elif dataset == 'cv_ja':
         root = './data/cv-corpus-12.0-2022-12-07/ja'
         ds = MetafileDataset(
             root,
