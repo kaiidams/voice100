@@ -17,7 +17,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import BasicPhonemizer, CharTokenizer, CMUTokenizer
+from .text import BasicPhonemizer, CharTokenizer, BasicTokenizer
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
@@ -230,7 +230,7 @@ class EncodedCacheDataset(Dataset):
 
 
 class AlignTextDataset(Dataset):
-    def __init__(self, file: Text, encoder: Union[CharTokenizer, CMUTokenizer]) -> None:
+    def __init__(self, file: Text, encoder: Union[CharTokenizer, BasicTokenizer]) -> None:
         self.tokenizer = encoder
         self.data = []
         with open(file, 'rt') as f:
@@ -382,7 +382,7 @@ def get_base_dataset(dataset: Text, split: Text):
             sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
     elif dataset.startswith("kokoro_"):
         dataset_size = dataset.replace("kokoro_", "")
-        root = f'./data/kokoro-speech-v1_1-{dataset_size}'
+        root = f'./data/kokoro-speech-v1_2-{dataset_size}'
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
@@ -425,7 +425,7 @@ def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
         # Aligned texts are already phonemized.
         return None
     if use_phone:
-        assert language == "en"
+        # Texts are already phonemized.
         return None
     if language == 'en':
         return BasicPhonemizer()
@@ -438,8 +438,7 @@ def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
 
 def get_tokenizer(language: Text, use_phone: bool):
     if use_phone:
-        assert language == "en"
-        return CMUTokenizer()
+        return BasicTokenizer(language=language)
     return CharTokenizer()
 
 
@@ -526,7 +525,7 @@ class AudioTextDataModule(pl.LightningDataModule):
 
     def __init__(
         self,
-        vocoder: Text,
+        vocoder: Text = None,
         dataset: Text = "ljspeech",
         sample_rate: int = 16000,
         language: Text = "en",

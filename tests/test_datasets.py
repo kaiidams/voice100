@@ -8,9 +8,11 @@ import unittest
 from tqdm import tqdm
 from tempfile import TemporaryDirectory
 import torch
+import pytest
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from voice100.datasets import (
+    get_dataset,
     MergeDataset,
     MetafileDataset,
     TextDataset,
@@ -215,7 +217,53 @@ class DatasetTest(unittest.TestCase):
             break
 
 
+@pytest.mark.skip("dataset are needed")
+def test_data_module():
+    ARGS = "--dataset kokoro_small --language ja --use_phone --vocoder mel"
+    parser = argparse.ArgumentParser()
+    AudioTextDataModule.add_argparse_args(parser)
+    args = parser.parse_args(ARGS.split())
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
+    data.setup()
+
+    print(f"audio_size={data.audio_size}")
+    print(f"vocab_size={data.vocab_size}")
+    use_phone = '--use_phone' in ARGS
+    expected_vocab_size = 77 if use_phone else 29
+    expected_audio_size = 64
+    assert data.vocab_size == expected_vocab_size
+    assert data.audio_size == expected_audio_size
+
+    for batch in tqdm(data.train_dataloader()):
+        # print(batch)
+        with torch.no_grad():
+            (audio, audio_len), (text, text_len) = batch
+            packed_audio = pack_padded_sequence(audio, audio_len, batch_first=True, enforce_sorted=False)
+            _ = pad_packed_sequence(packed_audio, batch_first=False)
+            assert not (torch.any(audio.isnan()))
+            assert (torch.min(audio_len) > 0)
+            assert (torch.max(audio_len) == audio.shape[1]), f'{audio_len} {audio.shape}'
+
+            for i in range(text.shape[0]):
+                t = text[i, :text_len[i]]
+                print(data.text_transform.tokenizer.decode(t))
+        break
+
+
+@pytest.mark.skip("dataset are needed")
+def test_kokoro_dataset():
+    dataset = get_dataset(
+        dataset="kokoro_small", split="train",
+        use_align=False, use_phone=False, use_target=False)
+    s = set()
+    for i in range(len(dataset)):
+        clip_id, file, text = dataset[i]
+        # print(clip_id, file, text)
+        s.update(text.split(' '))
+    print(sorted(s))
+
+
 if __name__ == "__main__":
     # DatasetTest().test_dataset()
     # DatasetTest().test_data_module()
-    DatasetTest().test()
+    test_data_module()

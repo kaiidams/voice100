@@ -2,11 +2,6 @@
 
 import unittest
 import torch
-try:
-    import onnxruntime as ort
-    import librosa
-except ModuleNotFoundError:
-    pass
 
 from voice100.datasets import get_audio_transform, get_text_transform
 
@@ -14,6 +9,8 @@ from voice100.datasets import get_audio_transform, get_text_transform
 class TestEncoder(unittest.TestCase):
     @unittest.skip("Need ONNX file")
     def test(self):
+        import onnxruntime as ort
+        import librosa
         audio_file = './data/LibriSpeech/test-clean/1089/134686/1089-134686-0000.flac'
         onnx_file = "model/onnx/asr_en_conv_base_ctc-20220126.onnx"
         sess = ort.InferenceSession(onnx_file)
