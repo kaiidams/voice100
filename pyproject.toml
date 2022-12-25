@@ -8,13 +8,18 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
-torch = "^1.13.1"
-torchaudio = "^0.13.0"
-pytorch_lightning = ">=1.4.0"
-fugashi = {extras = ["lang-ja"], version = "^1.2.1"}
-unidic-lite = {extras = ["lang-ja"], version = "^1.0.8"}
-pyworld = {extras = ["tts"], version = "^0.3.2"}
-g2p-en = {extras = ["lang-en-phone"], version = "^2.1.0"}
+torch = "^1.12"
+torchaudio = "^0"
+pytorch_lightning = "^1.4"
+pyworld = "^0.3.2"
+g2p-en = "^2.1.0"
+fugashi = "^1.2.1"
+unidic-lite = "^1.0.8"
+
+[tool.poetry.extras]
+tts = ["pyworld"]
+lang-en-phone = ["g2p-en"]
+lang-ja = ["fugashi", "unidic-lite"]
 
 [tool.poetry.group.test]  # This part can be left out
 
