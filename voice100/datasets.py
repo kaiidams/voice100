@@ -259,12 +259,8 @@ class MelSpectrogramAudioTransform(nn.Module):
     ) -> None:
         super().__init__()
         self.log_offset = log_offset
-        self.effects = [
-            ["remix", "1"],
-            ["rate", f"{sample_rate}"],
-        ]
+        self.sample_rate = sample_rate
         self.n_mels = n_mels
-
         self.melspec = MelSpectrogram(
             sample_rate=sample_rate,
             n_fft=n_fft,
@@ -277,13 +273,10 @@ class MelSpectrogramAudioTransform(nn.Module):
         return self.n_mels
 
     def forward(self, audiopath: Text) -> torch.Tensor:
-        # waveform, _ = torchaudio.sox_effects.apply_effects_file(
-        #     audiopath, effects=self.effects)
         waveform, sr = torchaudio.load(audiopath)
-        waveform = torchaudio.functional.resample(waveform, sr, 16000)
+        waveform = torchaudio.functional.resample(waveform[0], sr, self.sample_rate)
         audio = self.melspec(waveform)
-        audio = torch.transpose(audio[0, :, :], 0, 1)
-        audio = torch.log(audio + self.log_offset)
+        audio = torch.log(audio.T + self.log_offset)
         return audio
 
 
