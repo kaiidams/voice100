@@ -49,6 +49,19 @@ def convert_phone_kokoro(dataset: Text, split: Text, language: Text, output_file
             outf.write("%s|%s\n" % (clipid, phone_text))
 
 
+def convert_phone(dataset: Text, split: Text, language: Text, output_file: Text) -> None:
+    if split != "train":
+        raise ValueError("Unknown split")
+    assert language == 'ja'
+    from .japanese import JapanesePhonemizer
+    phonemizer = JapanesePhonemizer(use_phone=True)
+    dataset = get_base_dataset(dataset, split)
+    with open(output_file, "wt") as outf:
+        for clipid, _, text in tqdm(dataset):
+            phone_text = phonemizer(text)
+            outf.write("%s|%s\n" % (clipid, phone_text))
+
+
 def cli_main():
     parser = ArgumentParser()
     parser.add_argument("--dataset", type=str, default="ljspeech")
@@ -63,6 +76,8 @@ def cli_main():
                 convert_phone_librispeech(dataset, split, output_file)
             elif dataset.startswith("kokoro_"):
                 convert_phone_kokoro(dataset, split=split, language='ja', output_file=output_file)
+            elif dataset == 'cv_ja':
+                convert_phone(dataset, split=split, language='ja', output_file=output_file)
             else:
                 raise ValueError("Unknown dataset")
 
