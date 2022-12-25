@@ -1,5 +1,7 @@
 # Voice100
 
+[![Python package](https://github.com/kaiidams/voice100/actions/workflows/python-package.yml/badge.svg)](https://github.com/kaiidams/voice100/actions/workflows/python-package.yml)
+
 Voice100 includes neural TTS/ASR models. Inference of Voice100
 is low cost as its models are tiny and only depend on CNN
 without recursion.
