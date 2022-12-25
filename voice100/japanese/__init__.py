@@ -17,12 +17,15 @@ class JapanesePhonemizer(nn.Module):
     """Phonemizer class that translates Japanese kana-kanji texts to Julius-style phonemes.
     """
 
-    def __init__(self):
+    def __init__(self, use_phone: bool = False):
         super().__init__()
+        self._use_phone = use_phone
 
     def forward(self, text: Text) -> Text:
         text = text2kata(text)
         text = kata2phoneme(text)
+        if self._use_phone:
+            return text
         text = text.replace(' ', '')
         text = text.replace(',', ' ')
         text = text.replace('.', ' ')

@@ -371,7 +371,7 @@ def get_base_dataset(dataset: Text, split: Text):
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
     elif dataset == 'cv_ja':
-        root = './data/cv-corpus-6.1-2020-12-11/ja'
+        root = './data/cv-corpus-12.0-2022-12-07/ja'
         ds = MetafileDataset(
             root,
             sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
@@ -529,6 +529,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         use_target: bool = False,
         cache: Text = './cache',
         batch_size: int = 128,
+        num_workers: int = 0,
         valid_ratio: float = 0.1
     ) -> None:
         super().__init__()
@@ -543,7 +544,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.cache = cache
         self.cache_salt = self.vocoder.encode('utf-8')
         self.batch_size = batch_size
-        self.num_workers = 2
+        self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
         self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)
