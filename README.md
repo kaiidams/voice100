@@ -336,5 +336,6 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 - [Japanese TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.3.1/ttsaudio_ja_conv_base-20220416.ckpt)
 - [English CMU TTS multitask](https://github.com/kaiidams/voice100/releases/download/v1.2.0/ttsaudio_en_mt_conv_base-20220316.ckpt)
 - [English ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.1/asr_en_conv_base_ctc-20220126.ckpt)
-- [English CMU Phone ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.0/asr_en_phone_conv_base_ctc-20220107.ckpt)
+- [English CMU ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.0/asr_en_phone_conv_base_ctc-20220107.ckpt)
 - [Japanese ASR](https://github.com/kaiidams/voice100/releases/download/v0.8/stt_ja_conv_base_ctc-20211127.ckpt)
+- [Japanese phone ASR](https://github.com/kaiidams/voice100/releases/download/v1.4.0/asr_ja_phone_conv_base_ctc-20221225.ckpt)
