@@ -102,6 +102,8 @@ class AudioAlignCTC(pl.LightningModule):
         # text: [batch_size, text_len]
         logits, logits_len = self.forward(audio, audio_len)
         # logits: [audio_len, batch_size, vocab_size]
+        assert not torch.any(torch.isnan(logits))
+        assert not torch.any(torch.isinf(logits))
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
         return self.loss_fn(log_probs, text, log_probs_len, text_len)
