@@ -11,6 +11,7 @@ __all__ = [
 
 _CHOON_RX = re.compile(r'(.):')
 _CLEAN_RX = re.compile(r"[^ a-z']")
+_SPACES_RX = re.compile(r"\s+")
 
 
 class JapanesePhonemizer(nn.Module):
@@ -25,6 +26,14 @@ class JapanesePhonemizer(nn.Module):
         text = text2kata(text)
         text = kata2phoneme(text)
         if self._use_phone:
+            text = text.replace('N', "n'")
+            text = text.lower()
+            text = text.replace("n'", 'N')
+            text = text.replace('-', '')
+            text = text.replace('c ', 'k ')
+            text = text.replace('x', 'k')
+            text = text.replace('v', 'b')
+            text = _SPACES_RX.sub(' ', text)
             return text
         text = text.replace(' ', '')
         text = text.replace(',', ' ')

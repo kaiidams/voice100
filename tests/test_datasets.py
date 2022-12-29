@@ -236,6 +236,7 @@ def test_data_module():
     assert data.vocab_size == expected_vocab_size
     assert data.audio_size == expected_audio_size
 
+    counter = [0] * data.vocab_size
     for batch in tqdm(data.train_dataloader()):
         # print(batch)
         with torch.no_grad():
@@ -247,12 +248,14 @@ def test_data_module():
             assert not (torch.any(audio.isinf()))
             assert (torch.min(audio_len) > 0)
             assert (torch.max(audio_len) == audio.shape[1]), f'{audio_len} {audio.shape}'
-
-            # for i in range(text.shape[0]):
-            #     assert text_len[i] > 0
-            #     if text_len[i] < 5:
-            #         t = text[i, :text_len[i]]
-            #         print(data.text_transform.tokenizer.decode(t))
+            for i in range(text.shape[0]):
+                assert text_len[i] > 0
+                for j in range(text_len[i]):
+                    counter[text[i, j]] += 1
+            assert counter[0] == 0, text
+                # if text_len[i] < 5:
+                #     t = text[i, :text_len[i]]
+                #     print(data.text_transform.tokenizer.decode(t))
         #break
 
 

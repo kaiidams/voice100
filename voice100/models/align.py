@@ -68,7 +68,7 @@ def ctc_best_path(logits, labels, max_move=3):
 
 class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate, weight_decay):
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
         self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
@@ -124,8 +124,7 @@ class AudioAlignCTC(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(),
-            lr=self.hparams.learning_rate,
-            weight_decay=self.hparams.weight_decay)
+            lr=self.hparams.learning_rate)
         return optimizer
 
     @torch.no_grad()
@@ -165,7 +164,6 @@ class AudioAlignCTC(pl.LightningModule):
         parser.add_argument('--hidden_size', type=float, default=128)
         parser.add_argument('--num_layers', type=int, default=2)
         parser.add_argument('--learning_rate', type=float, default=0.001)
-        parser.add_argument('--weight_decay', type=float, default=0.001)
         return parent_parser
 
     @staticmethod
@@ -174,5 +172,4 @@ class AudioAlignCTC(pl.LightningModule):
             hidden_size=args.hidden_size,
             num_layers=args.num_layers,
             learning_rate=args.learning_rate,
-            weight_decay=args.weight_decay,
             **kwargs)

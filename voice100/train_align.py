@@ -15,7 +15,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AudioAlignCTC.add_model_specific_args(parser)
-    parser.set_defaults(batch_size=256, log_every_n_steps=10, vocoder="mel", gradient_clip_val=0.25)
+    parser.set_defaults(batch_size=512, log_every_n_steps=10, vocoder="mel", gradient_clip_val=5.0)
     args = parser.parse_args()
     assert args.vocoder == "mel"
     data = AudioTextDataModule.from_argparse_args(args)
