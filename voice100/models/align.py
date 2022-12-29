@@ -71,7 +71,9 @@ class AudioAlignCTC(pl.LightningModule):
     def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
-        self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
+        self.conv1 = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
+        self.conv2 = nn.Conv1d(hidden_size, hidden_size, kernel_size=3, stride=1, padding=1)
+        self.tanh = nn.Tanh()
         self.lstm = nn.LSTM(
             input_size=hidden_size, hidden_size=hidden_size,
             num_layers=num_layers, dropout=0.2, bidirectional=True)
@@ -82,8 +84,10 @@ class AudioAlignCTC(pl.LightningModule):
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
         x = torch.transpose(audio, 1, 2)
-        x = self.conv(x)
-        x = torch.relu(x)
+        x = self.conv1(x)
+        x = self.tanh(x)
+        x = self.conv2(x)
+        x = self.tanh(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
         x = torch.transpose(x, 1, 2)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
@@ -95,9 +99,9 @@ class AudioAlignCTC(pl.LightningModule):
         (audio, audio_len), (text, text_len) = batch
 
         if self.training:
+            audio, audio_len = self.batch_augment(audio, audio_len)
             assert not torch.any(torch.isnan(audio))
             assert not torch.any(torch.isinf(audio))
-            audio, audio_len = self.batch_augment(audio, audio_len)
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         logits, logits_len = self.forward(audio, audio_len)
