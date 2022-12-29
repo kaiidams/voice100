@@ -29,6 +29,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         self, audio: torch.Tensor, audio_len: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert len(audio.shape) == 3
+        assert audio.dtype == torch.float32
 
         if self.do_timestretch and random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
