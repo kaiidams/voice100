@@ -31,6 +31,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         assert len(audio.shape) == 3
         assert audio.dtype == torch.float32
 
+        assert not (torch.any(audio.isinf()))
         if self.do_timestretch and random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
         if random.random() < SPECTROGRAM_AUGUMENT_RATE:
@@ -75,7 +76,8 @@ class BatchSpectrogramAugumentation(nn.Module):
             hw = random.randint(1, 20)
             s = int(t - hw)
             e = int(t + hw)
-            audio[:, s:e, :] = self.blank_audio
+            a = random.uniform(-self.blank_audio, -5)
+            audio[:, s:e, :] = a
         return audio
 
     def freqmask(self, audio):
@@ -84,7 +86,8 @@ class BatchSpectrogramAugumentation(nn.Module):
         hw = random.randint(1, 3)
         s = int(t - hw)
         e = int(t + hw)
-        audio[:, :, s:e] = self.blank_audio
+        a = random.uniform(-self.blank_audio, -5)
+        audio[:, :, s:e] = a
         return audio
 
     def mixnoise(self, audio):
@@ -93,14 +96,14 @@ class BatchSpectrogramAugumentation(nn.Module):
         std = 5.0 * random.random()
         scale = torch.linspace(low, high, 64, device=audio.device)[None, :]
         noise = torch.rand(audio.shape, device=audio.device) * std + scale
-        return torch.log(torch.exp(audio) + torch.exp(noise) + self.log_offset)
+        return torch.log(torch.clamp(torch.exp(audio) + torch.exp(noise), min=self.log_offset))
 
     def mixaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
         x = torch.exp(audio) * audio_mask
         y = torch.cat([x[1:], x[:1]], axis=0)
-        return torch.log((0.9 * x + 0.1 * y) * audio_mask + self.log_offset)
+        return torch.log(torch.clamp((0.9 * x + 0.1 * y) * audio_mask, min=self.log_offset))
 
     def maskaudio(self, audio, audio_len):
-        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] >= audio_len[:, None, None]).float()
-        return audio + audio_mask * self.blank_audio
+        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
+        return torch.log(torch.clamp(torch.exp(audio) * audio_mask, min=self.log_offset))
