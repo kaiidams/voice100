@@ -10,13 +10,17 @@ __all__ = [
 ]
 
 SPECTROGRAM_AUGUMENT_RATE = 0.2
+LOG_SHIFT = 1e-6
 
 
 class BatchSpectrogramAugumentation(nn.Module):
+    """Augment mel-spectrogram data
+    """
 
-    def __init__(self, do_timestretch=True):
+    def __init__(self, do_timestretch=True, log_shift=LOG_SHIFT):
         super().__init__()
         self.do_timestretch = do_timestretch
+        self.log_shift = log_shift
 
     @torch.no_grad()
     def forward(
@@ -86,14 +90,14 @@ class BatchSpectrogramAugumentation(nn.Module):
         std = 5.0 * random.random()
         scale = torch.linspace(low, high, 64, device=audio.device)[None, :]
         noise = torch.rand(audio.shape, device=audio.device) * std + scale
-        return torch.log(torch.exp(audio) + torch.exp(noise))
+        return torch.log(torch.exp(audio) + torch.exp(noise) + self.log_shift)
 
     def mixaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
         x = torch.exp(audio) * audio_mask
         y = torch.cat([x[1:], x[:1]], axis=0)
-        return torch.log(0.9 * x + 0.1 * y + 1e-15) * audio_mask
+        return torch.log((0.9 * x + 0.1 * y) * audio_mask + self.log_shift)
 
     def maskaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
-        return audio * audio_mask
+        return torch.log(audio * audio_mask + self.log_shift)
