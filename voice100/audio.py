@@ -101,5 +101,5 @@ class BatchSpectrogramAugumentation(nn.Module):
         return torch.log((0.9 * x + 0.1 * y) * audio_mask + self.log_offset)
 
     def maskaudio(self, audio, audio_len):
-        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
-        return torch.log(audio * audio_mask + self.log_offset)
+        audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] >= audio_len[:, None, None]).float()
+        return audio + audio_mask * self.blank_audio
