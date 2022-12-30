@@ -53,3 +53,41 @@ def test_text_ja():
     assert encoded.shape == torch.Size([12])
     decoded = tokenizer.decode(encoded)
     assert decoded == "ya'pariboisu"
+
+
+def test_text_ja_phone():
+    from voice100.japanese import JapanesePhonemizer
+    from voice100.text import BasicTokenizer
+    phonemizer = JapanesePhonemizer(use_phone=True)
+    tokenizer = BasicTokenizer(language='ja')
+
+    text = "こんにちは世界！"
+    phoneme = phonemizer(text)
+    assert phoneme == 'k o N n i ch i w a s e k a i !'
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([15])
+    decoded = tokenizer.decode(encoded)
+    assert decoded == 'k o N n i ch i w a s e k a i !'
+
+    text = "やっぱりヴォイス？"
+    phoneme = phonemizer(text)
+    assert phoneme == "y a q p a r i b o i s u ?"
+    print(phoneme)
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([13])
+    decoded = tokenizer.decode(encoded)
+    assert decoded == "y a q p a r i b o i s u ?"
+
+    text = "「やっぱり」は★-Voice?"
+    phoneme = phonemizer(text)
+    assert phoneme == "y a q p a r i w a ★ b o i k e ?"
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([15])
+    decoded = tokenizer.decode(encoded)
+    assert decoded == "y a q p a r i w a b o i k e ?"
+
+    phoneme = "k o N n i - ch i あ w a C a v u"
+    encoded = tokenizer(phoneme)
+    assert encoded.shape == torch.Size([12])
+    decoded = tokenizer.decode(encoded)
+    assert decoded == 'k o N n i - ch i w a a u'
