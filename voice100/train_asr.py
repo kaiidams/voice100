@@ -29,7 +29,11 @@ def cli_main():
         args,
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)
-
+    import torch
+    state = torch.load('./outputs/stt_ja_conv_base_ctc-20211127.ckpt', map_location='cpu')
+    state = state['state_dict']
+    del state['decoder.layers.1.weight']
+    del state['decoder.layers.1.bias']
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     trainer: pl.Trainer = pl.Trainer.from_argparse_args(
