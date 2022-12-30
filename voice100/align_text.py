@@ -14,6 +14,7 @@ def cli_main():
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser.add_argument("--checkpoint", required=True, type=str, help="Load from checkpoint")
     parser.add_argument("--split", default="train", type=str, help="Split to use")
+    parser.set_defaults(vocoder="mel")
     args = parser.parse_args()
     args.write_cache = False
     args.timing = True
@@ -22,7 +23,7 @@ def cli_main():
     else:
         args.output = f'data/{args.dataset}-align-{args.split}.txt'
 
-    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="mel")
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
     model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
     if args.split == "train":
         data.setup("predict")
