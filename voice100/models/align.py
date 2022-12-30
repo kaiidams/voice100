@@ -26,7 +26,7 @@ def ctc_best_path(logits, labels, max_move=3):
     labels_len = labels.shape[0]
 
     beams = [np.array([-1, -1], dtype=np.int32)]
-    scores = np.array([logits[0, 0], logits[0, labels[0]]], logits.dtype)
+    scores = np.array([logits[0, 0], logits[0, labels[0]]], dtype=logits.dtype)
 
     for i in range(1, logits_len):
 
@@ -78,7 +78,7 @@ class AudioAlignCTC(pl.LightningModule):
             input_size=hidden_size, hidden_size=hidden_size,
             num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
-        self.loss_fn = nn.CTCLoss()
+        self.criterion = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -100,17 +100,14 @@ class AudioAlignCTC(pl.LightningModule):
 
         if self.training:
             audio, audio_len = self.batch_augment(audio, audio_len)
-            assert not torch.any(torch.isnan(audio))
-            assert not torch.any(torch.isinf(audio))
         # audio: [batch_size, audio_len, audio_size]
         # text: [batch_size, text_len]
         logits, logits_len = self.forward(audio, audio_len)
         # logits: [audio_len, batch_size, vocab_size]
-        assert not torch.any(torch.isnan(logits))
-        assert not torch.any(torch.isinf(logits))
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        return self.loss_fn(log_probs, text, log_probs_len, text_len)
+        fixed_text_len = torch.minimum(logits_len, text_len)  # For very short audio
+        return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
