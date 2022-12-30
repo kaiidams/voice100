@@ -225,7 +225,7 @@ def test_data_module():
     AudioTextDataModule.add_argparse_args(parser)
     args = parser.parse_args(ARGS.split())
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
-    data.setup()
+    data.setup("predict")
     spec_augment = BatchSpectrogramAugumentation()
 
     print(f"audio_size={data.audio_size}")
@@ -237,22 +237,28 @@ def test_data_module():
     assert data.audio_size == expected_audio_size
 
     counter = [0] * data.vocab_size
-    for batch in tqdm(data.train_dataloader()):
+    short_count = 0
+    for batch in tqdm(data.predict_dataloader()):
         # print(batch)
         with torch.no_grad():
             (audio, audio_len), (text, text_len) = batch
-            audio, audio_len = spec_augment(audio, audio_len)
-            packed_audio = pack_padded_sequence(audio, audio_len, batch_first=True, enforce_sorted=False)
-            _ = pad_packed_sequence(packed_audio, batch_first=False)
-            assert not (torch.any(audio.isnan()))
-            assert not (torch.any(audio.isinf()))
-            assert (torch.min(audio_len) > 0)
-            assert (torch.max(audio_len) == audio.shape[1]), f'{audio_len} {audio.shape}'
-            for i in range(text.shape[0]):
-                assert text_len[i] > 0
-                for j in range(text_len[i]):
-                    counter[text[i, j]] += 1
-            assert counter[0] == 0, text
+            #assert torch.all(torch.divide(audio_len + 1, 2) >= text_len)
+            c = torch.sum((torch.divide(audio_len + 1, 2, rounding_mode='trunc') < text_len).to(torch.int)).item()
+            if c:
+                short_count += c
+            print(short_count)
+            # audio, audio_len = spec_augment(audio, audio_len)
+            # packed_audio = pack_padded_sequence(audio, audio_len, batch_first=True, enforce_sorted=False)
+            # _ = pad_packed_sequence(packed_audio, batch_first=False)
+            # assert not (torch.any(audio.isnan()))
+            # assert not (torch.any(audio.isinf()))
+            # assert (torch.min(audio_len) > 0)
+            # assert (torch.max(audio_len) == audio.shape[1]), f'{audio_len} {audio.shape}'
+            # for i in range(text.shape[0]):
+            #     assert text_len[i] > 0
+            #     for j in range(text_len[i]):
+            #         counter[text[i, j]] += 1
+            # assert counter[0] == 0, text
 
 
 @pytest.mark.skip("dataset are needed")
