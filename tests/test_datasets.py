@@ -253,10 +253,6 @@ def test_data_module():
                 for j in range(text_len[i]):
                     counter[text[i, j]] += 1
             assert counter[0] == 0, text
-                # if text_len[i] < 5:
-                #     t = text[i, :text_len[i]]
-                #     print(data.text_transform.tokenizer.decode(t))
-        #break
 
 
 @pytest.mark.skip("dataset are needed")
