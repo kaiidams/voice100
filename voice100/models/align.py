@@ -1,6 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from argparse import ArgumentParser
+from argparse import _ArgumentGroup
 from typing import Tuple
 import torch
 import numpy as np
@@ -26,7 +26,7 @@ def ctc_best_path(logits, labels, max_move=3):
     labels_len = labels.shape[0]
 
     beams = [np.array([-1, -1], dtype=np.int32)]
-    scores = np.array([logits[0, 0], logits[0, labels[0]]], logits.dtype)
+    scores = np.array([logits[0, 0], logits[0, labels[0]]], dtype=logits.dtype)
 
     for i in range(1, logits_len):
 
@@ -72,18 +72,19 @@ class AudioAlignCTC(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
+        self.relu = nn.ReLU()
         self.lstm = nn.LSTM(
             input_size=hidden_size, hidden_size=hidden_size,
             num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
-        self.loss_fn = nn.CTCLoss()
+        self.criterion = nn.CTCLoss()
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
         x = torch.transpose(audio, 1, 2)
         x = self.conv(x)
-        x = torch.relu(x)
+        x = self.relu(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
         x = torch.transpose(x, 1, 2)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
@@ -102,7 +103,8 @@ class AudioAlignCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        return self.loss_fn(log_probs, text, log_probs_len, text_len)
+        fixed_text_len = torch.minimum(logits_len, text_len.cpu())  # For very short audio
+        return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
@@ -120,8 +122,7 @@ class AudioAlignCTC(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(),
-            lr=self.hparams.learning_rate,
-            weight_decay=0.00004)
+            lr=self.hparams.learning_rate)
         return optimizer
 
     @torch.no_grad()
@@ -137,6 +138,7 @@ class AudioAlignCTC(pl.LightningModule):
             logits_len = audio_len
         if text is None:
             return logits.argmax(axis=-1)
+        text_len = torch.minimum(logits_len, text_len.cpu())  # For very short audio
         score = []
         hist = []
         path = []
@@ -156,12 +158,12 @@ class AudioAlignCTC(pl.LightningModule):
         return score, hist, path, logits_len
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
-        parser.add_argument('--hidden_size', type=float, default=128)
+    def add_model_specific_args(parent_parser: _ArgumentGroup):
+        parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--num_layers', type=int, default=2)
-        return parser
+        parser.add_argument('--learning_rate', type=float, default=0.001)
+        return parent_parser
 
     @staticmethod
     def from_argparse_args(args, **kwargs):
