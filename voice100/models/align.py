@@ -166,7 +166,7 @@ class AudioAlignCTC(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
         parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--hidden_size', type=float, default=128)
+        parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--num_layers', type=int, default=2)
         parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument('--weight_decay', type=float, default=0.001)
