@@ -7,6 +7,7 @@ import os
 import logging
 from glob import glob
 from typing import Union, Tuple, List, Text, Optional, Any
+import math
 import torch
 from torch import nn
 import torchaudio
@@ -21,6 +22,8 @@ from .text import BasicPhonemizer, CharTokenizer, BasicTokenizer
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
+LOG_OFFSET = 1e-6
+BLANK_AUDIO = math.log(LOG_OFFSET)
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +258,7 @@ class MelSpectrogramAudioTransform(nn.Module):
         win_length: int = 400,
         hop_length: int = 160,
         n_mels: int = MELSPEC_DIM,
-        log_offset: float = 1e-6
+        log_offset: float = LOG_OFFSET
     ) -> None:
         super().__init__()
         self.log_offset = log_offset
@@ -457,7 +460,7 @@ def generate_audio_text_batch(data_batch):
         text_batch.append(text_item)
     audio_len = torch.tensor([len(x) for x in audio_batch], dtype=torch.int32)
     text_len = torch.tensor([len(x) for x in text_batch], dtype=torch.int32)
-    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=0)
+    audio_batch = pad_sequence(audio_batch, batch_first=True, padding_value=BLANK_AUDIO)
     text_batch = pad_sequence(text_batch, batch_first=True, padding_value=BLANK_IDX)
     return (audio_batch, audio_len), (text_batch, text_len)
 

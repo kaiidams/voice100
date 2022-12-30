@@ -1,6 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from typing import Tuple
+import math
 import torch
 from torch import nn
 import random
@@ -10,19 +11,25 @@ __all__ = [
 ]
 
 SPECTROGRAM_AUGUMENT_RATE = 0.2
+LOG_OFFSET = 1e-6
 
 
 class BatchSpectrogramAugumentation(nn.Module):
+    """Augment mel-spectrogram data
+    """
 
-    def __init__(self, do_timestretch=True):
+    def __init__(self, do_timestretch=True, log_offset=LOG_OFFSET):
         super().__init__()
         self.do_timestretch = do_timestretch
+        self.log_offset = log_offset
+        self.blank_audio = math.log(log_offset)
 
     @torch.no_grad()
     def forward(
         self, audio: torch.Tensor, audio_len: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         assert len(audio.shape) == 3
+        assert audio.dtype == torch.float32
 
         if self.do_timestretch and random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio, audio_len = self.timestretch(audio, audio_len)
@@ -68,7 +75,8 @@ class BatchSpectrogramAugumentation(nn.Module):
             hw = random.randint(1, 20)
             s = int(t - hw)
             e = int(t + hw)
-            audio[:, s:e, :] = -20.0
+            a = random.uniform(-self.blank_audio, -5)
+            audio[:, s:e, :] = a
         return audio
 
     def freqmask(self, audio):
@@ -77,7 +85,8 @@ class BatchSpectrogramAugumentation(nn.Module):
         hw = random.randint(1, 3)
         s = int(t - hw)
         e = int(t + hw)
-        audio[:, :, s:e] = -20.0
+        a = random.uniform(-self.blank_audio, -5)
+        audio[:, :, s:e] = a
         return audio
 
     def mixnoise(self, audio):
@@ -86,14 +95,14 @@ class BatchSpectrogramAugumentation(nn.Module):
         std = 5.0 * random.random()
         scale = torch.linspace(low, high, 64, device=audio.device)[None, :]
         noise = torch.rand(audio.shape, device=audio.device) * std + scale
-        return torch.log(torch.exp(audio) + torch.exp(noise))
+        return torch.log(torch.clamp(torch.exp(audio) + torch.exp(noise), min=self.log_offset))
 
     def mixaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
         x = torch.exp(audio) * audio_mask
         y = torch.cat([x[1:], x[:1]], axis=0)
-        return torch.log(0.9 * x + 0.1 * y + 1e-15) * audio_mask
+        return torch.log(torch.clamp((0.9 * x + 0.1 * y) * audio_mask, min=self.log_offset))
 
     def maskaudio(self, audio, audio_len):
         audio_mask = (torch.arange(audio.shape[1], device=audio.device)[None, :, None] < audio_len[:, None, None]).float()
-        return audio * audio_mask
+        return torch.log(torch.clamp(torch.exp(audio) * audio_mask, min=self.log_offset))
