@@ -36,9 +36,7 @@ def cli_main():
             loader = data.predict_dataloader()
         elif args.split == "valid":
             loader = data.val_dataloader()
-        for idx, batch in enumerate((loader)):
-            if idx < 44:
-                continue
+        for idx, batch in enumerate(tqdm(loader)):
             (audio, audio_len), (text, text_len) = batch
             score, hist, path, path_len = model.ctc_best_path(audio, audio_len, text, text_len)
             if args.write_cache:
@@ -56,7 +54,7 @@ def cli_main():
 
                 raw_align_text = encoder.decode(path[i, :path_len[i]])
                 f.write(raw_text + '|' + raw_align_text + '|' + align + '\n')
-                print(raw_text)
+
 
 if __name__ == '__main__':
     cli_main()
