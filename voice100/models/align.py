@@ -68,7 +68,7 @@ def ctc_best_path(logits, labels, max_move=3):
 
 class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate, weight_decay):
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, batch_augment, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
         self.conv1 = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
@@ -79,7 +79,10 @@ class AudioAlignCTC(pl.LightningModule):
             num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
         self.loss_fn = nn.CTCLoss()
-        self.batch_augment = BatchSpectrogramAugumentation()
+        if batch_augment:
+            self.batch_augment = BatchSpectrogramAugumentation()
+        else:
+            self.batch_augment = None
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
@@ -98,7 +101,7 @@ class AudioAlignCTC(pl.LightningModule):
     def _calc_batch_loss(self, batch):
         (audio, audio_len), (text, text_len) = batch
 
-        if self.training:
+        if self.training and self.batch_augment:
             audio, audio_len = self.batch_augment(audio, audio_len)
             assert not torch.any(torch.isnan(audio))
             assert not torch.any(torch.isinf(audio))
@@ -169,7 +172,8 @@ class AudioAlignCTC(pl.LightningModule):
         parser.add_argument('--hidden_size', type=int, default=128)
         parser.add_argument('--num_layers', type=int, default=2)
         parser.add_argument('--learning_rate', type=float, default=0.001)
-        parser.add_argument('--weight_decay', type=float, default=0.001)
+        parser.add_argument('--weight_decay', type=float, default=0.0)
+        parser.add_argument('--batch_augment', type=bool, default=True)
         return parent_parser
 
     @staticmethod
@@ -179,4 +183,5 @@ class AudioAlignCTC(pl.LightningModule):
             num_layers=args.num_layers,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
+            batch_augment=args.batch_augment,
             **kwargs)
