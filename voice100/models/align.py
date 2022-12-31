@@ -106,7 +106,7 @@ class AudioAlignCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        fixed_text_len = torch.minimum(logits_len, text_len.cpu())  # For very short audio
+        fixed_text_len = torch.minimum(logits_len, text_len.cpu())  # For broken short audio clips
         return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
 
     def training_step(self, batch, batch_idx):
