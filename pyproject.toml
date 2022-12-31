@@ -1,10 +1,23 @@
 [tool.poetry]
 name = "voice100"
-version = "1.4.0"
+version = "1.4.1"
 description = "Voice100 is a small TTS for English and Japanese."
 authors = ["Katsuya Iida <katsuya.iida@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+
+[tool.poetry.scripts]
+voice100-align-text = "voice100.align_text:cli_main"
+voice100-calc-stat = "voice100.calc_stat:cli_main"
+voice100-cache-dataset = "voice100.cache_dataset:cli_main"
+voice100-convert-phone = "voice100.convert_phone:cli_main"
+voice100-export-onnx = "voice100.export_onnx:cli_main"
+voice100-train-align = "voice100.train_align:cli_main"
+voice100-train-asr = "voice100.train_asr:cli_main"
+voice100-train-ttsalign = "voice100.train_ttsalign:cli_main"
+voice100-train-ttsaudio = "voice100.train_ttsaudio:cli_main"
+voice100-train-ttsaudio-ms = "voice100.train_ttsaudio_ms:cli_main"
+voice100-train-ttsaudio-mt = "voice100.train_ttsaudio_mt:cli_main"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"

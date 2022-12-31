@@ -26,7 +26,7 @@ def ctc_best_path(logits, labels, max_move=3):
     labels_len = labels.shape[0]
 
     beams = [np.array([-1, -1], dtype=np.int32)]
-    scores = np.array([logits[0, 0], logits[0, labels[0]]], dtype=logits.dtype)
+    scores = np.array([logits[0, labels[0]], logits[0, labels[1]]], dtype=logits.dtype)
 
     for i in range(1, logits_len):
 
@@ -137,6 +137,7 @@ class AudioAlignCTC(pl.LightningModule):
         # logits [audio_len, batch_size, vocab_size]
         if logits is None:
             logits, logits_len = self.forward(audio, audio_len)
+            logits = nn.functional.log_softmax(logits, dim=-1)
         else:
             logits_len = audio_len
         if text is None:
