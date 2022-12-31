@@ -155,8 +155,8 @@ class AudioToCharCTC(pl.LightningModule):
         # if logits.shape[2] < text.shape[1]:
         #     text = text[:, :logits.shape[2]]
         loss = self.criterion(logits, text)
-        mask = (text_len.unsqueeze(1) < torch.arange(logits.shape[2], dtype=text_len.dtype).unsqueeze(0).to(text_len.device)).to(dtype=loss.dtype)
-        return torch.sum(loss * mask) / torch.sum(text_len)
+        mask = (torch.arange(text.shape[1], dtype=text_len.dtype).unsqueeze(0).to(text_len.device) < text_len.unsqueeze(1)).to(dtype=loss.dtype)
+        return torch.sum(loss * mask) / torch.sum(mask)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
