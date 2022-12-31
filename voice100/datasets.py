@@ -536,13 +536,13 @@ class AudioTextDataModule(pl.LightningDataModule):
         valid_ratio: float = 0.1
     ) -> None:
         super().__init__()
-        use_align = True
         self.vocoder = vocoder
         self.dataset = dataset
         self.split_dataset = dataset != "librispeech"
         self.valid_ratio = valid_ratio
         self.sample_rate = sample_rate
         self.language = language
+        self.use_align = use_align
         self.use_phone = use_phone
         self.use_target = use_target
         self.cache = cache
@@ -577,7 +577,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         ds = get_dataset(
             self.dataset,
             split="train",
-            use_align=True,
+            use_align=self.use_align,
             use_phone=self.use_phone,
             use_target=self.use_target)
         os.makedirs(self.cache, exist_ok=True)
@@ -602,7 +602,7 @@ class AudioTextDataModule(pl.LightningDataModule):
                 valid_ds = get_dataset(
                     self.dataset,
                     split="valid",
-                    use_align=True,
+                    use_align=self.use_align,
                     use_phone=self.use_phone,
                     use_target=self.use_target)
 
