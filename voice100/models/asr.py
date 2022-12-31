@@ -1,6 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from argparse import ArgumentParser
+from argparse import _ArgumentGroup
 import torch
 from torch import nn
 import pytorch_lightning as pl
@@ -148,7 +148,8 @@ class AudioToCharCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        return self.loss_fn(log_probs, text, log_probs_len, text_len)
+        fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
+        return self.loss_fn(log_probs, text, log_probs_len, fixed_text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
@@ -172,13 +173,13 @@ class AudioToCharCTC(pl.LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+    def add_model_specific_args(parent_parser: _ArgumentGroup):
+        parser = parent_parser.add_argument_group("voice100.models.asr.AudioToTextCTC")
+        parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument('--weight_decay', type=float, default=0.00004)
         parser.add_argument('--hidden_size', type=float, default=512)
         parser.add_argument('--embed_size', type=float, default=512)
-        return parser
+        return parent_parser
 
     @staticmethod
     def from_argparse_args(args, **kwargs):

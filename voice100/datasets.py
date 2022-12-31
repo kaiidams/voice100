@@ -510,7 +510,7 @@ class AudioTextDataModule(pl.LightningDataModule):
     """Data module to read text and audio pairs and optionally aligned texts.
 
         Args:
-            task: ``mel`` or ``world``
+            vocoder: ``mel`` or ``world``
             dataset: Dataset to use
             sample_rate: Sampling rate of audio
             language: Language
