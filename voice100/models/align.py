@@ -113,7 +113,7 @@ class AudioAlignCTC(pl.LightningModule):
         return ctc_loss, blank_loss
 
     def _calc_blank_loss(self, log_probs, log_probs_len):
-        x, length = log_probs, log_probs_len
+        x, length = log_probs, log_probs_len.to(log_probs.device)
         mask = (torch.arange(x.shape[0], device=x.device).unsqueeze(1) < length.unsqueeze(0)).to(x.dtype)
         return torch.sum(x[:, :, 0] * mask) / torch.sum(mask)
 
