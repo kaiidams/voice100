@@ -151,9 +151,9 @@ class AudioToCharCTC(pl.LightningModule):
         #fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
         #return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
         # print(logits.shape, text.shape)
+        logits = torch.transpose(logits, 1, 2)
         if logits.shape[2] < text.shape[1]:
             text = text[:, :logits.shape[2]]
-        logits = torch.transpose(logits, 1, 2)
         loss = self.criterion(logits, text)
         mask = (text_len.unsqueeze(1) < torch.arange(logits.shape[2], dtype=text_len.dtype).unsqueeze(0).to(text_len.device)).to(dtype=loss.dtype)
         return torch.sum(loss * mask) / torch.sum(text_len)
