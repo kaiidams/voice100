@@ -32,7 +32,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         assert audio.dtype == torch.float32
 
         if self.do_timestretch and random.random() < SPECTROGRAM_AUGUMENT_RATE:
-            audio, audio_len = self.timestretch(audio, audio_len)
+            pass#audio, audio_len = self.timestretch(audio, audio_len)
         if random.random() < SPECTROGRAM_AUGUMENT_RATE:
             audio = self.pitchshift(audio)
         if random.random() < SPECTROGRAM_AUGUMENT_RATE:
