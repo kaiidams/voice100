@@ -102,7 +102,7 @@ class AudioToCharCTC(pl.LightningModule):
         self.embed_size = embed_size
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
-        self.loss_fn = nn.CTCLoss()
+        self.criterion = nn.CrossEntropyLoss(reduction='none')
         self.batch_augment = BatchSpectrogramAugumentation()
         self.do_normalize = False
 
@@ -144,12 +144,17 @@ class AudioToCharCTC(pl.LightningModule):
         # logits: [batch_size, audio_len, vocab_size]
         logits_len = self.output_length(audio_len)
 
-        logits = torch.transpose(logits, 0, 1)
+        #logits = torch.transpose(logits, 0, 1)
         # logits: [audio_len, batch_size, vocab_size]
-        log_probs = nn.functional.log_softmax(logits, dim=-1)
-        log_probs_len = logits_len
-        fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
-        return self.loss_fn(log_probs, text, log_probs_len, fixed_text_len)
+        #log_probs = nn.functional.log_softmax(logits, dim=-1)
+        #log_probs_len = logits_len
+        #fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
+        #return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
+        # print(logits.shape, text.shape)
+        logits = torch.transpose(logits, 1, 2)
+        loss = self.criterion(logits, text)
+        mask = (text_len.unsqueeze(1) < torch.arange(logits.shape[2], dtype=text_len.dtype).unsqueeze(0)).to(dtype=loss.dtype, device=loss.device)
+        return torch.sum(loss * mask) / torch.sum(text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
