@@ -103,7 +103,7 @@ class AudioToCharCTC(pl.LightningModule):
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
         self.criterion = nn.CrossEntropyLoss(reduction='none')
-        self.batch_augment = BatchSpectrogramAugumentation()
+        self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
         self.do_normalize = False
 
     def forward(self, audio) -> torch.Tensor:
@@ -152,8 +152,8 @@ class AudioToCharCTC(pl.LightningModule):
         #return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
         # print(logits.shape, text.shape)
         logits = torch.transpose(logits, 1, 2)
-        if logits.shape[2] < text.shape[1]:
-            text = text[:, :logits.shape[2]]
+        # if logits.shape[2] < text.shape[1]:
+        #     text = text[:, :logits.shape[2]]
         loss = self.criterion(logits, text)
         mask = (text_len.unsqueeze(1) < torch.arange(logits.shape[2], dtype=text_len.dtype).unsqueeze(0).to(text_len.device)).to(dtype=loss.dtype)
         return torch.sum(loss * mask) / torch.sum(text_len)
