@@ -1,6 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from argparse import ArgumentParser
+from argparse import _ArgumentGroup
 import torch
 from torch import nn
 import pytorch_lightning as pl
@@ -173,13 +173,13 @@ class AudioToCharCTC(pl.LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
+    def add_model_specific_args(parent_parser: _ArgumentGroup):
+        parser = parent_parser.add_argument_group("voice100.models.asr.AudioToTextCTC")
+        parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument('--weight_decay', type=float, default=0.00004)
         parser.add_argument('--hidden_size', type=float, default=512)
         parser.add_argument('--embed_size', type=float, default=512)
-        return parser
+        return parent_parser
 
     @staticmethod
     def from_argparse_args(args, **kwargs):

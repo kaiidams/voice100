@@ -20,11 +20,11 @@ def cli_main():
         batch_size=32,
         dataset="librispeech",
         max_epochs=100,
-        log_every_n_steps=10)
-    args = parser.parse_args()
-    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
-        args,
+        log_every_n_steps=10,
         vocoder="mel")
+    args = parser.parse_args()
+    assert args.vocoder == "mel"
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
     model = AudioToCharCTC.from_argparse_args(
         args,
         audio_size=data.audio_size,
