@@ -38,7 +38,7 @@ class ConvBNActivate(nn.Sequential):
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=6, use_residual=True):
         super().__init__()
         hidden_size = in_channels * expand_ratio
         self.use_residual = use_residual
@@ -65,15 +65,24 @@ class ConvVoiceEncoder(nn.Module):
         super().__init__()
         half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, half_hidden_size, kernel_size=11, stride=2, use_residual=False),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=19),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=27),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=35),
-            InvertedResidual(half_hidden_size, hidden_size, kernel_size=51, use_residual=False),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=59),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=67),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=75),
-            InvertedResidual(hidden_size, out_channels, kernel_size=83, use_residual=False))
+            InvertedResidual(in_channels, half_hidden_size, kernel_size=7, use_residual=False),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=11, stride=2, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            InvertedResidual(hidden_size, out_channels, kernel_size=11, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -102,10 +111,13 @@ class AudioToCharCTC(pl.LightningModule):
         self.embed_size = embed_size
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
-        # # zero_infinity for broken short audio clips
-        # self.criterion = nn.CTCLoss(zero_infinity=True)
-        self.criterion = nn.CrossEntropyLoss(reduction='none')
-        self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
+        if USE_ALIGN:
+            self.criterion = nn.CrossEntropyLoss(reduction='none')
+            self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
+        else:
+            # zero_infinity for broken short audio clips
+            self.criterion = nn.CTCLoss(zero_infinity=True)
+            self.batch_augment = BatchSpectrogramAugumentation()
         self.do_normalize = False
 
     def forward(self, audio) -> torch.Tensor:
@@ -144,20 +156,20 @@ class AudioToCharCTC(pl.LightningModule):
         # text: [batch_size, text_len]
         logits = self.forward(audio)
         # logits: [batch_size, audio_len, vocab_size]
-        logits_len = self.output_length(audio_len)
+        if USE_ALIGN:
+            logits = torch.transpose(logits, 1, 2)
+            # logits: [batch_size, vocab_size, audio_len]
+            loss = self.criterion(logits, text)
+            mask = (torch.arange(text.shape[1], dtype=text_len.dtype).unsqueeze(0).to(text_len.device) < text_len.unsqueeze(1)).to(dtype=loss.dtype)
+            return torch.sum(loss * mask) / torch.sum(mask)
+        else:
+            logits_len = self.output_length(audio_len)
 
-        #logits = torch.transpose(logits, 0, 1)
-        # logits: [audio_len, batch_size, vocab_size]
-        #log_probs = nn.functional.log_softmax(logits, dim=-1)
-        #log_probs_len = logits_len
-        #return self.criterion(log_probs, text, log_probs_len, text_len)
-        # print(logits.shape, text.shape)
-        logits = torch.transpose(logits, 1, 2)
-        # if logits.shape[2] < text.shape[1]:
-        #     text = text[:, :logits.shape[2]]
-        loss = self.criterion(logits, text)
-        mask = (torch.arange(text.shape[1], dtype=text_len.dtype).unsqueeze(0).to(text_len.device) < text_len.unsqueeze(1)).to(dtype=loss.dtype)
-        return torch.sum(loss * mask) / torch.sum(mask)
+            logits = torch.transpose(logits, 0, 1)
+            # logits: [audio_len, batch_size, vocab_size]
+            log_probs = nn.functional.log_softmax(logits, dim=-1)
+            log_probs_len = logits_len
+            return self.criterion(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
@@ -178,8 +190,8 @@ class AudioToCharCTC(pl.LightningModule):
             lr=self.hparams.learning_rate,
             weight_decay=self.hparams.weight_decay)
         return optimizer
-        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
-        #return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
+        # return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
@@ -192,6 +204,8 @@ class AudioToCharCTC(pl.LightningModule):
 
     @staticmethod
     def from_argparse_args(args, **kwargs):
+        global USE_ALIGN
+        USE_ALIGN = args.use_align
         return AudioToCharCTC(
             embed_size=args.embed_size,
             hidden_size=args.hidden_size,
