@@ -102,6 +102,8 @@ class AudioToCharCTC(pl.LightningModule):
         self.embed_size = embed_size
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
+        # # zero_infinity for broken short audio clips
+        # self.criterion = nn.CTCLoss(zero_infinity=True)
         self.criterion = nn.CrossEntropyLoss(reduction='none')
         self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
         self.do_normalize = False
@@ -148,8 +150,7 @@ class AudioToCharCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         #log_probs = nn.functional.log_softmax(logits, dim=-1)
         #log_probs_len = logits_len
-        #fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
-        #return self.criterion(log_probs, text, log_probs_len, fixed_text_len)
+        #return self.criterion(log_probs, text, log_probs_len, text_len)
         # print(logits.shape, text.shape)
         logits = torch.transpose(logits, 1, 2)
         # if logits.shape[2] < text.shape[1]:

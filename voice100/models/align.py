@@ -79,7 +79,8 @@ class AudioAlignCTC(pl.LightningModule):
             input_size=hidden_size, hidden_size=hidden_size,
             num_layers=num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(hidden_size * 2, vocab_size)
-        self.criterion = nn.CTCLoss()
+        # zero_infinity for broken short audio clips
+        self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -107,8 +108,7 @@ class AudioAlignCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        fixed_text_len = torch.minimum(logits_len, text_len.cpu())  # For broken short audio clips
-        ctc_loss = self.criterion(log_probs, text, log_probs_len, fixed_text_len)
+        ctc_loss = self.criterion(log_probs, text, log_probs_len, text_len)
         blank_loss = self._calc_blank_loss(log_probs, log_probs_len)
         return ctc_loss, blank_loss
 
