@@ -543,6 +543,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.sample_rate = sample_rate
         self.language = language
         self.use_phone = use_phone
+        self.use_align = use_align
         self.use_target = use_target
         self.cache = cache
         self.cache_salt = self.vocoder.encode('utf-8')
@@ -576,7 +577,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         ds = get_dataset(
             self.dataset,
             split="train",
-            use_align=self.vocoder == "world",
+            use_align=self.use_align,
             use_phone=self.use_phone,
             use_target=self.use_target)
         os.makedirs(self.cache, exist_ok=True)
@@ -601,7 +602,7 @@ class AudioTextDataModule(pl.LightningDataModule):
                 valid_ds = get_dataset(
                     self.dataset,
                     split="valid",
-                    use_align=self.vocoder == "world",
+                    use_align=self.use_align,
                     use_phone=self.use_phone,
                     use_target=self.use_target)
 

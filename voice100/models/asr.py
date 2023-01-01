@@ -102,7 +102,8 @@ class AudioToCharCTC(pl.LightningModule):
         self.embed_size = embed_size
         self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
         self.decoder = LinearCharDecoder(embed_size, vocab_size)
-        self.loss_fn = nn.CTCLoss()
+        # zero_infinity for broken short audio clips
+        self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
         self.do_normalize = False
 
@@ -148,8 +149,7 @@ class AudioToCharCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        fixed_text_len = torch.minimum(logits_len, text_len)  # For broken short audio clips
-        return self.loss_fn(log_probs, text, log_probs_len, fixed_text_len)
+        return self.criterion(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
