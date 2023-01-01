@@ -65,24 +65,24 @@ class ConvVoiceEncoder(nn.Module):
         super().__init__()
         half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, half_hidden_size, kernel_size=7, use_residual=False),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            InvertedResidual(half_hidden_size, hidden_size, kernel_size=11, stride=2, use_residual=False),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            InvertedResidual(hidden_size, out_channels, kernel_size=11, use_residual=False))
+            InvertedResidual(in_channels, half_hidden_size, kernel_size=25, use_residual=False),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=25, stride=2, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
+            InvertedResidual(hidden_size, out_channels, kernel_size=25, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -189,9 +189,8 @@ class AudioToCharCTC(pl.LightningModule):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=self.hparams.weight_decay)
-        return optimizer
-        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
-        # return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.90)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
