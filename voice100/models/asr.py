@@ -193,7 +193,6 @@ class AudioToCharCTC(pl.LightningModule):
         parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument('--weight_decay', type=float, default=0.00004)
         parser.add_argument('--hidden_size', type=float, default=512)
-        parser.add_argument('--embed_size', type=float, default=512)
         return parent_parser
 
     @staticmethod
