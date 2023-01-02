@@ -11,6 +11,8 @@ __all__ = [
     'AudioToCharCTC',
 ]
 
+USE_ALIGN = False
+
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
@@ -61,26 +63,22 @@ class InvertedResidual(nn.Module):
 
 class ConvVoiceEncoder(nn.Module):
 
-    def __init__(self, in_channels, out_channels, hidden_size):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        half_hidden_size = hidden_size // 2
+        half_out_channels = out_channels // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, half_hidden_size, kernel_size=25, use_residual=False),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=25),
-            InvertedResidual(half_hidden_size, hidden_size, kernel_size=25, stride=2, use_residual=False),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=25),
-            InvertedResidual(hidden_size, out_channels, kernel_size=25, use_residual=False))
+            InvertedResidual(in_channels, half_out_channels, kernel_size=3, use_residual=False),
+            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
+            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
+            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
+            InvertedResidual(half_out_channels, out_channels, kernel_size=3, stride=2, use_residual=False),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25),
+            InvertedResidual(out_channels, out_channels, kernel_size=25))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -103,12 +101,11 @@ class LinearCharDecoder(nn.Module):
 
 class AudioToCharCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate, weight_decay):
+    def __init__(self, audio_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
-        self.embed_size = embed_size
-        self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
-        self.decoder = LinearCharDecoder(embed_size, vocab_size)
+        self.encoder = ConvVoiceEncoder(audio_size, hidden_size)
+        self.decoder = LinearCharDecoder(hidden_size, vocab_size)
         if USE_ALIGN:
             self.criterion = nn.CrossEntropyLoss(reduction='none')
             self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
