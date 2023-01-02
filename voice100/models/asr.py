@@ -200,7 +200,6 @@ class AudioToCharCTC(pl.LightningModule):
         global USE_ALIGN
         USE_ALIGN = args.use_align
         return AudioToCharCTC(
-            embed_size=args.embed_size,
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
