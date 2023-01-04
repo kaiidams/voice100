@@ -542,8 +542,8 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.valid_ratio = valid_ratio
         self.sample_rate = sample_rate
         self.language = language
-        self.use_phone = use_phone
         self.use_align = use_align
+        self.use_phone = use_phone
         self.use_target = use_target
         self.cache = cache
         self.cache_salt = self.vocoder.encode('utf-8')
@@ -584,6 +584,14 @@ class AudioTextDataModule(pl.LightningDataModule):
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
+                ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                targettext_transform=self.targettext_transform,
+                cachedir=self.cache, salt=self.cache_salt)
+
+        elif stage == "test":
+            self.test_ds = EncodedCacheDataset(
                 ds,
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
