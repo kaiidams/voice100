@@ -590,7 +590,7 @@ class AudioTextDataModule(pl.LightningDataModule):
                 targettext_transform=self.targettext_transform,
                 cachedir=self.cache, salt=self.cache_salt)
 
-        if stage == "test":
+        elif stage == "test":
             self.test_ds = EncodedCacheDataset(
                 ds,
                 audio_transform=self.audio_transform,

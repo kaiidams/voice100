@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks import LearningRateMonitor
 
 from .datasets import AudioTextDataModule
-from .models.asr import AudioToCharCTC
+from .models.asr import AudioToTextCTC
 
 
 def cli_main():
@@ -15,7 +15,7 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
-    parser = AudioToCharCTC.add_model_specific_args(parser)
+    parser = AudioToTextCTC.add_model_specific_args(parser)
     parser.set_defaults(
         batch_size=32,
         dataset="librispeech",
@@ -23,9 +23,10 @@ def cli_main():
         log_every_n_steps=10,
         vocoder="mel")
     args = parser.parse_args()
+    assert not args.use_align
     assert args.vocoder == "mel"
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
-    model = AudioToCharCTC.from_argparse_args(
+    model = AudioToTextCTC.from_argparse_args(
         args,
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)

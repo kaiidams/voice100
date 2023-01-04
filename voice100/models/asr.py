@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
-    'AudioToCharCTC',
+    'AudioToTextCTC',
 ]
 
 USE_ALIGN = False
@@ -99,7 +99,7 @@ class LinearCharDecoder(nn.Module):
         return self.layers(enc_out)
 
 
-class AudioToCharCTC(pl.LightningModule):
+class AudioToTextCTC(pl.LightningModule):
 
     def __init__(self, audio_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
@@ -168,16 +168,21 @@ class AudioToCharCTC(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('train_loss', loss)
+        metrics = {"train_loss": loss}
+        self.log_dict(metrics)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('val_loss', loss)
+        metrics = {"val_loss": loss}
+        self.log_dict(metrics)
+        return metrics
 
     def test_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('test_loss', loss)
+        metrics = {"test_loss": loss}
+        self.log_dict(metrics)
+        return metrics
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -199,7 +204,7 @@ class AudioToCharCTC(pl.LightningModule):
     def from_argparse_args(args, **kwargs):
         global USE_ALIGN
         USE_ALIGN = args.use_align
-        return AudioToCharCTC(
+        return AudioToTextCTC(
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
