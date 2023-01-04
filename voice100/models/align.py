@@ -231,7 +231,7 @@ class AudioAlignCTC(pl.LightningModule):
                 (512, 5, 1, 2, False),
                 (512, 5, 1, 2, False),
             ]
-            decoder_num_layers = 4
+            decoder_num_layers = 2
             decoder_hidden_size = 512
         else:
             raise ValueError("Unknown model_size")
