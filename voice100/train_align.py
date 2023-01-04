@@ -17,6 +17,7 @@ def cli_main():
     parser = AudioAlignCTC.add_model_specific_args(parser)
     parser.set_defaults(batch_size=256, log_every_n_steps=10, vocoder="mel", gradient_clip_val=1.0)
     args = parser.parse_args()
+    assert not args.use_align
     assert args.vocoder == "mel"
     data = AudioTextDataModule.from_argparse_args(args)
     model = AudioAlignCTC.from_argparse_args(

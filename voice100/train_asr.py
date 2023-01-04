@@ -23,13 +23,13 @@ def cli_main():
         log_every_n_steps=10,
         vocoder="mel")
     args = parser.parse_args()
+    assert not args.use_align
     assert args.vocoder == "mel"
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
     model = AudioToCharCTC.from_argparse_args(
         args,
         audio_size=data.audio_size,
         vocab_size=data.vocab_size)
-
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     trainer: pl.Trainer = pl.Trainer.from_argparse_args(

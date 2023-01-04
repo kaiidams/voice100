@@ -108,16 +108,21 @@ class AudioAlignCTC(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('train_loss', loss)
+        metrics = {"train_loss": loss}
+        self.log_dict(metrics)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('val_loss', loss)
+        metrics = {"val_loss": loss}
+        self.log_dict(metrics)
+        return metrics
 
     def test_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
-        self.log('test_loss', loss)
+        metrics = {"test_loss": loss}
+        self.log_dict(metrics)
+        return metrics
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
