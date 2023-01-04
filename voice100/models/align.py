@@ -68,10 +68,9 @@ def ctc_best_path(logits, labels, max_move=3):
 
 class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate, blank_penalty=0.0):
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.blank_penalty = blank_penalty
         self.conv1 = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
         self.conv2 = nn.Conv1d(hidden_size, hidden_size, kernel_size=3, stride=1, padding=1)
         self.tanh = nn.Tanh()
@@ -108,36 +107,22 @@ class AudioAlignCTC(pl.LightningModule):
         # logits: [audio_len, batch_size, vocab_size]
         log_probs = nn.functional.log_softmax(logits, dim=-1)
         log_probs_len = logits_len
-        ctc_loss = self.criterion(log_probs, text, log_probs_len, text_len)
-        blank_loss = self._calc_blank_loss(log_probs, log_probs_len)
-        return ctc_loss, blank_loss
-
-    def _calc_blank_loss(self, log_probs, log_probs_len):
-        x, length = log_probs, log_probs_len.to(log_probs.device)
-        mask = (torch.arange(x.shape[0], device=x.device).unsqueeze(1) < length.unsqueeze(0)).to(x.dtype)
-        return torch.sum(-torch.log(1 - torch.exp(log_probs[:, :, 0])) * mask) / torch.sum(mask)
+        return self.criterion(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
-        ctc_loss, blank_loss = self._calc_batch_loss(batch)
-        loss = ctc_loss + self.blank_penalty * blank_loss
-        self.log('train_ctc_loss', ctc_loss)
-        self.log('train_blank_loss', blank_loss)
+        loss = self._calc_batch_loss(batch)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        ctc_loss, blank_loss = self._calc_batch_loss(batch)
-        loss = ctc_loss + self.blank_penalty * blank_loss
-        self.log('val_ctc_loss', ctc_loss)
-        self.log('val_blank_loss', blank_loss)
+        loss = self._calc_batch_loss(batch)
         self.log('val_loss', loss)
 
     def test_step(self, batch, batch_idx):
-        ctc_loss, blank_loss = self._calc_batch_loss(batch)
-        loss = ctc_loss + self.blank_penalty * blank_loss
-        self.log('test_ctc_loss', ctc_loss)
-        self.log('test_blank_loss', blank_loss)
-        self.log('test_loss', loss)
+        loss = self._calc_batch_loss(batch)
+        metrics = {"test_loss": loss}
+        self.log_dict(metrics)
+        return metrics
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -191,6 +176,5 @@ class AudioAlignCTC(pl.LightningModule):
         return AudioAlignCTC(
             hidden_size=args.hidden_size,
             num_layers=args.num_layers,
-            blank_penalty=0.5,
             learning_rate=args.learning_rate,
             **kwargs)

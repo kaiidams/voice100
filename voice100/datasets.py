@@ -590,6 +590,14 @@ class AudioTextDataModule(pl.LightningDataModule):
                 targettext_transform=self.targettext_transform,
                 cachedir=self.cache, salt=self.cache_salt)
 
+        if stage == "test":
+            self.test_ds = EncodedCacheDataset(
+                ds,
+                audio_transform=self.audio_transform,
+                text_transform=self.text_transform,
+                targettext_transform=self.targettext_transform,
+                cachedir=self.cache, salt=self.cache_salt)
+
         else:
             if self.split_dataset:
                 # Split the dataset
