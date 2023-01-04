@@ -33,9 +33,9 @@ def export_onnx_align(args):
 
 
 def export_onnx_asr(args):
-    from .models.asr import AudioToCharCTC
+    from .models.asr import AudioToTextCTC
 
-    model = AudioToCharCTC.load_from_checkpoint(args.checkpoint)
+    model = AudioToTextCTC.load_from_checkpoint(args.checkpoint)
     model.eval()
 
     audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
