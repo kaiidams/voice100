@@ -209,7 +209,7 @@ class AudioAlignCTC(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
         parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--model_size', choices=["small"], default='small')
+        parser.add_argument('--model_size', choices=["small", "base"], default='base')
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parent_parser
 
@@ -223,6 +223,16 @@ class AudioAlignCTC(pl.LightningModule):
             ]
             decoder_num_layers = 2
             decoder_hidden_size = 256
+        elif args.model_size == 'base':
+            encoder_settings = [
+                # out_channels, kernel_size, stride, padding, bias
+                (512, 5, 1, 2, False),
+                (512, 5, 2, 2, False),
+                (512, 5, 1, 2, False),
+                (512, 5, 1, 2, False),
+            ]
+            decoder_num_layers = 4
+            decoder_hidden_size = 512
         else:
             raise ValueError("Unknown model_size")
 
