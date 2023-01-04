@@ -68,7 +68,7 @@ def ctc_best_path(logits, labels, max_move=3):
 
 class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, blank_penalty, learning_rate):
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate, blank_penalty=0.0):
         super().__init__()
         self.save_hyperparameters()
         self.blank_penalty = blank_penalty
