@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import _ArgumentGroup
-from typing import Tuple
+from typing import Tuple, List
 import torch
 import numpy as np
 from torch import nn
@@ -66,31 +66,71 @@ def ctc_best_path(logits, labels, max_move=3):
     return best_score, best_path, best_labels
 
 
+class ConvLayerBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int,
+        padding: int,
+        bias: bool
+    ) -> None:
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(normalized_shape=out_channels)
+        self.conv = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            bias=bias,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = x.transpose(-2, -1)
+        x = self.layer_norm(x)
+        x = x.transpose(-2, -1)
+        x = nn.functional.gelu(x)
+        return x
+
+
 class AudioAlignCTC(pl.LightningModule):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
+    def __init__(
+        self,
+        audio_size: int,
+        encoder_settings: List[Tuple],
+        decoder_num_layers: int,
+        decoder_hidden_size: int,
+        vocab_size: int,
+        learning_rate: float
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.conv1 = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
-        self.conv2 = nn.Conv1d(hidden_size, hidden_size, kernel_size=3, stride=1, padding=1)
-        self.tanh = nn.Tanh()
+        layers = []
+        channels = audio_size
+        for out_channels, kernel_size, stride, padding, bias in encoder_settings:
+            layers.append(
+                ConvLayerBlock(
+                    channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias))
+            channels = out_channels
+        self.encoder = nn.Sequential(*layers)
         self.lstm = nn.LSTM(
-            input_size=hidden_size, hidden_size=hidden_size,
-            num_layers=num_layers, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(hidden_size * 2, vocab_size)
+            input_size=channels, hidden_size=decoder_hidden_size,
+            num_layers=decoder_num_layers, dropout=0.2, bidirectional=True)
+        self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size, bias=False)
         # zero_infinity for broken short audio clips
         self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
-        x = torch.transpose(audio, 1, 2)
-        x = self.conv1(x)
-        x = self.tanh(x)
-        x = self.conv2(x)
-        x = self.tanh(x)
+        x = audio.transpose(-2, -1)
+        x = self.encoder(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
-        x = torch.transpose(x, 1, 2)
+        x = x.transpose(-2, -1)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
@@ -169,15 +209,27 @@ class AudioAlignCTC(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
         parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--hidden_size', type=int, default=128)
-        parser.add_argument('--num_layers', type=int, default=2)
+        parser.add_argument('--model_size', choices=["small"], default='small')
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parent_parser
 
     @staticmethod
-    def from_argparse_args(args, **kwargs):
+    def from_argparse_args(args, vocab_size, **kwargs):
+        if args.model_size == "small":
+            encoder_settings = [
+                # out_channels, kernel_size, stride, padding, bias
+                (256, 3, 2, 1, False),
+                (256, 3, 1, 1, False),
+            ]
+            decoder_num_layers = 2
+            decoder_hidden_size = 256
+        else:
+            raise ValueError("Unknown model_size")
+
         return AudioAlignCTC(
-            hidden_size=args.hidden_size,
-            num_layers=args.num_layers,
+            encoder_settings=encoder_settings,
+            decoder_num_layers=decoder_num_layers,
+            decoder_hidden_size=decoder_hidden_size,
+            vocab_size=vocab_size,
             learning_rate=args.learning_rate,
             **kwargs)
