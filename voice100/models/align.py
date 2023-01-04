@@ -120,7 +120,7 @@ class AudioAlignCTC(pl.LightningModule):
         self.lstm = nn.LSTM(
             input_size=channels, hidden_size=decoder_hidden_size,
             num_layers=decoder_num_layers, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size, bias=False)
+        self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size)
         # zero_infinity for broken short audio clips
         self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
