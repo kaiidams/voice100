@@ -36,6 +36,9 @@ JA_VOCAB = [
     'u:', 'w', 'y', 'z'
 ]
 
+REPEATED_TOKENS_RX = re.compile(r'\n([^\n]+)(\n\1)+(?=\n)')
+REPEATED_BLANKS_RX = re.compile(r'(\n\t)+(?=\n)')
+
 
 class BasicPhonemizer(nn.Module):
     """Phonemizer class that removes non-alphabet characters and keep
@@ -129,4 +132,8 @@ class BasicTokenizer(nn.Module):
             if 0 <= x < len(self._vocab)])
 
     def merge_repeated(self, text: Text) -> Text:
-        raise NotImplementedError()
+        text = text.replace(self._separator, '\n')
+        text = text.replace(self._vocab[0], '\t')
+        text = re.sub(REPEATED_TOKENS_RX, r'\n\1', '\n' + text + '\n')
+        text = re.sub(REPEATED_BLANKS_RX, '', text)
+        return text.strip('\n').replace('\n', self._separator)
