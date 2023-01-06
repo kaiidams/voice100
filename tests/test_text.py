@@ -54,6 +54,10 @@ def test_text_ja():
     decoded = tokenizer.decode(encoded)
     assert decoded == "ya'pariboisu"
 
+    decoded = "yya'__pparri_"
+    merged = tokenizer.merge_repeated(decoded)
+    assert merged == "ya'pari"
+
 
 def test_text_ja_phone():
     from voice100.japanese import JapanesePhonemizer
@@ -91,3 +95,7 @@ def test_text_ja_phone():
     assert encoded.shape == torch.Size([12])
     decoded = tokenizer.decode(encoded)
     assert decoded == 'k o N n i - ch i w a a u'
+
+    decoded = "- - k o o N - n - - i - ch - i i w a - a -"
+    merged = tokenizer.merge_repeated(decoded)
+    assert merged == 'k o N n i ch i w a a'
