@@ -370,7 +370,7 @@ class AlignTextToAudioModel(pl.LightningModule):
             learning_rate=args.learning_rate,
             **kwargs)
         if not args.resume_from_checkpoint:
-            args.audio_stat = f'./data/{args.dataset}-stat.pt'
+            args.audio_stat = f'./data/audio-stat.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model
 
