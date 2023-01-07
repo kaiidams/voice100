@@ -5,8 +5,10 @@ from typing import Tuple
 import pytorch_lightning as pl
 import torch
 from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
 from .asr import InvertedResidual
+from .align import ConvLayerBlock
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
@@ -25,17 +27,16 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
 class VoiceDecoder(nn.Module):
     def __init__(self, hidden_size, out_channels) -> None:
         super().__init__()
-        half_hidden_size = hidden_size // 2
+        stride = 1
+        padding = 2
+        bias = False
         self.layers = nn.Sequential(
-            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=33),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
-            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
-            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
-            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
-            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
+            ConvLayerBlock(hidden_size * 2, hidden_size, kernel_size=5, stride=stride, padding=padding, bias=bias),
+            ConvLayerBlock(hidden_size, hidden_size, kernel_size=5, stride=stride, padding=padding, bias=bias),
+            nn.ConvTranspose1d(hidden_size, hidden_size, kernel_size=5, padding=2, stride=2, bias=bias),
+            nn.GELU(),
+            ConvLayerBlock(hidden_size, hidden_size, kernel_size=5, stride=stride, padding=padding, bias=bias),
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
@@ -237,18 +238,25 @@ class TextToAlignTextModel(pl.LightningModule):
     @staticmethod
     def from_argparse_args(args, **kwargs):
         return TextToAlignTextModel(
-            hidden_size=args.hidden_size,
+            encoder_hidden_size=args.hidden_size,
+            encoder_num_layers=2,
+            decoder_hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             **kwargs)
 
 
 class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
-        self, vocab_size: int, hidden_size: int, learning_rate: float
+        self,
+        vocab_size: int,
+        encoder_num_layers: int,
+        encoder_hidden_size: int,
+        decoder_hidden_size: int,
+        learning_rate: float
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.hidden_size = hidden_size
+        self.encoder_hidden_size = encoder_hidden_size
         self.vocab_size = vocab_size
         self.sample_rate = 16000
         self.n_fft = 512
@@ -256,20 +264,32 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.f0_size = 1
         self.logspc_size = self.n_fft // 2 + 1
         self.codeap_size = 1
-        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.embedding = nn.Embedding(vocab_size, encoder_hidden_size)
+        self.lstm = nn.LSTM(
+            input_size=encoder_hidden_size, hidden_size=encoder_hidden_size,
+            num_layers=encoder_num_layers, dropout=0.2, bidirectional=True)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
-        self.decoder = VoiceDecoder(hidden_size, self.audio_size)
+        self.decoder = VoiceDecoder(decoder_hidden_size, decoder_hidden_size)
+        self.projection = nn.Linear(decoder_hidden_size, self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
 
     def forward(
-        self, aligntext: torch.Tensor
+        self, aligntext: torch.Tensor, aligntext_len: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         x = self.embedding(aligntext)
-        x = torch.transpose(x, 1, 2)
+        x_len = aligntext_len
+        # x: [batch_size, aligntext_len, encoder_hidden_size]
+        packed_x = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
+        packed_lstm_out, _ = self.lstm(packed_x)
+        lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=True)
+        # x: [batch_size, aligntext_len, encoder_hidden_size]
+
+        x = torch.transpose(lstm_out, -2, -1)
         x = self.decoder(x)
-        x = torch.transpose(x, 1, 2)
+        x = torch.transpose(x, -2, -1)
+        x = self.projection(x)
         # world_out: [batch_size, target_len, audio_size]
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat = torch.split(x, [
@@ -298,7 +318,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
-        hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext)
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext, aligntext_len)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
@@ -343,7 +363,9 @@ class AlignTextToAudioModel(pl.LightningModule):
     @staticmethod
     def from_argparse_args(args, **kwargs):
         model = AlignTextToAudioModel(
-            hidden_size=args.hidden_size,
+            encoder_hidden_size=args.hidden_size,
+            encoder_num_layers=2,
+            decoder_hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             **kwargs)
         if not args.resume_from_checkpoint:

@@ -127,10 +127,10 @@ class AudioAlignCTC(pl.LightningModule):
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
-        x = audio.transpose(-2, -1)
+        x = torch.transpose(audio, -2, -1)
         x = self.encoder(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
-        x = x.transpose(-2, -1)
+        x = torch.transpose(x, -2, -1)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
