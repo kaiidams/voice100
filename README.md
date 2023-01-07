@@ -225,12 +225,13 @@ voice100-train-ttsalign \
 
 ### Compute audio statistics
 
-This generates the statistics as `data/stat-${DATASET}.pt`.
+This generates the statistics as `data/${DATASET}-stat.pt`.
 
 ```sh
 voice100-calc-stat \
     --dataset ${DATASET} \
-    --language ${LANGUAGE}
+    --language ${LANGUAGE} \
+    --output data/${DATASET}-stat.py
 ```
 
 ### Train TTS audio model
