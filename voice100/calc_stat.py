@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from typing import Text
 from argparse import ArgumentParser
 import torch
 from tqdm import tqdm
@@ -20,7 +21,7 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
 
 
-def calc_stat(data, stat_path):
+def calc_stat(data: AudioTextDataModule, output_path: Text):
 
     logspc_size = 257
     codeap_size = 1
@@ -33,7 +34,7 @@ def calc_stat(data, stat_path):
     codeap_sqrsum = torch.zeros(codeap_size, dtype=torch.double)
     f0_count = 0
     logspc_count = 0
-    for batch_idx, batch in enumerate(tqdm(data.train_dataloader())):
+    for batch_idx, batch in enumerate(tqdm(data.predict_dataloader())):
         (f0, f0_len, logspc, codeap), (text, text_len) = batch
         with torch.no_grad():
             mask = generate_padding_mask(f0, f0_len)
@@ -60,17 +61,19 @@ def calc_stat(data, stat_path):
         'codeap_std': torch.sqrt((codeap_sqrsum / codeap_count) - (codeap_sum / codeap_count) ** 2),
     }
     print('saving...')
-    torch.save(state_dict, stat_path)
+    torch.save(state_dict, output_path)
 
 
 def cli_main():
-    parser = ArgumentParser()
+    parser = ArgumentParser(description="Make stat file for TTS (audio_stat.pt)")
+    parser.add_argument("--output", type=str, required=True)
     parser = AudioTextDataModule.add_argparse_args(parser)
+    parser.set_defaults(vocoder="world")
     args = parser.parse_args()
-    data = AudioTextDataModule.from_argparse_args(args, vocoder="world")
-    data.setup()
-    stat_path = f'data/{args.dataset}-stat.pt'
-    calc_stat(data, stat_path)
+    assert args.vocoder == "world"
+    data = AudioTextDataModule.from_argparse_args(args)
+    data.setup("predict")
+    calc_stat(data, args.output)
 
 
 if __name__ == '__main__':
