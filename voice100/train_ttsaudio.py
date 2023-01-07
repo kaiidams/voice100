@@ -15,6 +15,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
+    parser.set_defaults(batch_size=256, vocoder="world", gradient_clip_val=1.0)
     args = parser.parse_args()
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args, vocoder="world", use_target=False, use_align=True)
