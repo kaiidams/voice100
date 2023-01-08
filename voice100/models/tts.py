@@ -358,6 +358,7 @@ class AlignTextToAudioModel(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=512)
+        parser.add_argument('--audio_stat', type=str)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -370,7 +371,8 @@ class AlignTextToAudioModel(pl.LightningModule):
             learning_rate=args.learning_rate,
             **kwargs)
         if not args.resume_from_checkpoint:
-            args.audio_stat = f'./data/audio-stat.pt'
+            if args.audio_stat is None:
+                args.audio_stat = f'./data/{args.dataset}-stat.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model
 
@@ -478,6 +480,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--hidden_size', type=int, default=512)
+        parser.add_argument('--audio_stat', type=str)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
@@ -488,6 +491,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
             learning_rate=args.learning_rate,
             **kwargs)
         if not args.resume_from_checkpoint:
-            args.audio_stat = './data/audio-stat.pt'
+            if args.audio_stat is None:
+                args.audio_stat = f'./data/{args.dataset}-stat.pt'
             model.norm.load_state_dict(torch.load(args.audio_stat))
         return model

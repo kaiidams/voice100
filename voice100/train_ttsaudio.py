@@ -15,10 +15,11 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
-    parser.set_defaults(batch_size=256, vocoder="world", gradient_clip_val=1.0)
+    parser.set_defaults(batch_size=32, vocoder="world", gradient_clip_val=1.0)
     args = parser.parse_args()
+    assert args.vocoder == "world"
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
-        args, vocoder="world", use_target=False, use_align=True)
+        args, use_target=False, use_align=True)
     model = AlignTextToAudioModel.from_argparse_args(
         args, vocab_size=data.vocab_size)
     checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_last=True, every_n_epochs=10)

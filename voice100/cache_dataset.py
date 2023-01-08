@@ -10,7 +10,7 @@ from .datasets import AudioTextDataModule
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser("Cache decoded WORLD data")
+    parser = ArgumentParser("Cache encoded WORLD data")
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser.set_defaults(vocoder="world")
