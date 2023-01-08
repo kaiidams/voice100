@@ -109,7 +109,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = (f0 - self.f0_mean) / self.f0_std
-        mcep = (mcep - self.logspc_mean) / self.logspc_std
+        #mcep = (mcep - self.logspc_mean) / self.logspc_std
         codeap = (codeap - self.codeap_mean) / self.codeap_std
         return f0, mcep, codeap
 
@@ -118,7 +118,7 @@ class WORLDNorm(nn.Module):
         self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         f0 = self.f0_std * f0 + self.f0_mean
-        mcep = self.logspc_std * mcep + self.logspc_mean
+        #mcep = self.logspc_std * mcep + self.logspc_mean
         codeap = self.codeap_std * codeap + self.codeap_mean
         return f0, mcep, codeap
 
@@ -128,12 +128,6 @@ class WORLDLoss(nn.Module):
         super().__init__()
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
-
-        f = (sample_rate / n_fft) * torch.arange(
-            n_fft // 2 + 1, device=device, dtype=dtype if dtype is not None else torch.float32)
-        dm = 1127 / (700 + f)
-        logspc_weights = dm / torch.sum(dm)
-        self.register_buffer('logspc_weights', logspc_weights, persistent=False)
 
     def forward(
         self, length: torch.Tensor,
@@ -149,7 +143,7 @@ class WORLDLoss(nn.Module):
         mask = generate_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_logits, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
-        logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
+        logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
@@ -263,16 +257,16 @@ class AlignTextToAudioModel(pl.LightningModule):
         self.n_fft = 512
         self.hasf0_size = 1
         self.f0_size = 1
-        self.logspc_size = self.n_fft // 2 + 1
+        self.logspc_size = 25 # self.n_fft // 2 + 1
         self.codeap_size = 1
         self.embedding = nn.Embedding(vocab_size, encoder_hidden_size)
         self.lstm = nn.LSTM(
             input_size=encoder_hidden_size, hidden_size=encoder_hidden_size,
             num_layers=encoder_num_layers, dropout=0.2, bidirectional=True)
-        self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
+        self.audio_size = self.hasf0_size + self.f0_size + 25 + self.codeap_size
         self.decoder = VoiceDecoder(2 * decoder_hidden_size, decoder_hidden_size)
         self.projection = nn.Linear(decoder_hidden_size, self.audio_size)
-        self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
+        self.norm = WORLDNorm(257, self.codeap_size)
         self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft)
 
     def forward(
