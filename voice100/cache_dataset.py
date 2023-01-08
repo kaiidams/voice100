@@ -10,11 +10,13 @@ from .datasets import AudioTextDataModule
 def cli_main():
     pl.seed_everything(1234)
 
-    parser = ArgumentParser()
+    parser = ArgumentParser("Cache encoded WORLD data")
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
+    parser.set_defaults(vocoder="world")
     args = parser.parse_args()
-    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args, vocoder="world")
+    assert args.vocoder == "world"
+    data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
     data.setup()
     for _ in tqdm(data.val_dataloader()):
         pass
