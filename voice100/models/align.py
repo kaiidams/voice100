@@ -8,7 +8,7 @@ from torch import nn
 import pytorch_lightning as pl
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
-from .layers import ConvLayerBlock
+from .layers import get_conv_layers
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
@@ -80,16 +80,9 @@ class AudioAlignCTC(pl.LightningModule):
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        layers = []
-        channels = audio_size
-        for out_channels, kernel_size, stride, padding, bias in encoder_settings:
-            layers.append(
-                ConvLayerBlock(
-                    channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias))
-            channels = out_channels
-        self.encoder = nn.Sequential(*layers)
+        self.encoder = get_conv_layers(audio_size, encoder_settings)
         self.lstm = nn.LSTM(
-            input_size=channels, hidden_size=decoder_hidden_size,
+            input_size=decoder_hidden_size, hidden_size=decoder_hidden_size,
             num_layers=decoder_num_layers, dropout=0.2, bidirectional=True)
         self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size)
         # zero_infinity for broken short audio clips
@@ -188,19 +181,19 @@ class AudioAlignCTC(pl.LightningModule):
     def from_argparse_args(args, vocab_size, **kwargs):
         if args.model_size == "small":
             encoder_settings = [
-                # out_channels, kernel_size, stride, padding, bias
-                (256, 3, 2, 1, False),
-                (256, 3, 1, 1, False),
+                # out_channels, transpose, kernel_size, stride, padding, bias
+                (256, False, 3, 2, 1, False),
+                (256, False, 3, 1, 1, False),
             ]
             decoder_num_layers = 2
             decoder_hidden_size = 256
         elif args.model_size == 'base':
             encoder_settings = [
-                # out_channels, kernel_size, stride, padding, bias
-                (512, 5, 1, 2, False),
-                (512, 5, 2, 2, False),
-                (512, 5, 1, 2, False),
-                (512, 5, 1, 2, False),
+                # out_channels, transpose, kernel_size, stride, padding, bias
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 2, 2, False),
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
             ]
             decoder_num_layers = 2
             decoder_hidden_size = 512

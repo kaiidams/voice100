@@ -178,9 +178,8 @@ class EncodedCacheDataset(Dataset):
         self.save_mcep = isinstance(self.audio_transform, WORLDAudioProcessor)
         if self.save_mcep:
             from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
-            #self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
+            self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
             self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
-            self.mc2sp_matrix = torch.eye(25, dtype=torch.float32)
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -299,7 +298,7 @@ class WORLDAudioProcessor(nn.Module):
 
     @property
     def audio_size(self) -> int:
-        return 1 + 25 + self.vocoder.codeap_dim
+        return 1 + (self.vocoder.n_fft // 2 + 1) + self.vocoder.codeap_dim
 
     def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
