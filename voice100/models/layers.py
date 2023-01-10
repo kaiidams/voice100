@@ -76,11 +76,11 @@ def get_conv_layers(in_channels: int, settings: List[Tuple]) -> nn.Module:
     channels = in_channels
     for out_channels, transpose, kernel_size, stride, padding, bias in settings:
         if transpose:
-            layer = ConvLayerBlock(
+            layer = ConvTransposeLayerBlock(
                 channels, out_channels, kernel_size=kernel_size,
                 stride=stride, padding=padding, bias=bias)
         else:
-            layer = ConvTransposeLayerBlock(
+            layer = ConvLayerBlock(
                 channels, out_channels, kernel_size=kernel_size,
                 stride=stride, padding=padding, bias=bias)
         layers.append(layer)
