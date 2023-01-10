@@ -110,12 +110,6 @@ class WORLDLoss(nn.Module):
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.l1_loss = nn.L1Loss(reduction='none')
 
-        f = (sample_rate / n_fft) * torch.arange(
-            n_fft // 2 + 1, device=device, dtype=dtype if dtype is not None else torch.float32)
-        dm = 1127 / (700 + f)
-        logspc_weights = dm / torch.sum(dm)
-        self.register_buffer('logspc_weights', logspc_weights, persistent=False)
-
     def forward(
         self, length: torch.Tensor,
         hasf0_logits: torch.Tensor, f0_hat: torch.Tensor, logspc_hat: torch.Tensor, codeap_hat: torch.Tensor,
@@ -130,7 +124,7 @@ class WORLDLoss(nn.Module):
         mask = generate_padding_mask(f0, length)
         hasf0_loss = self.bce_loss(hasf0_logits, hasf0) * mask
         f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
-        logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
+        logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
         codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
@@ -350,7 +344,6 @@ class AlignTextToAudioModel(pl.LightningModule):
         if args.model_size == "base":
             decoder_settings = [
                 # out_channels, transpose, kernel_size, stride, padding, bias
-                (512, False, 5, 1, 2, False),
                 (512, False, 5, 1, 2, False),
                 (512, True, 5, 1, 2, False),
                 (512, False, 5, 1, 2, False),
