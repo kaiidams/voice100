@@ -52,6 +52,7 @@ class ConvTransposeLayerBlock(nn.Module):
         bias: bool
     ) -> None:
         super().__init__()
+        self.layer_norm = nn.LayerNorm(normalized_shape=out_channels)
         self.conv = nn.ConvTranspose1d(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -63,6 +64,9 @@ class ConvTransposeLayerBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
+        x = x.transpose(-2, -1)
+        x = self.layer_norm(x)
+        x = x.transpose(-2, -1)
         x = nn.functional.gelu(x)
         return x
 
