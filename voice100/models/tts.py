@@ -344,15 +344,13 @@ class AlignTextToAudioModel(pl.LightningModule):
         if args.model_size == "base":
             decoder_settings = [
                 # out_channels, transpose, kernel_size, stride, padding, bias
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, True, 5, 2, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
+                (1024, False, 5, 1, 2, False),
+                (1024, True, 5, 2, 2, False),
+                (1024, False, 5, 1, 2, False),
             ]
             encoder_num_layers = 2
             encoder_hidden_size = 512
-            decoder_hidden_size = 512
+            decoder_hidden_size = decoder_settings[-1][0]
         else:
             raise ValueError("Unknown model_size")
         model = AlignTextToAudioModel(
