@@ -558,7 +558,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.use_phone = use_phone
         self.use_target = use_target
         self.cache = cache
-        self.cache_salt = 'world'.encode('utf-8') #self.vocoder.encode('utf-8')
+        self.cache_salt = ("world" if self.vocoder == "world_mcep" else self.vocoder).encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
