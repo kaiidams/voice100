@@ -109,15 +109,25 @@ class WORLDLoss(nn.Module):
         self,
         sample_rate: int = 16000,
         n_fft: int = 512,
-        use_logspc_weights: bool = True,
+        use_mel_weights: bool = True,
+        loss: str = 'mse',
         device=None,
         dtype=None
     ) -> None:
         super().__init__()
-        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
-        self.l1_loss = nn.L1Loss(reduction='none')
+        self.hasf0_criterion = nn.BCEWithLogitsLoss(reduction='none')
+        if loss == 'l1':
+            self.f0_criteria = nn.L1Loss(reduction='none')
+            self.logspc_criterion = nn.L1Loss(reduction='none')
+            self.codeap_criterion = nn.L1Loss(reduction='none')
+        elif loss == 'mse':
+            self.f0_criterion = nn.MSELoss(reduction='none')
+            self.logspc_criterion = nn.MSELoss(reduction='none')
+            self.codeap_criterion = nn.MSELoss(reduction='none')
+        else:
+            raise ValueError("Unknown loss type")
 
-        if use_logspc_weights:
+        if use_mel_weights:
             f = (sample_rate / n_fft) * torch.arange(
                 n_fft // 2 + 1, device=device, dtype=dtype if dtype is not None else torch.float32)
             dm = 1127 / (700 + f)
@@ -138,13 +148,13 @@ class WORLDLoss(nn.Module):
         codeap_hat, codeap = adjust_size(codeap_hat, codeap)
 
         mask = generate_padding_mask(f0, length)
-        hasf0_loss = self.bce_loss(hasf0_logits, hasf0) * mask
-        f0_loss = self.l1_loss(f0_hat, f0) * hasf0 * mask
+        hasf0_loss = self.hasf0_criterion(hasf0_logits, hasf0) * mask
+        f0_loss = self.f0_criterion(f0_hat, f0) * hasf0 * mask
         if self.logspc_weights is not None:
-            logspc_loss = torch.sum(self.l1_loss(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
+            logspc_loss = torch.sum(self.logspc_criterion(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
         else:
-            logspc_loss = torch.mean(self.l1_loss(logspc_hat, logspc), axis=2) * mask
-        codeap_loss = torch.mean(self.l1_loss(codeap_hat, codeap), axis=2) * mask
+            logspc_loss = torch.mean(self.logspc_criterion(logspc_hat, logspc), axis=2) * mask
+        codeap_loss = torch.mean(self.codeap_criterion(codeap_hat, codeap), axis=2) * mask
         mask_sum = torch.sum(mask)
         hasf0_loss = torch.sum(hasf0_loss) / mask_sum
         f0_loss = torch.sum(f0_loss) / mask_sum
@@ -244,33 +254,32 @@ class AlignTextToAudioModel(pl.LightningModule):
     def __init__(
         self,
         vocab_size: int,
-        decoder_settings,
+        logspc_size: int,
+        codeap_size: int,
         encoder_num_layers: int,
         encoder_hidden_size: int,
-        decoder_hidden_size: int,
+        decoder_settings,
         learning_rate: float,
-        use_mcep: bool = False
+        hasf0_size: int = 1,
+        f0_size: int = 1,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.encoder_hidden_size = encoder_hidden_size
-        self.decoder_hidden_size = decoder_hidden_size
         self.vocab_size = vocab_size
-        self.sample_rate = 16000
-        self.n_fft = 512
-        self.hasf0_size = 1
-        self.f0_size = 1
-        self.logspc_size = 25 if use_mcep else self.n_fft // 2 + 1
-        self.codeap_size = 1
+        self.hasf0_size = hasf0_size
+        self.f0_size = f0_size
+        self.logspc_size = logspc_size
+        self.codeap_size = codeap_size
+        self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.embedding = nn.Embedding(vocab_size, encoder_hidden_size)
         self.lstm = nn.LSTM(
             input_size=encoder_hidden_size, hidden_size=encoder_hidden_size,
             num_layers=encoder_num_layers, dropout=0.2, bidirectional=True)
-        self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.decoder = get_conv_layers(2 * encoder_hidden_size, decoder_settings)
-        self.projection = nn.Linear(decoder_hidden_size, self.audio_size)
+        self.projection = nn.Linear(decoder_settings[-1][0], self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
-        self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft, use_logspc_weights=not use_mcep)
+        self.criterion = WORLDLoss(use_mel_weights=False)
 
     def forward(
         self, aligntext: torch.Tensor, aligntext_len: torch.Tensor,
@@ -318,7 +327,7 @@ class AlignTextToAudioModel(pl.LightningModule):
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext, aligntext_len)
 
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criterion(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
 
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
@@ -366,20 +375,22 @@ class AlignTextToAudioModel(pl.LightningModule):
                 # out_channels, transpose, kernel_size, stride, padding, bias
                 (1024, False, 5, 1, 2, False),
                 (1024, True, 5, 2, 2, False),
-                (1024, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
             ]
             encoder_num_layers = 2
             encoder_hidden_size = 512
-            decoder_hidden_size = decoder_settings[-1][0]
         else:
             raise ValueError("Unknown model_size")
+        use_mcep = args.vocoder == "world_mcep"
         model = AlignTextToAudioModel(
-            decoder_hidden_size=decoder_hidden_size,
-            decoder_settings=decoder_settings,
             encoder_num_layers=encoder_num_layers,
             encoder_hidden_size=encoder_hidden_size,
+            decoder_settings=decoder_settings,
+            logspc_size=25 if use_mcep else 257,
+            codeap_size=1,
             learning_rate=args.learning_rate,
-            use_mcep=args.vocoder == "world_mcep",
             **kwargs)
         if not args.resume_from_checkpoint:
             if args.audio_stat is None:
@@ -407,7 +418,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.decoder = VoiceMultiTaskDecoder(hidden_size, self.audio_size, self.target_vocab_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
-        self.criteria = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft, use_logspc_weights=not use_mcep)
+        self.criterion = WORLDLoss(use_mel_weights=False)
         self.target_criteria = nn.CrossEntropyLoss(reduction='none')
 
     def forward(
@@ -449,7 +460,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat, target_logits = self.forward(aligntext)
 
-        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criteria(
+        hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criterion(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
         phone_loss = self.target_criteria(target_logits, phonetext)
         mask = generate_padding_mask(phonetext, phonetext_len)
