@@ -76,7 +76,7 @@ graph TD
 0 | embedding | Embedding    | 14.8 K
 1 | decoder   | VoiceDecoder | 11.0 M
 2 | norm      | WORLDNorm    | 518   
-3 | criteria  | WORLDLoss    | 0     
+3 | criterion  | WORLDLoss    | 0     
 -------------------------------------------
 11.1 M    Trainable params
 518       Non-trainable params
