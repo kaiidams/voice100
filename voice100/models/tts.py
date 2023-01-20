@@ -125,7 +125,7 @@ class WORLDLoss(nn.Module):
     def __init__(
         self,
         loss: str = 'mse',
-        use_mel_weights: bool = True,
+        use_mel_weights: bool = False,
         sample_rate: int = 16000,
         n_fft: int = 512,
         device=None,
