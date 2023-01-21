@@ -175,11 +175,20 @@ class EncodedCacheDataset(Dataset):
         self.targettext_transform = targettext_transform
         self._cachedir = cachedir
         self._salt = salt
-        self.save_mcep = isinstance(self.audio_transform, WORLDAudioProcessor)
-        if self.save_mcep:
-            from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
-            self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
-            self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
+        self.save_mcep = False
+        if isinstance(self.audio_transform, WORLDAudioProcessor):
+            vocoder = self.audio_transform.vocoder
+            if not vocoder.use_mcep:
+                from .vocoder import create_mc2sp_matrix, create_sp2mc_matrix
+                self.save_mcep = True
+                if vocoder.sample_rate == 16000:
+                    self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
+                    self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(512, 24, 0.410)).float()
+                elif vocoder.sample_rate == 22050:
+                    self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(1024, 34, 0.455)).float()
+                    self.sp2mc_matrix = torch.from_numpy(create_sp2mc_matrix(1024, 34, 0.455)).float()
+                else:
+                    raise ValueError("Unsupported sample rate")
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -286,7 +295,8 @@ class MelSpectrogramAudioTransform(nn.Module):
 class WORLDAudioProcessor(nn.Module):
     def __init__(
         self,
-        sample_rate: int
+        sample_rate: int,
+        use_mcep: bool
     ) -> None:
         from .vocoder import WORLDVocoder
         super().__init__()
@@ -294,16 +304,16 @@ class WORLDAudioProcessor(nn.Module):
             ["remix", "1"],
             ["rate", f"{sample_rate}"],
         ]
-        self.vocoder = WORLDVocoder(sample_rate=sample_rate)
+        self.vocoder = WORLDVocoder(sample_rate=sample_rate, use_mcep=use_mcep)        
 
     @property
     def audio_size(self) -> int:
-        return 1 + (self.vocoder.n_fft // 2 + 1) + self.vocoder.codeap_dim
+        return sum(self.vocoder.output_dims)
 
     def forward(self, audiopath: Text) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         waveform, _ = torchaudio.sox_effects.apply_effects_file(audiopath, effects=self.target_effects)
-        f0, logspc, codeap = self.vocoder(waveform[0])
-        return f0, logspc, codeap
+        f0, logspc_or_mcep, codeap = self.vocoder(waveform[0])
+        return f0, logspc_or_mcep, codeap
 
 
 class TextProcessor(nn.Module):
@@ -406,7 +416,9 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
     if vocoder == 'mel':
         audio_transform = MelSpectrogramAudioTransform(sample_rate=sample_rate)
     elif vocoder == 'world':
-        audio_transform = WORLDAudioProcessor(sample_rate=sample_rate)
+        audio_transform = WORLDAudioProcessor(sample_rate=sample_rate, use_mcep=False)
+    elif vocoder == 'world_mcep':
+        audio_transform = WORLDAudioProcessor(sample_rate=sample_rate, use_mcep=True)
     else:
         raise ValueError('Unknown vocoder')
     return audio_transform
@@ -443,7 +455,7 @@ def get_tokenizer(language: Text, use_phone: bool):
 def get_collate_fn(vocoder, use_target):
     if vocoder == "mel":
         collate_fn = generate_audio_text_batch
-    elif vocoder == "world":
+    elif vocoder == "world" or vocoder == "world_mcep":
         if use_target:
             collate_fn = generate_audio_text_align_target_batch
         else:
@@ -546,7 +558,7 @@ class AudioTextDataModule(pl.LightningDataModule):
         self.use_phone = use_phone
         self.use_target = use_target
         self.cache = cache
-        self.cache_salt = self.vocoder.encode('utf-8')
+        self.cache_salt = ("world" if self.vocoder == "world_mcep" else self.vocoder).encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)

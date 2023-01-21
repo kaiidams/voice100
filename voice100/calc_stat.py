@@ -23,14 +23,17 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
 
 def calc_stat(data: AudioTextDataModule, output_path: Text):
 
-    logspc_size = 257
-    codeap_size = 1
+    f0_dim, logspc_or_mcep_size, codeap_size = data.audio_transform.vocoder.output_dims
+    print(logspc_or_mcep_size)
+    assert f0_dim == 1
+    assert logspc_or_mcep_size == 257 or logspc_or_mcep_size == 25
+    assert codeap_size == 1
 
     f0_sum = torch.zeros(1, dtype=torch.double)
-    logspc_sum = torch.zeros(logspc_size, dtype=torch.double)
+    logspc_sum = torch.zeros(logspc_or_mcep_size, dtype=torch.double)
     codeap_sum = torch.zeros(codeap_size, dtype=torch.double)
     f0_sqrsum = torch.zeros(1, dtype=torch.double)
-    logspc_sqrsum = torch.zeros(logspc_size, dtype=torch.double)
+    logspc_sqrsum = torch.zeros(logspc_or_mcep_size, dtype=torch.double)
     codeap_sqrsum = torch.zeros(codeap_size, dtype=torch.double)
     f0_count = 0
     logspc_count = 0
@@ -70,7 +73,7 @@ def cli_main():
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser.set_defaults(vocoder="world")
     args = parser.parse_args()
-    assert args.vocoder == "world"
+    assert args.vocoder == "world" or args.vocoder == "world_mcep"
     data = AudioTextDataModule.from_argparse_args(args)
     data.setup("predict")
     calc_stat(data, args.output)

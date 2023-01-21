@@ -17,7 +17,7 @@ def cli_main():
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
     parser.set_defaults(batch_size=32, vocoder="world")
     args = parser.parse_args()
-    assert args.vocoder == "world"
+    assert args.vocoder == "world" or args.vocoder == "world_mcep"
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
         args, use_target=False, use_align=True)
     model = AlignTextToAudioModel.from_argparse_args(

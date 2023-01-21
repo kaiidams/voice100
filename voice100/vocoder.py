@@ -18,7 +18,7 @@ class WORLDVocoder(nn.Module):
         sample_rate: int = 16000,
         frame_period: int = 10.0,
         n_fft: int = None,
-        use_mc: bool = False,
+        use_mcep: bool = False,
         log_offset: float = 1e-15
     ) -> None:
         super().__init__()
@@ -39,14 +39,21 @@ class WORLDVocoder(nn.Module):
                 self.n_fft = 1024
         else:
             raise ValueError("Unsupported sample rate")
-        self.use_mc = use_mc
-        if use_mc:
+        self.use_mcep = use_mcep
+        if use_mcep:
             self.sp2mc_matrix = create_sp2mc_matrix(self.n_fft, self.mcep_dim, alpha=self.mcep_alpha)
             self.mc2sp_matrix = create_mc2sp_matrix(self.n_fft, self.mcep_dim, alpha=self.mcep_alpha)
         else:
             self.sp2mc_matrix = None
             self.mc2sp_matrix = None
         self.log_offset = log_offset
+
+    @property
+    def output_dims(self) -> Tuple[int, int, int]:
+        if self.use_mcep:
+            return 1, self.mcep_dim + 1, self.codeap_dim
+        else:
+            return 1, self.n_fft // 2 + 1, self.codeap_dim
 
     def forward(self, waveform: torch.Tensor):
         return self.encode(waveform)
@@ -65,11 +72,11 @@ class WORLDVocoder(nn.Module):
         ap = pyworld.d4c(waveform, f0, time_axis, self.sample_rate, fft_size=self.n_fft)
         codeap = pyworld.code_aperiodicity(ap, self.sample_rate)
 
-        if self.use_mc:
-            mc = logspc @ self.sp2mc_matrix
+        if self.use_mcep:
+            mcep = logspc @ self.sp2mc_matrix
             return (
                 torch.from_numpy(f0.astype(np.float32)),
-                torch.from_numpy(mc.astype(np.float32)),
+                torch.from_numpy(mcep.astype(np.float32)),
                 torch.from_numpy(codeap.astype(np.float32))
             )
         else:
@@ -80,14 +87,14 @@ class WORLDVocoder(nn.Module):
             )
 
     def decode(
-        self, f0: torch.Tensor, logspc_or_mc: torch.Tensor, codeap: torch.Tensor
-    ) -> torch.Tensor:
+        self, f0: torch.Tensor, logspc_or_mcep: torch.Tensor, codeap: torch.Tensor
+    ) -> np.ndarray:
         f0 = f0.cpu().numpy().astype(np.double, order='C')
-        if self.use_mc:
-            mc = logspc_or_mc.cpu().numpy().astype(np.double)
-            logspc = mc @ self.mc2sp_matrix
+        if self.use_mcep:
+            mcep = logspc_or_mcep.cpu().numpy().astype(np.double)
+            logspc = mcep @ self.mc2sp_matrix
         else:
-            logspc = logspc_or_mc.cpu().numpy().astype(np.double)
+            logspc = logspc_or_mcep.cpu().numpy().astype(np.double)
         codeap = codeap.cpu().numpy().astype(np.double, order='C')
         spc = np.maximum(np.exp(logspc) - self.log_offset, 0).copy(order='C')
         ap = pyworld.decode_aperiodicity(codeap, self.sample_rate, self.n_fft)
