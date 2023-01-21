@@ -73,10 +73,10 @@ class WORLDVocoder(nn.Module):
         codeap = pyworld.code_aperiodicity(ap, self.sample_rate)
 
         if self.use_mcep:
-            mc = logspc @ self.sp2mc_matrix
+            mcep = logspc @ self.sp2mc_matrix
             return (
                 torch.from_numpy(f0.astype(np.float32)),
-                torch.from_numpy(mc.astype(np.float32)),
+                torch.from_numpy(mcep.astype(np.float32)),
                 torch.from_numpy(codeap.astype(np.float32))
             )
         else:
@@ -88,11 +88,11 @@ class WORLDVocoder(nn.Module):
 
     def decode(
         self, f0: torch.Tensor, logspc_or_mcep: torch.Tensor, codeap: torch.Tensor
-    ) -> torch.Tensor:
+    ) -> np.ndarray:
         f0 = f0.cpu().numpy().astype(np.double, order='C')
         if self.use_mcep:
-            mc = logspc_or_mcep.cpu().numpy().astype(np.double)
-            logspc = mc @ self.mc2sp_matrix
+            mcep = logspc_or_mcep.cpu().numpy().astype(np.double)
+            logspc = mcep @ self.mc2sp_matrix
         else:
             logspc = logspc_or_mcep.cpu().numpy().astype(np.double)
         codeap = codeap.cpu().numpy().astype(np.double, order='C')

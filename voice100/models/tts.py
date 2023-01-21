@@ -107,17 +107,17 @@ class WORLDNorm(nn.Module):
 class WORLDLoss(nn.Module):
     def __init__(
         self,
+        loss: str = 'mse',
+        use_mel_weights: bool = False,
         sample_rate: int = 16000,
         n_fft: int = 512,
-        use_mel_weights: bool = True,
-        loss: str = 'mse',
         device=None,
         dtype=None
     ) -> None:
         super().__init__()
         self.hasf0_criterion = nn.BCEWithLogitsLoss(reduction='none')
         if loss == 'l1':
-            self.f0_criteria = nn.L1Loss(reduction='none')
+            self.f0_criterion = nn.L1Loss(reduction='none')
             self.logspc_criterion = nn.L1Loss(reduction='none')
             self.codeap_criterion = nn.L1Loss(reduction='none')
         elif loss == 'mse':
@@ -391,6 +391,7 @@ class AlignTextToAudioModel(pl.LightningModule):
             logspc_size=25 if use_mcep else 257,
             codeap_size=1,
             learning_rate=args.learning_rate,
+            use_mcep=args.vocoder == "world_mcep",
             **kwargs)
         if not args.resume_from_checkpoint:
             if args.audio_stat is None:
@@ -418,8 +419,8 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
         self.decoder = VoiceMultiTaskDecoder(hidden_size, self.audio_size, self.target_vocab_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
-        self.criterion = WORLDLoss(use_mel_weights=False)
-        self.target_criteria = nn.CrossEntropyLoss(reduction='none')
+        self.criterion = WORLDLoss(sample_rate=self.sample_rate, n_fft=self.n_fft, use_logspc_weights=not use_mcep)
+        self.target_criterion = nn.CrossEntropyLoss(reduction='none')
 
     def forward(
         self, aligntext: torch.Tensor
@@ -462,7 +463,7 @@ class AlignTextToAudioMultiTaskModel(pl.LightningModule):
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criterion(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
-        phone_loss = self.target_criteria(target_logits, phonetext)
+        phone_loss = self.target_criterion(target_logits, phonetext)
         mask = generate_padding_mask(phonetext, phonetext_len)
         mask_sum = torch.sum(mask)
         phone_loss = torch.sum(phone_loss * mask) / mask_sum
