@@ -389,7 +389,6 @@ class AlignTextToAudioModel(pl.LightningModule):
             logspc_size=25 if use_mcep else 257,
             codeap_size=1,
             learning_rate=args.learning_rate,
-            use_mcep=args.vocoder == "world_mcep",
             **kwargs)
         if not args.resume_from_checkpoint:
             if args.audio_stat is None:
