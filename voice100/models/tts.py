@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Tuple
+from typing import Tuple, List
 import pytorch_lightning as pl
 import torch
 from torch import nn
@@ -258,8 +258,8 @@ class AlignTextToAudioModel(pl.LightningModule):
         codeap_size: int,
         encoder_num_layers: int,
         encoder_hidden_size: int,
-        decoder_settings,
-        learning_rate: float,
+        decoder_settings: List[List],
+        learning_rate: float = 1e-3,
         hasf0_size: int = 1,
         f0_size: int = 1,
     ) -> None:
@@ -373,11 +373,11 @@ class AlignTextToAudioModel(pl.LightningModule):
         if args.model_size == "base":
             decoder_settings = [
                 # out_channels, transpose, kernel_size, stride, padding, bias
-                (1024, False, 5, 1, 2, False),
-                (1024, True, 5, 2, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
+                [1024, False, 5, 1, 2, False],
+                [1024, True, 5, 2, 2, False],
+                [512, False, 5, 1, 2, False],
+                [512, False, 5, 1, 2, False],
+                [512, False, 5, 1, 2, False],
             ]
             encoder_num_layers = 2
             encoder_hidden_size = 512
