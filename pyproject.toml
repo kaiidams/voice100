@@ -7,6 +7,7 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.scripts]
+voice100 = "voice100.main:cli_main"
 voice100-align-text = "voice100.align_text:cli_main"
 voice100-calc-stat = "voice100.calc_stat:cli_main"
 voice100-cache-dataset = "voice100.cache_dataset:cli_main"
@@ -23,7 +24,7 @@ voice100-train-ttsaudio-mt = "voice100.train_ttsaudio_mt:cli_main"
 python = "^3.8.1"
 torch = "^1.12"
 torchaudio = "^0"
-pytorch_lightning = "^1.4"
+pytorch_lightning = { version = "^1.5", extras = ["extra"] }
 pyworld = "^0.3.2"
 g2p-en = "^2.1.0"
 fugashi = "^1.2.1"

@@ -375,7 +375,9 @@ class AlignTextToAudioModel(pl.LightningModule):
                 # out_channels, transpose, kernel_size, stride, padding, bias
                 (1024, False, 5, 1, 2, False),
                 (1024, True, 5, 2, 2, False),
-                (1024, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
+                (512, False, 5, 1, 2, False),
             ]
             encoder_num_layers = 2
             encoder_hidden_size = 512

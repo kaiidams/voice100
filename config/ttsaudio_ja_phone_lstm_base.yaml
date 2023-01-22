@@ -1,0 +1,35 @@
+seed_everything: true
+trainer:
+  gradient_clip_val: 1.0
+model:
+  class_path: voice100.models.tts.AlignTextToAudioModel
+  init_args:
+    vocab_size: 44
+    logspc_size: 257
+    codeap_size: 1
+    encoder_num_layers: 2
+    encoder_hidden_size: 512
+    decoder_settings: 
+      - [1024, false, 5, 1, 2, false]
+      - [1024, true, 5, 2, 2, false]
+      - [512, false, 5, 1, 2, false]
+      - [512, false, 5, 1, 2, false]
+      - [512, false, 5, 1, 2, false]
+    learning_rate: 1e-3
+    hasf0_size: 1
+    f0_size: 1
+data:
+  class_path: voice100.data_modules.AudioTextDataModule
+  init_args:
+    vocoder: world
+    dataset: kokoro_tiny
+    sample_rate: 16000
+    language: ja
+    use_align: true
+    use_phone: true
+    use_target: false
+    cache: ./cache
+    batch_size: 128
+    num_workers: 0
+    valid_ratio: 0.1
+ckpt_path: null
