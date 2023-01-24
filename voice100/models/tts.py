@@ -2,10 +2,10 @@
 
 from argparse import ArgumentParser
 from typing import Tuple
-import pytorch_lightning as pl
 import torch
 from torch import nn
 
+from .base import Voice100ModelBase
 from .asr import InvertedResidual
 
 
@@ -181,7 +181,7 @@ class WORLDLoss(nn.Module):
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
 
 
-class TextToAlignTextModel(pl.LightningModule):
+class TextToAlignTextModel(Voice100ModelBase):
     def __init__(self, vocab_size, hidden_size, learning_rate) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -266,7 +266,7 @@ class TextToAlignTextModel(pl.LightningModule):
             **kwargs)
 
 
-class AlignTextToAudioModel(pl.LightningModule):
+class AlignTextToAudioModel(Voice100ModelBase):
     def __init__(
         self, vocab_size: int, hidden_size: int, learning_rate: float, use_mcep: bool = False
     ) -> None:
@@ -379,7 +379,7 @@ class AlignTextToAudioModel(pl.LightningModule):
         return model
 
 
-class AlignTextToAudioMultiTaskModel(pl.LightningModule):
+class AlignTextToAudioMultiTaskModel(Voice100ModelBase):
     def __init__(
         self, vocab_size: int, target_vocab_size: int, hidden_size: int, learning_rate: float, use_mcep: bool = False
     ) -> None:

@@ -3,9 +3,9 @@
 from argparse import _ArgumentGroup
 import torch
 from torch import nn
-import pytorch_lightning as pl
 
 from ..audio import BatchSpectrogramAugumentation
+from .base import Voice100ModelBase
 
 __all__ = [
     'AudioToTextCTC',
@@ -94,7 +94,7 @@ class LinearCharDecoder(nn.Module):
         return self.layers(enc_out)
 
 
-class AudioToTextCTC(pl.LightningModule):
+class AudioToTextCTC(Voice100ModelBase):
 
     def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
