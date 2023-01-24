@@ -2,7 +2,7 @@
 
 from typing import Text
 from argparse import ArgumentParser
-from .datasets import get_base_dataset
+from .data_modules import get_base_dataset
 from .text import CMUPhonemizer
 from tqdm import tqdm
 from glob import glob

@@ -6,7 +6,7 @@ from voice100.data_modules import Voice100DataModuleBase
 
 
 def cli_main():
-    cli = LightningCLI(
+    cli = LightningCLI(  # noqa: F841
         Voice100ModelBase,
         Voice100DataModuleBase,
         subclass_mode_model=True,

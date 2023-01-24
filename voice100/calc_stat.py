@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 import torch
 from tqdm import tqdm
 
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:

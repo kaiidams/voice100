@@ -3,7 +3,7 @@
 import unittest
 import torch
 
-from voice100.datasets import get_audio_transform, get_text_transform
+from voice100.data_modules import get_audio_transform, get_text_transform
 
 
 class TestEncoder(unittest.TestCase):

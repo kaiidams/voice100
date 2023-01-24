@@ -3,7 +3,7 @@ import unittest
 import voice100.vocoder
 import voice100.text
 import voice100.export_onnx
-import voice100.datasets
+import voice100.data_modules
 import voice100.audio
 import voice100.train_asr
 import voice100.train_align
