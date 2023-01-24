@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks import LearningRateMonitor
 
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 from .models.asr import AudioToTextCTC
 
 

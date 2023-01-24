@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 from .models.align import AudioAlignCTC
 
 

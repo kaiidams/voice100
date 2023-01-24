@@ -11,7 +11,7 @@ import torch
 import pytest
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from voice100.datasets import (
+from voice100.data_modules import (
     get_dataset,
     MergeDataset,
     MetafileDataset,
@@ -180,7 +180,7 @@ class DatasetTest(unittest.TestCase):
 
     @unittest.skipUnless(os.path.exists("./data/LJSpeech-1.1"), "Need LJSpeech-1.1 dataset")
     def test_dataset(self):
-        from voice100.datasets import get_dataset
+        from voice100.data_modules import get_dataset
         ds = get_dataset("ljspeech", split="train", use_phone=True)
         for x, y, z in ds:
             pass  # print(x, y, z)

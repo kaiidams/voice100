@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from .models.tts import AlignTextToAudioMultiTaskModel
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 
 
 def cli_main():
