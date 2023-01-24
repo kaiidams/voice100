@@ -518,7 +518,11 @@ def generate_audio_text_align_target_batch(data_batch):
     return (f0_batch, f0_len, spec_batch, codeap_batch), (text_batch, text_len), (targettext_batch, targettext_len)
 
 
-class AudioTextDataModule(pl.LightningDataModule):
+class Voice100DataModuleBase(pl.LightningDataModule):
+    pass
+
+
+class AudioTextDataModule(Voice100DataModuleBase):
     """Data module to read text and audio pairs and optionally aligned texts.
 
         Args:
@@ -696,7 +700,7 @@ def generate_text_align_batch(data_batch):
     return (text_batch, text_len), (align_batch, align_len)
 
 
-class AlignTextDataModule(pl.LightningDataModule):
+class AlignTextDataModule(Voice100DataModuleBase):
     """Data module to read text and audio pairs and optionally aligned texts.
 
         Args:

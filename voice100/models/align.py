@@ -5,9 +5,9 @@ from typing import Tuple
 import torch
 import numpy as np
 from torch import nn
-import pytorch_lightning as pl
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
+from .base import Voice100ModelBase
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
@@ -66,7 +66,7 @@ def ctc_best_path(logits, labels, max_move=3):
     return best_score, best_path, best_labels
 
 
-class AudioAlignCTC(pl.LightningModule):
+class AudioAlignCTC(Voice100ModelBase):
 
     def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
