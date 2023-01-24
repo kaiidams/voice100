@@ -72,7 +72,7 @@ class BatchSpectrogramAugumentation(nn.Module):
         n = random.randint(1, 3)
         for i in range(n):
             t = random.randrange(0, audio.shape[1])
-            hw = random.randint(1, 20)
+            hw = random.randint(1, 3)
             s = int(t - hw)
             e = int(t + hw)
             a = random.uniform(-self.blank_audio, -5)
@@ -82,7 +82,7 @@ class BatchSpectrogramAugumentation(nn.Module):
     def freqmask(self, audio):
         audio = audio.clone()
         t = random.randrange(0, audio.shape[2])
-        hw = random.randint(1, 3)
+        hw = random.randint(1, 10)
         s = int(t - hw)
         e = int(t + hw)
         a = random.uniform(-self.blank_audio, -5)
