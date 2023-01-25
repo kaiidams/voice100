@@ -7,7 +7,7 @@ import numpy as np
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
-from .base import Voice100ModelBase
+from ._base import Voice100ModelBase
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [

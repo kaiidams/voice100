@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from ..audio import BatchSpectrogramAugumentation
-from .base import Voice100ModelBase
+from ._base import Voice100ModelBase
 
 __all__ = [
     'AudioToTextCTC',

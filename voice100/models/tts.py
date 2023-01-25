@@ -5,7 +5,7 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from .base import Voice100ModelBase
+from ._base import Voice100ModelBase
 from .asr import InvertedResidual
 
 
