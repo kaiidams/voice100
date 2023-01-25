@@ -1,93 +1,48 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from argparse import _ArgumentGroup
-from typing import Tuple
+from typing import Tuple, List
 import torch
-import numpy as np
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
 from ._base import Voice100ModelBase
+from .align import ctc_best_path
+from ._layers import get_conv_layers
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
-    'AudioAlignCTC',
+    'AudioToAlignText',
 ]
 
 
-def ctc_best_path(logits, labels, max_move=3):
+class AudioToAlignText(Voice100ModelBase):
 
-    logits_len = logits.shape[0]
-
-    # Expand label with blanks
-    tmp = labels
-    labels = np.zeros(labels.shape[0] * 2 + 1, dtype=labels.dtype)
-    labels[1::2] = tmp
-    labels_len = labels.shape[0]
-
-    beams = [np.array([-1, -1], dtype=np.int32)]
-    scores = np.array([logits[0, labels[0]], logits[0, labels[1]]], dtype=logits.dtype)
-
-    for i in range(1, logits_len):
-
-        next_label_pos_min = 0
-        next_label_pos_max = min(scores.shape[0] + max_move - 1, labels_len)
-
-        next_beam = np.zeros([max_move, next_label_pos_max - next_label_pos_min], dtype=np.int32)
-        next_scores = np.full([max_move, next_label_pos_max - next_label_pos_min], - np.inf, dtype=scores.dtype)
-
-        for j in range(max_move):
-            k = np.arange(min(scores.shape[0], labels_len - j))
-            v = k + j
-
-            next_beam[j, v - next_label_pos_min] = k
-            next_scores[j, v - next_label_pos_min] = scores[k] + logits[i, labels[v]]
-
-            # Don't move from one blank to another blank.
-            if j > 0 and j % 2 == 0:
-                next_scores[j, labels[next_label_pos_min:next_label_pos_max] == 0] = -np.inf
-
-        k = np.argmax(next_scores, axis=0)
-        next_beam = np.choose(k, next_beam)
-        next_scores = np.choose(k, next_scores)
-
-        scores = next_scores.copy()
-        beams.append(next_beam.copy())
-
-    best_path = np.zeros(logits_len, dtype=np.int32)
-    j = labels_len + (-1 if scores[-1] > scores[-2] else -2)
-    best_score = scores[j]
-    for i in range(logits_len - 1, -1, -1):
-        best_path[i] = j
-        j = beams[i][j]
-
-    best_labels = labels[best_path]
-
-    return best_score, best_path, best_labels
-
-
-class AudioAlignCTC(Voice100ModelBase):
-
-    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
+    def __init__(
+        self,
+        audio_size: int,
+        encoder_settings: List[Tuple],
+        decoder_num_layers: int,
+        decoder_hidden_size: int,
+        vocab_size: int,
+        learning_rate: float = 0.001
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
-        self.relu = nn.ReLU()
+        self.encoder = get_conv_layers(audio_size, encoder_settings)
         self.lstm = nn.LSTM(
-            input_size=hidden_size, hidden_size=hidden_size,
-            num_layers=num_layers, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(hidden_size * 2, vocab_size)
+            input_size=decoder_hidden_size, hidden_size=decoder_hidden_size,
+            num_layers=decoder_num_layers, dropout=0.2, bidirectional=True)
+        self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size)
         # zero_infinity for broken short audio clips
         self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
-        x = torch.transpose(audio, 1, 2)
-        x = self.conv(x)
-        x = self.relu(x)
+        x = torch.transpose(audio, -2, -1)
+        x = self.encoder(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
-        x = torch.transpose(x, 1, 2)
+        x = torch.transpose(x, -2, -1)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
@@ -162,19 +117,3 @@ class AudioAlignCTC(Voice100ModelBase):
         hist = pad_sequence(hist, batch_first=True, padding_value=0)
         path = pad_sequence(path, batch_first=True, padding_value=0)
         return score, hist, path, logits_len
-
-    @staticmethod
-    def add_model_specific_args(parent_parser: _ArgumentGroup):
-        parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--hidden_size', type=int, default=128)
-        parser.add_argument('--num_layers', type=int, default=2)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
-        return parent_parser
-
-    @staticmethod
-    def from_argparse_args(args, **kwargs):
-        return AudioAlignCTC(
-            hidden_size=args.hidden_size,
-            num_layers=args.num_layers,
-            learning_rate=args.learning_rate,
-            **kwargs)

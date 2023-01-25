@@ -1,0 +1,25 @@
+trainer:
+  gradient_clip_val: 1.0
+model:
+  class_path: voice100.models.AudioToAlignText
+  init_args:
+    vocab_size: 44
+    audio_size: 64
+    encoder_settings:
+      - [512, false, 5, 1, 2, False]
+      - [512, false, 5, 2, 2, False]
+      - [512, false, 5, 1, 2, False]
+      - [512, false, 5, 1, 2, False]
+    decoder_num_layers: 2
+    decoder_hidden_size: 512
+    learning_rate: 1e-3
+data:
+  class_path: voice100.data_modules.AudioTextDataModule
+  init_args:
+    vocoder: mel
+    dataset: cv_ja
+    language: ja
+    sample_rate: 16000
+    use_align: false
+    use_phone: true
+    batch_size: 256

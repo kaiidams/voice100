@@ -326,18 +326,22 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 
 ## Pretrained models
 
-- [English align](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
-- [English CMU align](https://github.com/kaiidams/voice100/releases/download/v1.1.0/align_en_phone_lstm_base_ctc-20220103.ckpt)
-- [Japanese align](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
-- [Japanese phone align](https://github.com/kaiidams/voice100/releases/download/v1.4.1/align_ja_phone_lstm_base_ctc-20221230.ckpt)
-- [English TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_conv_base-20220409.ckpt)
-- [English CMU TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_phone_conv_base-20220409.ckpt)
-- [Japanese TTS align](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_ja_conv_base-20220411.ckpt)
-- [English TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.0.1/ttsaudio_en_conv_base-20220107.ckpt)
-- [English CMU TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_en_phone_conv_base-20220105.ckpt)
-- [Japanese TTS audio](https://github.com/kaiidams/voice100/releases/download/v1.3.1/ttsaudio_ja_conv_base-20220416.ckpt)
-- [English CMU TTS multitask](https://github.com/kaiidams/voice100/releases/download/v1.2.0/ttsaudio_en_mt_conv_base-20220316.ckpt)
-- [English ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.1/asr_en_conv_base_ctc-20220126.ckpt)
-- [English CMU ASR](https://github.com/kaiidams/voice100/releases/download/v1.1.0/asr_en_phone_conv_base_ctc-20220107.ckpt)
-- [Japanese ASR](https://github.com/kaiidams/voice100/releases/download/v0.8/stt_ja_conv_base_ctc-20211127.ckpt)
-- [Japanese phone ASR](https://github.com/kaiidams/voice100/releases/download/v1.4.0/asr_ja_phone_conv_base_ctc-20221225.ckpt)
+| Name | Model Class | Dataset | Download |
+|---|---|---|---|
+| align_en_lstm_base_ctc-20210628 | AudioAlignCTC | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
+| align_en_phone_lstm_base_ctc-20220103 | AudioAlignCTC | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.1.0/align_en_phone_lstm_base_ctc-20220103.ckpt)
+| align_ja_lstm_base_ctc-20211116  (deprecated) | AudioAlignCTC | Kokoro Speech v1.1 small | [download](https://github.com/kaiidams/voice100/releases/download/v0.7/align_ja_lstm_base_ctc-20211116.ckpt)
+| align_ja_phone_lstm_base_ctc-20221230 (deprecated) | AudioAlignCTC | Kokoro Speech v1.1 small | [download](https://github.com/kaiidams/voice100/releases/download/v1.4.1/align_ja_phone_lstm_base_ctc-20221230.ckpt)
+| ttsalign_en_conv_base-20220409 | TextToAlignTextModel | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_conv_base-20220409.ckpt)
+| ttsalign_en_phone_conv_base-20220409 | TextToAlignTextModel | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_en_phone_conv_base-20220409.ckpt)
+| ttsalign_ja_conv_base-20220411 | TextToAlignTextModel | Kokoro Speech v1.1 small | [download](https://github.com/kaiidams/voice100/releases/download/v1.3.0/ttsalign_ja_conv_base-20220411.ckpt)
+| ttsaudio_en_conv_base-20220107 | AlignTextToAudioModel | Kokoro Speech v1.1 small | [download](https://github.com/kaiidams/voice100/releases/download/v1.0.1/ttsaudio_en_conv_base-20220107.ckpt)
+| ttsaudio_en_phone_conv_base-20220105 | AlignTextToAudioModel | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.1.0/ttsaudio_en_phone_conv_base-20220105.ckpt)
+| ttsaudio_ja_conv_base-20220416 | AlignTextToAudioModel | Kokoro Speech v1.1 small | [download](https://github.com/kaiidams/voice100/releases/download/v1.3.1/ttsaudio_ja_conv_base-20220416.ckpt)
+| ttsaudio_en_mt_conv_base-20220316 | AlignTextToAudioMultiTaskModel | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.2.0/ttsaudio_en_mt_conv_base-20220316.ckpt)
+| asr_en_conv_base_ctc-20220126 | AudioToTextCTC | LibriSpeech | [download](https://github.com/kaiidams/voice100/releases/download/v1.1.1/asr_en_conv_base_ctc-20220126.ckpt)
+| asr_en_phone_conv_base_ctc-20220107 | AudioToTextCTC | LibriSpeech | [download](https://github.com/kaiidams/voice100/releases/download/v1.1.0/asr_en_phone_conv_base_ctc-20220107.ckpt)
+| stt_ja_conv_base_ctc-20211127 (deprecated) | AudioToTextCTC | Common Voice 6.1 ja | [download](https://github.com/kaiidams/voice100/releases/download/v0.8/stt_ja_conv_base_ctc-20211127.ckpt)
+| asr_ja_phone_conv_base_ctc-20221225 (deprecated) | AudioToTextCTC | Common Voice 6.1 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.4.0/asr_ja_phone_conv_base_ctc-20221225.ckpt)
+| asr_ja_phone_small-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_small-20230104.ckpt) |
+| asr_ja_phone_base-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_base-20230104.ckpt) |
