@@ -9,8 +9,8 @@ from torch.nn.utils.rnn import pad_sequence
 from voice100.models.tts import TextToAlignTextModel
 from voice100.models.tts import AlignTextToAudioModel
 from voice100.models.tts import AlignTextToAudioMultiTaskModel
-from voice100.datasets import get_phonemizer, get_tokenizer
-from voice100.datasets import get_audio_transform
+from voice100.data_modules import get_phonemizer, get_tokenizer
+from voice100.data_modules import get_audio_transform
 
 
 def make_samples(

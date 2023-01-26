@@ -6,7 +6,7 @@ import os
 from tqdm import tqdm
 
 from .models.align import AudioAlignCTC
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 
 
 def cli_main():

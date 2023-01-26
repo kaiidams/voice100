@@ -1,72 +1,21 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
-from argparse import _ArgumentGroup
 from typing import Tuple, List
 import torch
-import numpy as np
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 
 from ._base import Voice100ModelBase
+from .align import ctc_best_path
+from ._layers import get_conv_layers
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
-    'AudioAlignCTC',
+    'AudioToAlignText',
 ]
 
 
-def ctc_best_path(logits, labels, max_move=3):
-
-    logits_len = logits.shape[0]
-
-    # Expand label with blanks
-    tmp = labels
-    labels = np.zeros(labels.shape[0] * 2 + 1, dtype=labels.dtype)
-    labels[1::2] = tmp
-    labels_len = labels.shape[0]
-
-    beams = [np.array([-1, -1], dtype=np.int32)]
-    scores = np.array([logits[0, labels[0]], logits[0, labels[1]]], dtype=logits.dtype)
-
-    for i in range(1, logits_len):
-
-        next_label_pos_min = 0
-        next_label_pos_max = min(scores.shape[0] + max_move - 1, labels_len)
-
-        next_beam = np.zeros([max_move, next_label_pos_max - next_label_pos_min], dtype=np.int32)
-        next_scores = np.full([max_move, next_label_pos_max - next_label_pos_min], - np.inf, dtype=scores.dtype)
-
-        for j in range(max_move):
-            k = np.arange(min(scores.shape[0], labels_len - j))
-            v = k + j
-
-            next_beam[j, v - next_label_pos_min] = k
-            next_scores[j, v - next_label_pos_min] = scores[k] + logits[i, labels[v]]
-
-            # Don't move from one blank to another blank.
-            if j > 0 and j % 2 == 0:
-                next_scores[j, labels[next_label_pos_min:next_label_pos_max] == 0] = -np.inf
-
-        k = np.argmax(next_scores, axis=0)
-        next_beam = np.choose(k, next_beam)
-        next_scores = np.choose(k, next_scores)
-
-        scores = next_scores.copy()
-        beams.append(next_beam.copy())
-
-    best_path = np.zeros(logits_len, dtype=np.int32)
-    j = labels_len + (-1 if scores[-1] > scores[-2] else -2)
-    best_score = scores[j]
-    for i in range(logits_len - 1, -1, -1):
-        best_path[i] = j
-        j = beams[i][j]
-
-    best_labels = labels[best_path]
-
-    return best_score, best_path, best_labels
-
-
-class AudioAlignCTC(Voice100ModelBase):
+class AudioToAlignText(Voice100ModelBase):
 
     def __init__(
         self,
@@ -75,7 +24,7 @@ class AudioAlignCTC(Voice100ModelBase):
         decoder_num_layers: int,
         decoder_hidden_size: int,
         vocab_size: int,
-        learning_rate: float
+        learning_rate: float = 0.001
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -168,41 +117,3 @@ class AudioAlignCTC(Voice100ModelBase):
         hist = pad_sequence(hist, batch_first=True, padding_value=0)
         path = pad_sequence(path, batch_first=True, padding_value=0)
         return score, hist, path, logits_len
-
-    @staticmethod
-    def add_model_specific_args(parent_parser: _ArgumentGroup):
-        parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--model_size', choices=["small", "base"], default='base')
-        parser.add_argument('--learning_rate', type=float, default=0.001)
-        return parent_parser
-
-    @staticmethod
-    def from_argparse_args(args, vocab_size, **kwargs):
-        if args.model_size == "small":
-            encoder_settings = [
-                # out_channels, transpose, kernel_size, stride, padding, bias
-                (256, False, 3, 2, 1, False),
-                (256, False, 3, 1, 1, False),
-            ]
-            decoder_num_layers = 2
-            decoder_hidden_size = 256
-        elif args.model_size == 'base':
-            encoder_settings = [
-                # out_channels, transpose, kernel_size, stride, padding, bias
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 2, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
-            ]
-            decoder_num_layers = 2
-            decoder_hidden_size = 512
-        else:
-            raise ValueError("Unknown model_size")
-
-        return AudioAlignCTC(
-            encoder_settings=encoder_settings,
-            decoder_num_layers=decoder_num_layers,
-            decoder_hidden_size=decoder_hidden_size,
-            vocab_size=vocab_size,
-            learning_rate=args.learning_rate,
-            **kwargs)

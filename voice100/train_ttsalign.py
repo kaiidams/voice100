@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .datasets import AlignTextDataModule
+from .data_modules import AlignTextDataModule
 from .models.tts import TextToAlignTextModel
 
 

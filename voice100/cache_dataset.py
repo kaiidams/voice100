@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from tqdm import tqdm
 
-from .datasets import AudioTextDataModule
+from .data_modules import AudioTextDataModule
 
 
 def cli_main():
