@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from ._base import Voice100ModelBase
-from .layers import get_conv_layers
+from ._layers import get_conv_layers
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
