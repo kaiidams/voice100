@@ -4,11 +4,9 @@ from argparse import ArgumentParser
 from typing import Tuple
 import torch
 from torch import nn
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from ._base import Voice100ModelBase
 from .asr import InvertedResidual
-from .layers import get_conv_layers
 
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
@@ -22,6 +20,25 @@ def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor
     assert x.dim() == 2
     assert length.dim() == 1
     return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+
+
+class VoiceDecoder(nn.Module):
+    def __init__(self, hidden_size, out_channels) -> None:
+        super().__init__()
+        half_hidden_size = hidden_size // 2
+        self.layers = nn.Sequential(
+            InvertedResidual(hidden_size, hidden_size, kernel_size=65),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=33),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=17),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=11),
+            nn.ConvTranspose1d(hidden_size, half_hidden_size, kernel_size=5, padding=2, stride=2),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=33),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=11),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=7),
+            nn.Conv1d(half_hidden_size, out_channels, kernel_size=1, bias=True))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layers(x)
 
 
 class VoiceMultiTaskDecoder(nn.Module):
@@ -150,6 +167,7 @@ class WORLDLoss(nn.Module):
         mask = generate_padding_mask(f0, length)
         hasf0_loss = self.hasf0_criterion(hasf0_logits, hasf0) * mask
         f0_loss = self.f0_criterion(f0_hat, f0) * hasf0 * mask
+
         if self.logspc_weights is not None:
             logspc_loss = torch.sum(self.logspc_criterion(logspc_hat, logspc) * self.logspc_weights[None, None, :], axis=2) * mask
         else:
@@ -243,60 +261,39 @@ class TextToAlignTextModel(Voice100ModelBase):
     @staticmethod
     def from_argparse_args(args, **kwargs):
         return TextToAlignTextModel(
-            encoder_hidden_size=args.hidden_size,
-            encoder_num_layers=2,
-            decoder_hidden_size=args.hidden_size,
+            hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             **kwargs)
 
 
 class AlignTextToAudioModel(Voice100ModelBase):
     def __init__(
-        self,
-        vocab_size: int,
-        logspc_size: int,
-        codeap_size: int,
-        encoder_num_layers: int,
-        encoder_hidden_size: int,
-        decoder_settings: List[List],
-        learning_rate: float = 1e-3,
-        hasf0_size: int = 1,
-        f0_size: int = 1,
+        self, vocab_size: int, hidden_size: int, learning_rate: float, use_mcep: bool = False
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
-        self.encoder_hidden_size = encoder_hidden_size
+        self.hidden_size = hidden_size
         self.vocab_size = vocab_size
-        self.hasf0_size = hasf0_size
-        self.f0_size = f0_size
-        self.logspc_size = logspc_size
-        self.codeap_size = codeap_size
+        self.sample_rate = 16000
+        self.n_fft = 512
+        self.hasf0_size = 1
+        self.f0_size = 1
+        self.logspc_size = 25 if use_mcep else self.n_fft // 2 + 1
+        self.codeap_size = 1
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.audio_size = self.hasf0_size + self.f0_size + self.logspc_size + self.codeap_size
-        self.embedding = nn.Embedding(vocab_size, encoder_hidden_size)
-        self.lstm = nn.LSTM(
-            input_size=encoder_hidden_size, hidden_size=encoder_hidden_size,
-            num_layers=encoder_num_layers, dropout=0.2, bidirectional=True)
-        self.decoder = get_conv_layers(2 * encoder_hidden_size, decoder_settings)
-        self.projection = nn.Linear(decoder_settings[-1][0], self.audio_size)
+        self.decoder = VoiceDecoder(hidden_size, self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
-        self.criterion = WORLDLoss(use_mel_weights=False)
+        self.criterion = WORLDLoss(use_mel_weights=not use_mcep, sample_rate=self.sample_rate, n_fft=self.n_fft)
 
     def forward(
-        self, aligntext: torch.Tensor, aligntext_len: torch.Tensor,
+        self, aligntext: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         x = self.embedding(aligntext)
-        x_len = aligntext_len
-        # x: [batch_size, aligntext_len, encoder_hidden_size]
-        packed_x = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
-        packed_lstm_out, _ = self.lstm(packed_x)
-        lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=True)
-        # x: [batch_size, aligntext_len, encoder_hidden_size]
-
-        x = torch.transpose(lstm_out, -2, -1)
+        x = torch.transpose(x, 1, 2)
         x = self.decoder(x)
-        x = torch.transpose(x, -2, -1)
-        x = self.projection(x)
+        x = torch.transpose(x, 1, 2)
         # world_out: [batch_size, target_len, audio_size]
 
         hasf0_logits, f0_hat, logspc_hat, codeap_hat = torch.split(x, [
@@ -325,7 +322,7 @@ class AlignTextToAudioModel(Voice100ModelBase):
         hasf0 = (f0 >= 30.0).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
 
-        hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext, aligntext_len)
+        hasf0_logits, f0_hat, logspc_hat, codeap_hat = self.forward(aligntext)
 
         hasf0_loss, f0_loss, logspc_loss, codeap_loss = self.criterion(
             f0_len, hasf0_logits, f0_hat, logspc_hat, codeap_hat, hasf0, f0, logspc, codeap)
@@ -363,34 +360,17 @@ class AlignTextToAudioModel(Voice100ModelBase):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--model_size', choices=["base"], default='base')
+        parser.add_argument('--hidden_size', type=int, default=512)
         parser.add_argument('--audio_stat', type=str)
         parser.add_argument('--learning_rate', type=float, default=1e-3)
         return parser
 
     @staticmethod
     def from_argparse_args(args, **kwargs):
-        if args.model_size == "base":
-            decoder_settings = [
-                # out_channels, transpose, kernel_size, stride, padding, bias
-                [1024, False, 5, 1, 2, False],
-                [1024, True, 5, 2, 2, False],
-                [512, False, 5, 1, 2, False],
-                [512, False, 5, 1, 2, False],
-                [512, False, 5, 1, 2, False],
-            ]
-            encoder_num_layers = 2
-            encoder_hidden_size = 512
-        else:
-            raise ValueError("Unknown model_size")
-        use_mcep = args.vocoder == "world_mcep"
         model = AlignTextToAudioModel(
-            encoder_num_layers=encoder_num_layers,
-            encoder_hidden_size=encoder_hidden_size,
-            decoder_settings=decoder_settings,
-            logspc_size=25 if use_mcep else 257,
-            codeap_size=1,
+            hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
+            use_mcep=args.vocoder == "world_mcep",
             **kwargs)
         if not args.resume_from_checkpoint:
             if args.audio_stat is None:
