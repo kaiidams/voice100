@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import _ArgumentGroup
-from typing import Tuple, List
+from typing import Tuple
 import torch
 import numpy as np
 from torch import nn
@@ -68,32 +68,26 @@ def ctc_best_path(logits, labels, max_move=3):
 
 class AudioAlignCTC(Voice100ModelBase):
 
-    def __init__(
-        self,
-        audio_size: int,
-        encoder_settings: List[Tuple],
-        decoder_num_layers: int,
-        decoder_hidden_size: int,
-        vocab_size: int,
-        learning_rate: float
-    ) -> None:
+    def __init__(self, audio_size, vocab_size, hidden_size, num_layers, learning_rate):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = get_conv_layers(audio_size, encoder_settings)
+        self.conv = nn.Conv1d(audio_size, hidden_size, kernel_size=3, stride=2, padding=1)
+        self.relu = nn.ReLU()
         self.lstm = nn.LSTM(
-            input_size=decoder_hidden_size, hidden_size=decoder_hidden_size,
-            num_layers=decoder_num_layers, dropout=0.2, bidirectional=True)
-        self.dense = nn.Linear(decoder_hidden_size * 2, vocab_size)
+            input_size=hidden_size, hidden_size=hidden_size,
+            num_layers=num_layers, dropout=0.2, bidirectional=True)
+        self.dense = nn.Linear(hidden_size * 2, vocab_size)
         # zero_infinity for broken short audio clips
         self.criterion = nn.CTCLoss(zero_infinity=True)
         self.batch_augment = BatchSpectrogramAugumentation()
 
     def forward(self, audio: torch.Tensor, audio_len: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # audio: [batch_size, audio_len, audio_size]
-        x = torch.transpose(audio, -2, -1)
-        x = self.encoder(x)
+        x = torch.transpose(audio, 1, 2)
+        x = self.conv(x)
+        x = self.relu(x)
         x_len = torch.divide(audio_len + 1, 2, rounding_mode='trunc')
-        x = torch.transpose(x, -2, -1)
+        x = torch.transpose(x, 1, 2)
         packed_audio = pack_padded_sequence(x, x_len.cpu(), batch_first=True, enforce_sorted=False)
         packed_lstm_out, _ = self.lstm(packed_audio)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=False)
@@ -172,37 +166,15 @@ class AudioAlignCTC(Voice100ModelBase):
     @staticmethod
     def add_model_specific_args(parent_parser: _ArgumentGroup):
         parser = parent_parser.add_argument_group("voice100.models.align.AudioAlignCTC")
-        parser.add_argument('--model_size', choices=["small", "base"], default='base')
+        parser.add_argument('--hidden_size', type=int, default=128)
+        parser.add_argument('--num_layers', type=int, default=2)
         parser.add_argument('--learning_rate', type=float, default=0.001)
         return parent_parser
 
     @staticmethod
-    def from_argparse_args(args, vocab_size, **kwargs):
-        if args.model_size == "small":
-            encoder_settings = [
-                # out_channels, transpose, kernel_size, stride, padding, bias
-                (256, False, 3, 2, 1, False),
-                (256, False, 3, 1, 1, False),
-            ]
-            decoder_num_layers = 2
-            decoder_hidden_size = 256
-        elif args.model_size == 'base':
-            encoder_settings = [
-                # out_channels, transpose, kernel_size, stride, padding, bias
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 2, 2, False),
-                (512, False, 5, 1, 2, False),
-                (512, False, 5, 1, 2, False),
-            ]
-            decoder_num_layers = 2
-            decoder_hidden_size = 512
-        else:
-            raise ValueError("Unknown model_size")
-
+    def from_argparse_args(args, **kwargs):
         return AudioAlignCTC(
-            encoder_settings=encoder_settings,
-            decoder_num_layers=decoder_num_layers,
-            decoder_hidden_size=decoder_hidden_size,
-            vocab_size=vocab_size,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
             learning_rate=args.learning_rate,
             **kwargs)

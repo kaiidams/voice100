@@ -11,8 +11,6 @@ __all__ = [
     'AudioToTextCTC',
 ]
 
-USE_ALIGN = False
-
 
 def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
     """
@@ -40,7 +38,7 @@ class ConvBNActivate(nn.Sequential):
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=6, use_residual=True):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, expand_ratio=4, use_residual=True):
         super().__init__()
         hidden_size = in_channels * expand_ratio
         self.use_residual = use_residual
@@ -63,22 +61,19 @@ class InvertedResidual(nn.Module):
 
 class ConvVoiceEncoder(nn.Module):
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, hidden_size):
         super().__init__()
-        half_out_channels = out_channels // 2
+        half_hidden_size = hidden_size // 2
         self.layers = nn.Sequential(
-            InvertedResidual(in_channels, half_out_channels, kernel_size=3, use_residual=False),
-            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
-            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
-            InvertedResidual(half_out_channels, half_out_channels, kernel_size=5),
-            InvertedResidual(half_out_channels, out_channels, kernel_size=3, stride=2, use_residual=False),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25),
-            InvertedResidual(out_channels, out_channels, kernel_size=25))
+            InvertedResidual(in_channels, half_hidden_size, kernel_size=11, stride=2, use_residual=False),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=19),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=27),
+            InvertedResidual(half_hidden_size, half_hidden_size, kernel_size=35),
+            InvertedResidual(half_hidden_size, hidden_size, kernel_size=51, use_residual=False),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=59),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=67),
+            InvertedResidual(hidden_size, hidden_size, kernel_size=75),
+            InvertedResidual(hidden_size, out_channels, kernel_size=83, use_residual=False))
 
     def forward(self, embed) -> torch.Tensor:
         return self.layers(embed)
@@ -101,18 +96,15 @@ class LinearCharDecoder(nn.Module):
 
 class AudioToTextCTC(Voice100ModelBase):
 
-    def __init__(self, audio_size, vocab_size, hidden_size, learning_rate, weight_decay):
+    def __init__(self, audio_size, embed_size, vocab_size, hidden_size, learning_rate, weight_decay):
         super().__init__()
         self.save_hyperparameters()
-        self.encoder = ConvVoiceEncoder(audio_size, hidden_size)
-        self.decoder = LinearCharDecoder(hidden_size, vocab_size)
-        if USE_ALIGN:
-            self.criterion = nn.CrossEntropyLoss(reduction='none')
-            self.batch_augment = BatchSpectrogramAugumentation(do_timestretch=False)
-        else:
-            # zero_infinity for broken short audio clips
-            self.criterion = nn.CTCLoss(zero_infinity=True)
-            self.batch_augment = BatchSpectrogramAugumentation()
+        self.embed_size = embed_size
+        self.encoder = ConvVoiceEncoder(audio_size, embed_size, hidden_size)
+        self.decoder = LinearCharDecoder(embed_size, vocab_size)
+        # zero_infinity for broken short audio clips
+        self.criterion = nn.CTCLoss(zero_infinity=True)
+        self.batch_augment = BatchSpectrogramAugumentation()
         self.do_normalize = False
 
     def forward(self, audio) -> torch.Tensor:
@@ -151,20 +143,13 @@ class AudioToTextCTC(Voice100ModelBase):
         # text: [batch_size, text_len]
         logits = self.forward(audio)
         # logits: [batch_size, audio_len, vocab_size]
-        if USE_ALIGN:
-            logits = torch.transpose(logits, 1, 2)
-            # logits: [batch_size, vocab_size, audio_len]
-            loss = self.criterion(logits, text)
-            mask = (torch.arange(text.shape[1], dtype=text_len.dtype).unsqueeze(0).to(text_len.device) < text_len.unsqueeze(1)).to(dtype=loss.dtype)
-            return torch.sum(loss * mask) / torch.sum(mask)
-        else:
-            logits_len = self.output_length(audio_len)
+        logits_len = self.output_length(audio_len)
 
-            logits = torch.transpose(logits, 0, 1)
-            # logits: [audio_len, batch_size, vocab_size]
-            log_probs = nn.functional.log_softmax(logits, dim=-1)
-            log_probs_len = logits_len
-            return self.criterion(log_probs, text, log_probs_len, text_len)
+        logits = torch.transpose(logits, 0, 1)
+        # logits: [audio_len, batch_size, vocab_size]
+        log_probs = nn.functional.log_softmax(logits, dim=-1)
+        log_probs_len = logits_len
+        return self.criterion(log_probs, text, log_probs_len, text_len)
 
     def training_step(self, batch, batch_idx):
         loss = self._calc_batch_loss(batch)
@@ -189,7 +174,7 @@ class AudioToTextCTC(Voice100ModelBase):
             self.parameters(),
             lr=self.hparams.learning_rate,
             weight_decay=self.hparams.weight_decay)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.90)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
@@ -198,13 +183,13 @@ class AudioToTextCTC(Voice100ModelBase):
         parser.add_argument('--learning_rate', type=float, default=0.001)
         parser.add_argument('--weight_decay', type=float, default=0.00004)
         parser.add_argument('--hidden_size', type=float, default=512)
+        parser.add_argument('--embed_size', type=float, default=512)
         return parent_parser
 
     @staticmethod
     def from_argparse_args(args, **kwargs):
-        global USE_ALIGN
-        USE_ALIGN = args.use_align
         return AudioToTextCTC(
+            embed_size=args.embed_size,
             hidden_size=args.hidden_size,
             learning_rate=args.learning_rate,
             weight_decay=args.weight_decay,
