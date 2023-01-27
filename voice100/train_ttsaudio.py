@@ -15,7 +15,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser = AudioTextDataModule.add_argparse_args(parser)
     parser = AlignTextToAudioModel.add_model_specific_args(parser)
-    parser.set_defaults(batch_size=128, vocoder="world", gradient_clip_val=1.0)
+    parser.set_defaults(batch_size=32, vocoder="world")
     args = parser.parse_args()
     assert args.vocoder == "world" or args.vocoder == "world_mcep"
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(
