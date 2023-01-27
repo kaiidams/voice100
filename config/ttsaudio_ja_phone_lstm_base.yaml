@@ -8,7 +8,7 @@ model:
     codeap_size: 1
     encoder_num_layers: 2
     encoder_hidden_size: 512
-    decoder_settings: 
+    decoder_settings:
       - [1024, false, 5, 1, 2, false]
       - [1024, true, 5, 2, 2, false]
       - [1024, false, 5, 1, 2, false]
