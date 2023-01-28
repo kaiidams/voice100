@@ -27,6 +27,5 @@ data:
     use_align: true
     use_phone: true
     use_target: false
-    cache: ./cache
     batch_size: 128
     valid_ratio: 0.1
