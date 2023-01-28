@@ -1,4 +1,6 @@
 trainer:
+  save_last: true
+  every_n_epochs: 10
   gradient_clip_val: 1.0
 model:
   class_path: voice100.models.AudioToAlignText
