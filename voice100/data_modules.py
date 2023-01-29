@@ -622,7 +622,7 @@ class AudioTextDataModule(Voice100DataModuleBase):
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
 
         else:
             if self.split_dataset:
@@ -646,13 +646,13 @@ class AudioTextDataModule(Voice100DataModuleBase):
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
             self.valid_ds = EncodedCacheDataset(
                 valid_ds,
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
 
     def train_dataloader(self):
         if self.train_ds is None:
