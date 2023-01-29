@@ -8,6 +8,7 @@ import voice100.audio
 import voice100.train_asr
 import voice100.train_align
 import voice100.calc_stat
+import voice100.models
 import voice100.models.tts
 import voice100.models.align
 import voice100.models.asr

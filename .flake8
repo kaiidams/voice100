@@ -1,4 +1,5 @@
 [flake8]
 ignore = E501
-exclude = .git,__pycache__,docs/source/conf.py,old,build,dist
+max-line-length = 160
+exclude = tests/*,.git,__pycache__,docs/source/conf.py,old,build,dist,data,outputs,lightning_logs
 max-complexity = 10

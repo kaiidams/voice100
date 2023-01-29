@@ -337,6 +337,7 @@ class TextProcessor(nn.Module):
 
 
 def get_dataset(
+    data_dir: Text,
     dataset: Text,
     split: Text,
     use_align: bool = False,
@@ -345,26 +346,26 @@ def get_dataset(
 ) -> Dataset:
     chained_ds: Dataset = None
     for dataset in dataset.split(','):
-        ds = get_base_dataset(dataset, split)
+        ds = get_base_dataset(data_dir, dataset, split)
 
         if use_target:
             assert use_align
-            alignfile = f'./data/{dataset}-align-{split}.txt'
+            alignfile = os.path.join(data_dir, f'{dataset}-align-{split}.txt')
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
-            phonealignfile = f'./data/{dataset}-phone-align-{split}.txt'
+            phonealignfile = os.path.join(data_dir, f'{dataset}-phone-align-{split}.txt')
             phonealign_ds = TextDataset(phonealignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds, target_ds=phonealign_ds)
 
         elif use_align:
             if use_phone:
-                alignfile = f'./data/{dataset}-phone-align-{split}.txt'
+                alignfile = os.path.join(data_dir, f'{dataset}-phone-align-{split}.txt')
             else:
-                alignfile = f'./data/{dataset}-align-{split}.txt'
+                alignfile = os.path.join(data_dir, f'{dataset}-align-{split}.txt')
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds)
 
         elif use_phone:
-            phonefile = f'./data/{dataset}-phone-{split}.txt'
+            phonefile = os.path.join(data_dir, f'{dataset}-phone-{split}.txt')
             phone_ds = TextDataset(phonefile)
             ds = MergeDataset(ds, phone_ds=phone_ds)
 
@@ -373,24 +374,30 @@ def get_dataset(
     return chained_ds
 
 
-def get_base_dataset(dataset: Text, split: Text):
-    if dataset == 'librispeech':
-        ds = get_dataset_librispeech(split, variant="100")
+def get_base_dataset(data_dir: Text, dataset: Text, split: Text) -> Dataset:
+    if dataset.startswith('dummy_'):
+        language = dataset.replace('dummy_', '', 1)
+        root = os.path.join(data_dir, f'dummy-speech-{language}')
+        ds = MetafileDataset(
+            root, metafile='metadata.csv',
+            sep='|', header=False, idcol=0, ext='.wav')
+    elif dataset == 'librispeech':
+        ds = get_dataset_librispeech(data_dir, split, variant="100")
     elif dataset == 'librispeech_360':
-        ds = get_dataset_librispeech(split, variant="360")
+        ds = get_dataset_librispeech(data_dir, split, variant="360")
     elif dataset == 'ljspeech':
-        root = './data/LJSpeech-1.1'
+        root = os.path.join(data_dir, 'LJSpeech-1.1')
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
     elif dataset == 'cv_ja':
-        root = './data/cv-corpus-12.0-2022-12-07/ja'
+        root = os.path.join(data_dir, 'cv-corpus-12.0-2022-12-07/ja')
         ds = MetafileDataset(
             root,
             sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
     elif dataset.startswith("kokoro_"):
         dataset_size = dataset.replace("kokoro_", "")
-        root = f'./data/kokoro-speech-v1_2-{dataset_size}'
+        root = os.path.join(data_dir, f'kokoro-speech-v1_2-{dataset_size}')
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
@@ -399,8 +406,8 @@ def get_base_dataset(dataset: Text, split: Text):
     return ds
 
 
-def get_dataset_librispeech(split: Text, variant="100") -> Dataset:
-    root = "./data/LibriSpeech"
+def get_dataset_librispeech(data_dir: Text, split: Text, variant="100") -> Dataset:
+    root = os.path.join(data_dir, "LibriSpeech")
     if split == "train":
         root += "/train-clean-%s" % variant
     elif split == "valid":
@@ -546,7 +553,8 @@ class AudioTextDataModule(Voice100DataModuleBase):
         use_align: bool = False,
         use_phone: bool = False,
         use_target: bool = False,
-        cache: Text = './cache',
+        data_dir: Text = './data',
+        cache_dir: Text = './cache',
         batch_size: int = 128,
         num_workers: int = 0,
         valid_ratio: float = 0.1
@@ -561,7 +569,8 @@ class AudioTextDataModule(Voice100DataModuleBase):
         self.use_align = use_align
         self.use_phone = use_phone
         self.use_target = use_target
-        self.cache = cache
+        self.data_dir = data_dir
+        self.cache_dir = cache_dir
         self.cache_salt = ("world" if self.vocoder == "world_mcep" else self.vocoder).encode('utf-8')
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -591,12 +600,13 @@ class AudioTextDataModule(Voice100DataModuleBase):
 
     def setup(self, stage: Optional[str] = None):
         ds = get_dataset(
+            self.data_dir,
             self.dataset,
             split="train",
             use_align=self.use_align,
             use_phone=self.use_phone,
             use_target=self.use_target)
-        os.makedirs(self.cache, exist_ok=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
 
         if stage == "predict":
             self.predict_ds = EncodedCacheDataset(
@@ -604,7 +614,7 @@ class AudioTextDataModule(Voice100DataModuleBase):
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
 
         elif stage == "test":
             self.test_ds = EncodedCacheDataset(
@@ -612,7 +622,7 @@ class AudioTextDataModule(Voice100DataModuleBase):
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
 
         else:
             if self.split_dataset:
@@ -624,6 +634,7 @@ class AudioTextDataModule(Voice100DataModuleBase):
             else:
                 train_ds = ds
                 valid_ds = get_dataset(
+                    self.data_dir,
                     self.dataset,
                     split="valid",
                     use_align=self.use_align,
@@ -635,13 +646,13 @@ class AudioTextDataModule(Voice100DataModuleBase):
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
             self.valid_ds = EncodedCacheDataset(
                 valid_ds,
                 audio_transform=self.audio_transform,
                 text_transform=self.text_transform,
                 targettext_transform=self.targettext_transform,
-                cachedir=self.cache, salt=self.cache_salt)
+                cachedir=self.cache_dir, salt=self.cache_salt)
 
     def train_dataloader(self):
         if self.train_ds is None:
@@ -710,6 +721,7 @@ class AlignTextDataModule(Voice100DataModuleBase):
 
     def __init__(
         self,
+        data_dir: Text = "./data",
         dataset: Text = "ljspeech",
         language: Text = "en",
         use_phone: bool = False,
@@ -717,6 +729,7 @@ class AlignTextDataModule(Voice100DataModuleBase):
         batch_size: int = 256
     ) -> None:
         super().__init__()
+        self.data_dir = data_dir
         self.dataset = dataset
         self.use_phone = use_phone
         self.valid_ratio = valid_ratio
@@ -731,9 +744,9 @@ class AlignTextDataModule(Voice100DataModuleBase):
 
     def setup(self, stage: Optional[str] = None):
         if self.use_phone:
-            file = f"./data/{self.dataset}-phone-align-train.txt"
+            file = os.path.join(self.data_dir, f"{self.dataset}-phone-align-train.txt")
         else:
-            file = f"./data/{self.dataset}-align-train.txt"
+            file = os.path.join(self.data_dir, f"{self.dataset}-align-train.txt")
         ds = AlignTextDataset(file, encoder=self.encoder)
         # Split the dataset
         total_len = len(ds)
