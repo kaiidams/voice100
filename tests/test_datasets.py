@@ -55,6 +55,18 @@ def make_random_phone(language: Text):
     return text
 
 
+def make_random_align_phone(language: Text):
+    if language == "en":
+        text_len = random.randint(a=1, b=10)
+        text = "/ /".join(random.choices(DUMMY_PHONE, k=text_len))
+        text = text.replace("/", "/_/")
+    elif language == "ja":
+        text_len = random.randint(a=1, b=30)
+        text = ' '.join(random.choices(DUMMY_JA_PHONE, k=text_len))
+        text = text.replace(" ", " - ")
+    return text
+
+
 def make_random_audio(
     file: Text, duration: float = 5.0, rate: int = 16000
 ) -> None:
@@ -95,11 +107,10 @@ def make_dummy_aligntext_dataset(dirpath: Text, language: Text, is_phone: bool, 
         for i in range(n):
             text = make_random_text(language=language)
             if is_phone:
-                text = make_random_phone(language=language)
-                text = text.replace("/", "/_/")
+                aligntext = make_random_align_phone(language=language)
             else:
-                text = "_".join(make_random_text(language=language))
-            phone_fp.write(f"{text}|{text}|0,1,2,3\n")
+                aligntext = "_".join(make_random_text(language=language))
+            phone_fp.write(f"{text}|{aligntext}|0 1 2 3\n")
 
 
 def make_dummy_phonetext_dataset(dirpath: Text, language: Text, n: int = 10) -> None:
