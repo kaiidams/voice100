@@ -11,7 +11,7 @@ model:
   class_path: voice100.models.AlignTextToAudio
   init_args:
     vocab_size: 44
-    logspc_size: 257
+    logspc_size: 25
     codeap_size: 1
     encoder_num_layers: 2
     encoder_hidden_size: 512
@@ -25,7 +25,7 @@ model:
 data:
   class_path: voice100.data_modules.AudioTextDataModule
   init_args:
-    vocoder: world
+    vocoder: world_mcep
     dataset: kokoro_large
     sample_rate: 16000
     language: ja
