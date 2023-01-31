@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .models.tts import AlignTextToAudio
+from .models import AlignTextToAudio
 from .data_modules import AudioTextDataModule
 
 
