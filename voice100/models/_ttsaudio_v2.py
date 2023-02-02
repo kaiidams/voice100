@@ -7,20 +7,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from ._base import Voice100ModelBase
-from ._layers import get_conv_layers
-
-
-def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
-    """
-    Args:
-        x: tensor of shape [batch_size, length]
-        length: tensor of shape [batch_size]
-    Returns:
-        float tensor of shape [batch_size, length]
-    """
-    assert x.dim() == 2
-    assert length.dim() == 1
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
+from ._layers import get_conv_layers, generate_padding_mask
 
 
 def adjust_size(
