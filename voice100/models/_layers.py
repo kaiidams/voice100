@@ -8,6 +8,8 @@ __all__ = [
     'ConvLayerBlock',
     'ConvTransposeLayerBlock',
     'get_conv_layers',
+    'WORLDLoss',
+    'WORLDNorm',
 ]
 
 
@@ -111,51 +113,6 @@ def adjust_size(
     return x, y
 
 
-class WORLDNorm(nn.Module):
-    def __init__(self, logspc_size: int, codeap_size: int, device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super().__init__()
-        self.f0_std = nn.Parameter(
-            torch.ones([1], **factory_kwargs),
-            requires_grad=False)
-        self.f0_mean = nn.Parameter(
-            torch.zeros([1], **factory_kwargs),
-            requires_grad=False)
-        self.logspc_std = nn.Parameter(
-            torch.ones([logspc_size], **factory_kwargs),
-            requires_grad=False)
-        self.logspc_mean = nn.Parameter(
-            torch.zeros([logspc_size], **factory_kwargs),
-            requires_grad=False)
-        self.codeap_std = nn.Parameter(
-            torch.ones([codeap_size], **factory_kwargs),
-            requires_grad=False)
-        self.codeap_mean = nn.Parameter(
-            torch.zeros([codeap_size], **factory_kwargs),
-            requires_grad=False)
-
-    def forward(self, f0, mcep, codeap):
-        return self.normalize(f0, mcep, codeap)
-
-    @torch.no_grad()
-    def normalize(
-        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        f0 = (f0 - self.f0_mean) / self.f0_std
-        mcep = (mcep - self.logspc_mean) / self.logspc_std
-        codeap = (codeap - self.codeap_mean) / self.codeap_std
-        return f0, mcep, codeap
-
-    @torch.no_grad()
-    def unnormalize(
-        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        f0 = self.f0_std * f0 + self.f0_mean
-        mcep = self.logspc_std * mcep + self.logspc_mean
-        codeap = self.codeap_std * codeap + self.codeap_mean
-        return f0, mcep, codeap
-
-
 class WORLDLoss(nn.Module):
     def __init__(
         self,
@@ -213,3 +170,48 @@ class WORLDLoss(nn.Module):
         logspc_loss = torch.sum(logspc_loss) / mask_sum
         codeap_loss = torch.sum(codeap_loss) / mask_sum
         return hasf0_loss, f0_loss, logspc_loss, codeap_loss
+
+
+class WORLDNorm(nn.Module):
+    def __init__(self, logspc_size: int, codeap_size: int, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.f0_std = nn.Parameter(
+            torch.ones([1], **factory_kwargs),
+            requires_grad=False)
+        self.f0_mean = nn.Parameter(
+            torch.zeros([1], **factory_kwargs),
+            requires_grad=False)
+        self.logspc_std = nn.Parameter(
+            torch.ones([logspc_size], **factory_kwargs),
+            requires_grad=False)
+        self.logspc_mean = nn.Parameter(
+            torch.zeros([logspc_size], **factory_kwargs),
+            requires_grad=False)
+        self.codeap_std = nn.Parameter(
+            torch.ones([codeap_size], **factory_kwargs),
+            requires_grad=False)
+        self.codeap_mean = nn.Parameter(
+            torch.zeros([codeap_size], **factory_kwargs),
+            requires_grad=False)
+
+    def forward(self, f0, mcep, codeap):
+        return self.normalize(f0, mcep, codeap)
+
+    @torch.no_grad()
+    def normalize(
+        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        f0 = (f0 - self.f0_mean) / self.f0_std
+        mcep = (mcep - self.logspc_mean) / self.logspc_std
+        codeap = (codeap - self.codeap_mean) / self.codeap_std
+        return f0, mcep, codeap
+
+    @torch.no_grad()
+    def unnormalize(
+        self, f0: torch.Tensor, mcep: torch.Tensor, codeap: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        f0 = self.f0_std * f0 + self.f0_mean
+        mcep = self.logspc_std * mcep + self.logspc_mean
+        codeap = self.codeap_std * codeap + self.codeap_mean
+        return f0, mcep, codeap
