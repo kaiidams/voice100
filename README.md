@@ -345,3 +345,4 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 | asr_ja_phone_conv_base_ctc-20221225 (deprecated) | AudioToTextCTC | Common Voice 6.1 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.4.0/asr_ja_phone_conv_base_ctc-20221225.ckpt)
 | asr_ja_phone_small-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_small-20230104.ckpt) |
 | asr_ja_phone_base-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_base-20230104.ckpt) |
+| ttsaudio_ja_phone_base-20230131 | AlignTextToAudio | Kokoro Speech v1.2 large | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.1/ttsaudio_ja_phone_base-20230131.ckpt) |
