@@ -116,7 +116,7 @@ def adjust_size(
 class WORLDLoss(nn.Module):
     def __init__(
         self,
-        loss: str = 'mse'
+        loss: str = 'mse',
     ) -> None:
         super().__init__()
         self.hasf0_criterion = nn.BCEWithLogitsLoss(reduction='none')

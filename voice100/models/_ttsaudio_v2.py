@@ -19,6 +19,7 @@ class AlignTextToAudio(Voice100ModelBase):
         encoder_num_layers: int,
         encoder_hidden_size: int,
         decoder_settings: List[List],
+        logspc_weight: float = 5.0,
         learning_rate: float = 1e-3,
         f0_size: int = 1,
     ) -> None:
@@ -38,6 +39,7 @@ class AlignTextToAudio(Voice100ModelBase):
         self.projection = nn.Linear(decoder_settings[-1][0], self.audio_size)
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criterion = WORLDLoss()
+        self.logspc_weight = logspc_weight
 
     def forward(
         self, aligntext: torch.Tensor, aligntext_len: torch.Tensor,
@@ -97,18 +99,18 @@ class AlignTextToAudio(Voice100ModelBase):
 
     def training_step(self, batch, batch_idx) -> torch.Tensor:
         hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + hascodeap_loss + codeap_loss
+        loss = hasf0_loss + f0_loss + logspc_loss * self.logspc_weight + hascodeap_loss + codeap_loss
         self._log_loss('train', loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + hascodeap_loss + codeap_loss
+        loss = hasf0_loss + f0_loss + logspc_loss * self.logspc_weight + hascodeap_loss + codeap_loss
         self._log_loss('val', loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss)
 
     def test_step(self, batch, batch_idx):
         hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss = self._calc_batch_loss(batch)
-        loss = hasf0_loss + f0_loss + logspc_loss + hascodeap_loss + codeap_loss
+        loss = hasf0_loss + f0_loss + logspc_loss * self.logspc_weight + hascodeap_loss + codeap_loss
         self._log_loss('test', loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss)
 
     def _log_loss(self, task, loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss) -> None:
