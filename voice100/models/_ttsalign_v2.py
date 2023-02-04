@@ -6,7 +6,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from ._base import Voice100ModelBase
-from ._layers import generate_padding_mask
+from ._layers_v2 import generate_padding_mask
 
 
 class TextToAlignText(Voice100ModelBase):

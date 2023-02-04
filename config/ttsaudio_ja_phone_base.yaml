@@ -11,6 +11,7 @@ model:
   class_path: voice100.models.AlignTextToAudio
   init_args:
     vocab_size: 44
+    f0_size: 1
     logspc_size: 25
     codeap_size: 1
     encoder_num_layers: 2
@@ -20,8 +21,6 @@ model:
       - [512, true, 5, 2, 2, false]
       - [512, false, 5, 1, 2, false]
     learning_rate: 1e-3
-    hasf0_size: 1
-    f0_size: 1
 data:
   class_path: voice100.data_modules.AudioTextDataModule
   init_args:

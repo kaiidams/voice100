@@ -6,21 +6,8 @@ import torch
 from torch import nn
 
 from ._base import Voice100ModelBase
-from ._layers import WORLDNorm, WORLDLoss
+from ._layers_v1 import generate_padding_mask, WORLDNorm, WORLDLoss
 from .asr import InvertedResidual
-
-
-def generate_padding_mask(x: torch.Tensor, length: torch.Tensor) -> torch.Tensor:
-    """
-    Args:
-        x: tensor of shape [batch_size, length]
-        length: tensor of shape [batch_size]
-    Returns:
-        float tensor of shape [batch_size, length]
-    """
-    assert x.dim() == 2
-    assert length.dim() == 1
-    return (torch.arange(x.shape[1], device=x.device)[None, :] < length[:, None]).to(x.dtype)
 
 
 class VoiceDecoder(nn.Module):
