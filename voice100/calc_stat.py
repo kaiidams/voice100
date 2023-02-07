@@ -42,6 +42,7 @@ def calc_stat(data: AudioTextDataModule, output_path: Text):
         with torch.no_grad():
             mask = generate_padding_mask(f0, f0_len)
             f0mask = (f0 > 30.0).float() * mask
+            codeapmask = (codeap < -0.2).float() * mask[:, :, None]
 
             f0_sum += torch.sum(f0 * f0mask)
             f0_sqrsum += torch.sum(f0 ** 2 * f0mask)
@@ -51,8 +52,8 @@ def calc_stat(data: AudioTextDataModule, output_path: Text):
             logspc_sqrsum += torch.sum(torch.sum(logspc ** 2 * mask[:, :, None], axis=1), axis=0)
             logspc_count += torch.sum(mask)
 
-            codeap_sum += torch.sum(torch.sum(codeap * mask[:, :, None], axis=1), axis=0)
-            codeap_sqrsum += torch.sum(torch.sum(codeap ** 2 * mask[:, :, None], axis=1), axis=0)
+            codeap_sum += torch.sum(torch.sum(codeap * codeapmask, axis=1), axis=0)
+            codeap_sqrsum += torch.sum(torch.sum(codeap ** 2 * codeapmask, axis=1), axis=0)
 
     codeap_count = logspc_count
     state_dict = {
