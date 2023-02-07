@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_se
 
 from ._base import Voice100ModelBase
 from .align import ctc_best_path
-from ._layers import get_conv_layers
+from ._layers_v2 import get_conv_layers
 from ..audio import BatchSpectrogramAugumentation
 
 __all__ = [
