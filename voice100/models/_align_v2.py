@@ -17,7 +17,8 @@ class TextToAlignText(Voice100ModelBase):
         self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.lstm = nn.LSTM(
             input_size=hidden_size, hidden_size=hidden_size,
-            num_layers=num_layers, dropout=0.2, bidirectional=True)
+            num_layers=num_layers, dropout=0.2, bidirectional=True,
+            batch_first=True)
         self.dense = nn.Linear(hidden_size * 2, num_outputs)
 
     def forward(self, text: torch.Tensor, text_len: torch.Tensor) -> torch.Tensor:
@@ -29,6 +30,14 @@ class TextToAlignText(Voice100ModelBase):
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=True)
         # embed: [batch_size, text_len, 2 * hidden_size]
         return self.dense(lstm_out), lstm_out_len
+
+    def forward_for_export(self, text: torch.Tensor, text_len: torch.Tensor) -> torch.Tensor:
+        # x: [batch_size, text_len]
+        embed = self.embedding(text)
+        # embed: [batch_size, text_len, hidden_size]
+        lstm_out, _ = self.lstm(embed)
+        # embed: [batch_size, text_len, 2 * hidden_size]
+        return self.dense(lstm_out), text_len
 
     def align(
         self,
