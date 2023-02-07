@@ -1,5 +1,6 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
+from typing import Tuple
 from argparse import ArgumentParser
 import torch
 from torch import nn
@@ -21,7 +22,11 @@ class TextToAlignText(Voice100ModelBase):
             batch_first=True)
         self.dense = nn.Linear(hidden_size * 2, num_outputs)
 
-    def forward(self, text: torch.Tensor, text_len: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        text: torch.Tensor,
+        text_len: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # x: [batch_size, text_len]
         embed = self.embedding(text)
         # embed: [batch_size, text_len, hidden_size]
@@ -31,13 +36,14 @@ class TextToAlignText(Voice100ModelBase):
         # embed: [batch_size, text_len, 2 * hidden_size]
         return self.dense(lstm_out), lstm_out_len
 
-    def forward_for_export(self, text: torch.Tensor, text_len: torch.Tensor) -> torch.Tensor:
-        # x: [batch_size, text_len]
-        embed = self.embedding(text)
-        # embed: [batch_size, text_len, hidden_size]
-        lstm_out, _ = self.lstm(embed)
-        # embed: [batch_size, text_len, 2 * hidden_size]
-        return self.dense(lstm_out), text_len
+    def predict(
+        self,
+        text: torch.Tensor,
+        text_len: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        align, align_len = self.forward(text, text_len)
+        return torch.exp(align) - 1, align_len
 
     def align(
         self,
@@ -51,13 +57,18 @@ class TextToAlignText(Voice100ModelBase):
         aligntext_len = head + int(torch.sum(align)) + tail
         aligntext = torch.zeros(aligntext_len, dtype=text.dtype)
         t = head
+        u = 0
         for i in range(align.shape[0]):
             t += align[i, 0].item()
-            s = round(t)
+            s = int(t)
+            if s < u:
+                s = u
+            u = s + 1
             t += align[i, 1].item()
-            e = round(t)
-            if s == e:
-                e = max(0, e + 1)
+            e = int(t)
+            if e < u:
+                e = u
+            u = e
             for j in range(s, e):
                 aligntext[j] = text[i]
         return aligntext

@@ -71,10 +71,10 @@ class AlignTextToAudio(Voice100ModelBase):
         return hasf0_logits, f0_hat, logspc_hat, hascodeap_logits, codeap_hat
 
     def predict(
-        self, aligntext: torch.Tensor
+        self, aligntext: torch.Tensor, aligntext_len: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        hasf0, f0, logspc, hascodeap, codeap = self.forward(aligntext)
+        hasf0, f0, logspc, hascodeap, codeap = self.forward(aligntext, aligntext_len)
         f0, logspc, codeap = self.norm.unnormalize(f0, logspc, codeap)
         f0 = torch.where(
             hasf0 < 0, torch.zeros(size=(1,), dtype=f0.dtype, device=f0.device), f0

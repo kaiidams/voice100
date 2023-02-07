@@ -33,69 +33,64 @@ def export_onnx_asr(args):
     )
 
 
-def export_onnx_align2(args):
-    from voice100.models import TextToAlignText
+class TextToAlignTextPredict(nn.Module):
+    def __init__(self, model) -> None:
+        super().__init__()
+        self.model = model
 
-    model = TextToAlignText.load_from_checkpoint(args.ckpt_path)
-    batch_size = 1
-    vocab_size = model.hparams["vocab_size"]
-    text_len = 10
-    input_sample = {
-        "text": torch.randint(low=0, high=vocab_size, size=(batch_size, text_len), requires_grad=False),
-        "text_len": torch.tensor([text_len], dtype=torch.int64, requires_grad=False)
-    }
-
-    model.to_onnx(args.output, input_sample)
+    def forward(self, text, text_len):
+        return self.model.predict(text, text_len)
 
 
 def export_onnx_align(args):
     from voice100.models import TextToAlignText
 
     model = TextToAlignText.load_from_checkpoint(args.ckpt_path)
+    vocab_size = model.hparams["vocab_size"]
+    model = TextToAlignTextPredict(model)
     model.eval()
 
-    vocab_size = model.hparams["vocab_size"]
     batch_size = 1
     text_len = 100
-    text = torch.randint(low=0, high=vocab_size, size=(batch_size, text_len))#, requires_grad=False)
-    text_len = torch.tensor([100], dtype=torch.int64)#, requires_grad=False)
-
-    class M(nn.Module):
-        def __init__(self, model: TextToAlignText):
-            super().__init__()
-            self.model = model
-
-        def forward(self, text, text_len):
-            return self.model.forward_for_export(text, text_len)
-
-    model = M(model)
+    text = torch.randint(low=0, high=vocab_size, size=(batch_size, text_len), requires_grad=False)
+    text_len = torch.tensor([100], dtype=torch.int64, requires_grad=False)
 
     torch.onnx.export(
-        model,  # model being run
-        (text, text_len),  # model input (or a tuple for multiple inputs)
-        args.output,  # where to save the model (can be a file or file-like object)
-        export_params=True,  # store the trained parameter weights inside the model file
+        model,
+        (text, text_len),
+        args.output,
+        export_params=True,
         verbose=args.verbose,
-        opset_version=args.opset_version,  # the ONNX version to export the model to
-        do_constant_folding=True,  # whether to execute constant folding for optimization
-        input_names=["text", "text_len"],  # the model's input names
-        output_names=["align"],  # the model's output names
+        opset_version=args.opset_version,
+        do_constant_folding=True,
+        input_names=["text", "text_len"],
+        output_names=["align", "align_len"],
         dynamic_axes={
-            # "text": {0: "batch_size", 1: "text_len"},  # variable length axes
-            # "align": {0: "batch_size", 1: "text_len"},
-            "text": {1: "text_len"},  # variable length axes
-            "align": {1: "text_len"},
+            "text": {0: "batch_size", 1: "text_len"},
+            "text_len": {0: "batch_size"},
+            "align": {0: "batch_size", 1: "text_len"},
+            "aligntext_len": {0: "batch_size"},
         },
     )
 
 
-class AlignTextToAudioPredictModel(nn.Module):
+class AlignTextToAudioPredict(nn.Module):
     def __init__(self, model) -> None:
+        from voice100.vocoder import create_mc2sp_matrix
         super().__init__()
         self.model = model
+        if model.logspc_size == 25:
+            self.mc2sp_matrix = torch.from_numpy(create_mc2sp_matrix(512, 24, 0.410)).float()
+        else:
+            self.mc2sp_matrix = None
 
     def forward(self, aligntext):
-        return self.model.predict(aligntext)
+        f0, logspc_or_mcep, codeap = self.model.predict(aligntext)
+        if self.mc2sp_matrix is not None:
+            logspc = logspc_or_mcep @ self.mc2sp_matrix
+        else:
+            logspc = logspc_or_mcep
+        return f0, logspc, codeap
 
 
 def export_onnx_tts(args):
@@ -103,8 +98,8 @@ def export_onnx_tts(args):
 
     model = AlignTextToAudioModel.load_from_checkpoint(args.ckpt_path)
     vocab_size = model.hparams["vocab_size"]
+    model = AlignTextToAudioPredict(model)
     model.eval()
-    model = AlignTextToAudioPredictModel(model)
 
     aligntext_len = 100
     aligntext = torch.randint(
@@ -112,53 +107,21 @@ def export_onnx_tts(args):
     )
 
     torch.onnx.export(
-        model,  # model being run
+        model,
         aligntext,
         args.output,
-        export_params=True,  # store the trained parameter weights inside the model file
+        export_params=True,
         verbose=args.verbose,
-        opset_version=args.opset_version,  # the ONNX version to export the model to
-        do_constant_folding=True,  # whether to execute constant folding for optimization
-        input_names=["aligntext"],  # the model's input names
-        output_names=["f0", "logspc", "codeap"],  # the model's output names
+        opset_version=args.opset_version,
+        do_constant_folding=True,
+        input_names=["aligntext", "aligntext_len"],
+        output_names=["f0", "logspc", "codeap"],
         dynamic_axes={
-            "aligntext": {0: "batch_size", 1: "aligntext_len"},  # variable length axes
+            "aligntext": {0: "batch_size", 1: "aligntext_len"},
+            "aligntext_len": {0: "batch_size"},
             "f0": {0: "batch_size", 1: "audio_len"},
             "logspc": {0: "batch_size", 1: "audio_len"},
             "codeap": {0: "batch_size", 1: "audio_len"},
-        },
-    )
-
-
-def export_onnx_tts_mt(args):
-    from voice100.models.tts import AlignTextToAudioMultiTaskModel
-
-    model = AlignTextToAudioMultiTaskModel.load_from_checkpoint(args.ckpt_path)
-    vocab_size = model.hparams["vocab_size"]
-    model.eval()
-    model = AlignTextToAudioPredictModel(model)
-
-    aligntext_len = 100
-    aligntext = torch.randint(
-        low=0, high=vocab_size, size=(BATCH_SIZE, aligntext_len), requires_grad=False
-    )
-
-    torch.onnx.export(
-        model,  # model being run
-        aligntext,
-        args.output,
-        export_params=True,  # store the trained parameter weights inside the model file
-        verbose=args.verbose,
-        opset_version=args.opset_version,  # the ONNX version to export the model to
-        do_constant_folding=True,  # whether to execute constant folding for optimization
-        input_names=["aligntext"],  # the model's input names
-        output_names=["f0", "logspc", "codeap", "logits"],  # the model's output names
-        dynamic_axes={
-            "aligntext": {0: "batch_size", 1: "aligntext_len"},  # variable length axes
-            "f0": {0: "batch_size", 1: "audio_len"},
-            "logspc": {0: "batch_size", 1: "audio_len"},
-            "codeap": {0: "batch_size", 1: "audio_len"},
-            "logits": {0: "batch_size", 1: "aligntext_len"},
         },
     )
 
