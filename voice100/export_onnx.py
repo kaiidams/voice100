@@ -142,8 +142,6 @@ def cli_main():
         export_onnx_align(args)
     elif args.model == "tts":
         export_onnx_tts(args)
-    elif args.model == "tts_mt":
-        export_onnx_tts_mt(args)
     else:
         raise ValueError()
 
