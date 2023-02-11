@@ -29,7 +29,7 @@ CMU_VOCAB = [
     'UW0', 'UW1', 'UW2', 'V', 'W', 'Y', 'Z', 'ZH']
 
 JA_VOCAB = [
-    '-', '!', ',', '.', '?', 'N', 'a', 'a:', 'b', 'by',
+    '-', ' ', '!', ',', '.', '?', 'N', 'a', 'a:', 'b', 'by',
     'ch', 'd', 'e', 'e:', 'f', 'g', 'gy', 'h', 'hy', 'i',
     'i:', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'o:',
     'p', 'py', 'q', 'r', 'ry', 's', 'sh', 't', 'ts', 'u',
@@ -112,7 +112,7 @@ class BasicTokenizer(nn.Module):
             separator = '/'
         else:
             vocab = JA_VOCAB
-            separator = ' '
+            separator = '/'
         self.vocab_size = len(vocab)
         self._separator = separator
         self._vocab = vocab

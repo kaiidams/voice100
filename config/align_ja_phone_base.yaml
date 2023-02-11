@@ -10,9 +10,9 @@ trainer:
 model:
   class_path: voice100.models.TextToAlignText
   init_args:
-    vocab_size: 44
+    vocab_size: 45
     num_layers: 2
-    hidden_size: 512
+    hidden_size: 256
     num_outputs: 2
     learning_rate: 1e-3
 data:

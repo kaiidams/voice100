@@ -744,7 +744,7 @@ class AlignTextDataModule(Voice100DataModuleBase):
 
     def setup(self, stage: Optional[str] = None):
         if self.use_phone:
-            file = os.path.join(self.data_dir, f"{self.dataset}-phone-align-train.txt")
+            file = os.path.join(self.data_dir, f"{self.dataset}-phone-align-train-2.txt")
         else:
             file = os.path.join(self.data_dir, f"{self.dataset}-align-train.txt")
         ds = AlignTextDataset(file, encoder=self.encoder)
