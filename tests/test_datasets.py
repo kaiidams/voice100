@@ -40,7 +40,7 @@ def make_random_text(language: Text) -> Text:
         text_len = random.randint(a=1, b=10)
         text = " ".join(random.choices(DUMMY_VOCAB, k=text_len)).title()
     elif language == "ja":
-        text_len = random.randint(a=0, b=30)
+        text_len = random.randint(a=1, b=30)
         text = ''.join(random.choices(DUMMY_JA_CHARS, k=text_len))
     return text
 
