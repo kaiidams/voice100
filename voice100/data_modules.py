@@ -344,6 +344,16 @@ def get_dataset(
     use_phone: bool = False,
     use_target: bool = False,
 ) -> Dataset:
+    r"""Get ``Dataset``
+
+    Args:
+        data_dir (str): Root directory of the dataset.
+        use_align (bool): Include aligned text or aligned
+            phone text. Used for TTS.
+        use_target (bool): Include both aligned phone text and
+            aligned text. Used for multi-task TTS.
+    """
+
     chained_ds: Dataset = None
     for dataset in dataset.split(','):
         ds = get_base_dataset(data_dir, dataset, split)
@@ -397,7 +407,7 @@ def get_base_dataset(data_dir: Text, dataset: Text, split: Text) -> Dataset:
             sep='\t', idcol=1, textcol=2, wavsdir='clips', ext='')
     elif dataset.startswith("kokoro_"):
         dataset_size = dataset.replace("kokoro_", "")
-        root = os.path.join(data_dir, f'kokoro-speech-v1_2-{dataset_size}')
+        root = os.path.join(data_dir, f'kokoro-speech-v1_3-{dataset_size}')
         ds = MetafileDataset(
             root, metafile='metadata.csv',
             sep='|', header=False, idcol=0, ext='.flac')
