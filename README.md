@@ -286,12 +286,12 @@ These commands convert texts in the dataset into `./data/[dataset]-phone-[split]
 Then run `voice100-train-[model]` with `--use-phone`.
 
 ```sh
-voice100-convert-phone \
+voice100-prepare-dataset \
     --dataset ljspeech
-voice100-convert-phone \
+voice100-prepare-dataset \
     --dataset librispeech \
     --split train
-voice100-convert-phone \
+voice100-prepare-dataset \
     --dataset librispeech \
     --split val
 ```
