@@ -344,6 +344,16 @@ def get_dataset(
     use_phone: bool = False,
     use_target: bool = False,
 ) -> Dataset:
+    r"""Get ``Dataset``
+
+    Args:
+        data_dir (str): Root directory of the dataset.
+        use_align (bool): Include aligned text or aligned
+            phone text. Used for TTS.
+        use_target (bool): Include both aligned phone text and
+            aligned text. Used for multi-task TTS.
+    """
+
     chained_ds: Dataset = None
     for dataset in dataset.split(','):
         ds = get_base_dataset(data_dir, dataset, split)
