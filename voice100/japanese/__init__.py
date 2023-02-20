@@ -34,6 +34,12 @@ class JapanesePhonemizer(nn.Module):
             text = text.replace('x', 'k')
             text = text.replace('v', 'b')
             text = _SPACES_RX.sub(' ', text)
+            text = text.replace(' ', '/')
+            text = text.replace('_', ' ')
+            text = text.replace(' /,', ',')
+            text = text.replace(' /.', '.')
+            text = text.replace(',/ ', ',')
+            text = text.replace('./ ', '.')
             return text
         text = text.replace(' ', '')
         text = text.replace(',', ' ')

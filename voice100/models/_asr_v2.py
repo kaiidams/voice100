@@ -20,7 +20,7 @@ class AudioToAlignText(Voice100ModelBase):
     def __init__(
         self,
         audio_size: int,
-        encoder_settings: List[Tuple],
+        encoder_settings: List[List],
         decoder_num_layers: int,
         decoder_hidden_size: int,
         vocab_size: int,

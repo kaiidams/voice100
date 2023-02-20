@@ -301,7 +301,8 @@ _CONVRULES = [
     '。/ .',
     '！/ !',
     '？/ ?',
-    '・/ ,'
+    '・/ ,',
+    ' / _'
 ]
 
 _COLON_RX = re.compile(':+')
@@ -377,7 +378,7 @@ def text2kata(text: Text) -> Text:
                 pass
             else:
                 res.append(word)
-    return hira2kata(''.join(res))
+    return hira2kata(' '.join(res))
 
 
 def japanese_text_to_phonemes(text: Text) -> Text:

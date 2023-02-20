@@ -1,5 +1,6 @@
 seed_everything: 1234
 trainer:
+  max_epochs: 100
   gradient_clip_val: 1.0
   callbacks:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
@@ -27,4 +28,4 @@ data:
     sample_rate: 16000
     use_align: false
     use_phone: true
-    batch_size: 256
+    batch_size: 128
