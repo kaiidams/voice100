@@ -25,7 +25,7 @@ data:
   class_path: voice100.data_modules.AudioTextDataModule
   init_args:
     vocoder: mel
-    dataset: cv_ja
+    dataset: cv_ja,kokoro_large
     language: ja
     sample_rate: 16000
     use_align: false

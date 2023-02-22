@@ -29,7 +29,7 @@ CMU_VOCAB = [
     'UW0', 'UW1', 'UW2', 'V', 'W', 'Y', 'Z', 'ZH']
 
 JA_VOCAB = [
-    '-', ' ', '!', ',', '.', '?', 'N', 'a', 'a:', 'b', 'by',
+    '-', '!', ',', '.', '?', 'N', 'a', 'a:', 'b', 'by',
     'ch', 'd', 'e', 'e:', 'f', 'g', 'gy', 'h', 'hy', 'i',
     'i:', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'o:',
     'p', 'py', 'q', 'r', 'ry', 's', 'sh', 't', 'ts', 'u',
@@ -105,14 +105,16 @@ class BasicTokenizer(nn.Module):
     Phonemes are separated by separators.
     """
 
-    def __init__(self, language: Text):
+    def __init__(self, language: Text) -> None:
         super().__init__()
         if language == 'en':
             vocab = CMU_VOCAB
             separator = '/'
-        else:
+        elif language == 'ja':
             vocab = JA_VOCAB
             separator = '/'
+        else:
+            raise ValueError()
         self.vocab_size = len(vocab)
         self._separator = separator
         self._vocab = vocab
