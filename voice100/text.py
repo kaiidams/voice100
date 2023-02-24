@@ -105,7 +105,7 @@ class BasicTokenizer(nn.Module):
     Phonemes are separated by separators.
     """
 
-    def __init__(self, language: Text) -> None:
+    def __init__(self, language: Text, remove_blanks: bool) -> None:
         super().__init__()
         if language == 'en':
             vocab = CMU_VOCAB
@@ -118,6 +118,7 @@ class BasicTokenizer(nn.Module):
         self.vocab_size = len(vocab)
         self._separator = separator
         self._vocab = vocab
+        self._remove_blanks = remove_blanks
         self._v2i = {x: i for i, x in enumerate(vocab)}
 
     def forward(self, text: Text) -> torch.Tensor:
@@ -125,6 +126,8 @@ class BasicTokenizer(nn.Module):
 
     def encode(self, text: Text) -> torch.Tensor:
         encoded = [self._v2i[ch] for ch in text.split(self._separator) if ch in self._v2i]
+        if self._remove_blanks:
+            encoded = [idx for idx in encoded if idx > 0]
         return torch.tensor(encoded, dtype=torch.long)
 
     def decode(self, encoded: torch.Tensor) -> Text:

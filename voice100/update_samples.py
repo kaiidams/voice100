@@ -25,7 +25,7 @@ def make_samples(
     _ = align_model.eval()
 
     phonemizer = get_phonemizer(language=language, use_align=False, use_phone=False)
-    tokenizer = get_tokenizer(language=language, use_phone=False)
+    tokenizer = get_tokenizer(language=language, use_phone=False, remove_blanks=False)
     phone = [phonemizer(t) for t in sample_texts]
     text = [tokenizer(p) for p in phone]
     text_len = torch.tensor([t.shape[0] for t in text])

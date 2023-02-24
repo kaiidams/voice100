@@ -441,9 +441,9 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
     return audio_transform
 
 
-def get_text_transform(language: Text, use_align: bool, use_phone: bool):
+def get_text_transform(language: Text, use_align: bool, use_phone: bool, remove_blanks: bool):
     phonemizer = get_phonemizer(language=language, use_align=use_align, use_phone=use_phone)
-    tokenizer = get_tokenizer(language=language, use_phone=use_phone)
+    tokenizer = get_tokenizer(language=language, use_phone=use_phone, remove_blanks=remove_blanks)
     return TextProcessor(phonemizer, tokenizer)
 
 
@@ -463,9 +463,9 @@ def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
         raise ValueError(f"Unsupported language {language}")
 
 
-def get_tokenizer(language: Text, use_phone: bool):
+def get_tokenizer(language: Text, use_phone: bool, remove_blanks: bool):
     if use_phone:
-        return BasicTokenizer(language=language)
+        return BasicTokenizer(language=language, remove_blanks=remove_blanks)
     return CharTokenizer()
 
 
@@ -586,9 +586,9 @@ class AudioTextDataModule(Voice100DataModuleBase):
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
-        self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)
+        self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone, remove_blanks=not use_align)
         if use_target:
-            self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True)
+            self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True, remove_blanks=not use_align)
         else:
             self.targettext_transform = None
         self.train_ds = None
@@ -745,7 +745,7 @@ class AlignTextDataModule(Voice100DataModuleBase):
         self.valid_ratio = valid_ratio
         self.num_workers = 2
         self.collate_fn = generate_text_align_batch
-        self.encoder = get_tokenizer(language, use_phone)
+        self.encoder = get_tokenizer(language, use_phone, remove_blanks=False)
         self.batch_size = batch_size
 
     @property
