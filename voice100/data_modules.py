@@ -424,7 +424,7 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
 def get_tokenizer(language: Text, use_phone: bool, remove_blanks: bool):
     if use_phone:
         return BasicTokenizer(language=language, remove_blanks=remove_blanks)
-    assert not remove_blanks
+    assert remove_blanks
     return CharTokenizer()
 
 
