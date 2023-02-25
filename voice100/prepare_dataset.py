@@ -3,60 +3,40 @@
 from typing import Text
 from argparse import ArgumentParser
 from .data_modules import get_base_dataset
-from .text import CMUPhonemizer
 from tqdm import tqdm
-from glob import glob
 import os
 
 
-def convert_phone_ljspeech(data_dir: Text, dataset, split: Text, output_file: Text) -> None:
-    assert dataset == "ljspeech"
-    if split != "train":
-        raise ValueError("Unknown split")
-    phonemizer = CMUPhonemizer()
-    with open(os.path.join(data_dir, "LJSpeech-1.1/metadata.csv"), "rt") as f:
-        with open(output_file, "wt") as outf:
-            for line in tqdm(f):
-                clipid, text, _ = line.rstrip("\r\n").split("|")
-                phone_text = phonemizer(text)
-                outf.write("%s|%s\n" % (clipid, phone_text))
-
-
-def convert_phone_librispeech(data_dir: Text, dataset, split: Text, output_file: Text) -> None:
-    assert dataset == "librispeech"
-    if split == "train":
-        root = os.path.join(data_dir, 'LibriSpeech/train-clean-100')
-    elif split == "val":
-        root = os.path.join(data_dir, 'LibriSpeech/dev-clean')
+def get_phonemizer(language: Text, use_phone: bool):
+    if language == "en":
+        if use_phone:
+            from .text import CMUPhonemizer
+            return CMUPhonemizer()
+        else:
+            from .text import BasicPhonemizer
+            return BasicPhonemizer()
+    elif language == "ja":
+        from .japanese import JapanesePhonemizer
+        return JapanesePhonemizer(use_phone=use_phone)
     else:
-        raise ValueError("Unknown split")
-    phonemizer = CMUPhonemizer()
-    files = glob(os.path.join(root, '**', '*.txt'), recursive=True)
-    with open(output_file, "wt") as outf:
-        for file in tqdm(sorted(files)):
-            with open(file, "rt") as f:
-                for line in f:
-                    clipid, _, text = line.rstrip('\r\n').partition(' ')
-                    phone_text = phonemizer(text)
-                    outf.write("%s|%s\n" % (clipid, phone_text))
+        raise ValueError(f"Unknown language `{language}'")
 
 
-def convert_phone_kokoro(data_dir: Text, dataset: Text, split: Text, language: Text, output_file: Text) -> None:
+def convert_phone_kokoro(data_dir: Text, dataset: Text, split: Text, language: Text, use_phone: bool, output_file: Text) -> None:
     if split != "train":
         raise ValueError("Unknown split")
-    assert language == 'ja'
+    if not use_phone:
+        raise ValueError("Dataset doesn't support `use_phone=True'")
+    if language != "ja":
+        raise ValueError(f"Dataset doesn't support `language={language}'")
     dataset = get_base_dataset(data_dir, dataset, split)
     with open(output_file, "wt") as outf:
         for clipid, _, phone_text in tqdm(dataset):
             outf.write("%s|%s\n" % (clipid, phone_text))
 
 
-def convert_phone(data_dir: Text, dataset: Text, split: Text, language: Text, output_file: Text) -> None:
-    if split != "train":
-        raise ValueError("Unknown split")
-    assert language == 'ja'
-    from .japanese import JapanesePhonemizer
-    phonemizer = JapanesePhonemizer(use_phone=True)
+def convert_phone(data_dir: Text, dataset: Text, split: Text, language: Text, use_phone: bool, output_file: Text) -> None:
+    phonemizer = get_phonemizer(language=language, use_phone=use_phone)
     dataset = get_base_dataset(data_dir, dataset, split)
     with open(output_file, "wt") as outf:
         for clipid, _, text in tqdm(dataset):
@@ -67,24 +47,21 @@ def convert_phone(data_dir: Text, dataset: Text, split: Text, language: Text, ou
 def cli_main():
     parser = ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="./data")
-    parser.add_argument("--dataset", type=str, default="ljspeech")
+    parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--split", type=str, default="train")
+    parser.add_argument("--language", type=str, required=True)
+    parser.add_argument("--use_phone", action='store_true')
     args = parser.parse_args()
-    args.use_phone = True
     for dataset in args.dataset.split(','):
         for split in args.split.split(','):
             if args.use_phone:
                 output_file = os.path.join(args.data_dir, f"{dataset}-phone-{split}.txt")
-                if dataset == "ljspeech":
-                    convert_phone_ljspeech(args.data_dir, dataset, split, output_file)
-                elif dataset == "librispeech":
-                    convert_phone_librispeech(args.data_dir, dataset, split, output_file)
-                elif dataset.startswith("kokoro_"):
-                    convert_phone_kokoro(args.data_dir, dataset, split=split, language='ja', output_file=output_file)
-                elif dataset == 'cv_ja':
-                    convert_phone(args.data_dir, dataset, split=split, language='ja', output_file=output_file)
-                else:
-                    raise ValueError("Unknown dataset")
+            else:
+                output_file = os.path.join(args.data_dir, f"{dataset}-{split}.txt")
+            if dataset.startswith("kokoro_"):
+                convert_phone_kokoro(args.data_dir, dataset, split=split, language=args.language, use_phone=args.use_phone, output_file=output_file)
+            else:
+                convert_phone(args.data_dir, dataset, split=split, language=args.language, use_phone=args.use_phone, output_file=output_file)
 
 
 if __name__ == "__main__":
