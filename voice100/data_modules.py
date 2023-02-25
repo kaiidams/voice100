@@ -121,19 +121,19 @@ class MergeDataset(Dataset):
         self,
         audiotext_ds: Dataset,
         align_ds: Optional[Dataset] = None,
-        phone_ds: Optional[Dataset] = None,
+        text_ds: Optional[Dataset] = None,
         target_ds: Optional[Dataset] = None,
     ) -> None:
         super().__init__()
         if align_ds is not None:
             assert len(audiotext_ds) == len(align_ds)
-        if phone_ds is not None:
-            assert len(audiotext_ds) == len(phone_ds)
+        if text_ds is not None:
+            assert len(audiotext_ds) == len(text_ds)
         if target_ds is not None:
             assert len(audiotext_ds) == len(target_ds)
         self._audiotext_ds = audiotext_ds
         self._align_ds = align_ds
-        self._phone_ds = phone_ds
+        self._text_ds = text_ds
         self._target_ds = target_ds
 
     def __len__(self) -> int:
@@ -152,11 +152,11 @@ class MergeDataset(Dataset):
             # For TTS audio model
             _, aligntext = self._align_ds[index]
             return id1, audio, aligntext
-        elif self._phone_ds is not None:
+        elif self._text_ds is not None:
             # For ASR model and align model
-            id2, phonetext = self._phone_ds[index]
+            id2, text = self._text_ds[index]
             assert id1 == id2
-            return id1, audio, phonetext
+            return id1, audio, text
 
 
 class EncodedCacheDataset(Dataset):
@@ -354,10 +354,13 @@ def get_dataset(
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds)
 
-        elif use_phone:
-            phonefile = os.path.join(data_dir, f'{dataset}-phone-{split}.txt')
-            phone_ds = TextDataset(phonefile)
-            ds = MergeDataset(ds, phone_ds=phone_ds)
+        else:
+            if use_phone:
+                textfile = os.path.join(data_dir, f'{dataset}-phone-{split}.txt')
+            else:
+                textfile = os.path.join(data_dir, f'{dataset}-{split}.txt')
+            text_ds = TextDataset(textfile)
+            ds = MergeDataset(ds, text_ds=text_ds)
 
         chained_ds = chained_ds + ds if chained_ds is not None else ds
 
