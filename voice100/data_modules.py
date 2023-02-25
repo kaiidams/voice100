@@ -18,7 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import BasicPhonemizer, CharTokenizer, BasicTokenizer
+from .text import CharTokenizer, BasicTokenizer
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
@@ -316,26 +316,6 @@ class WORLDAudioProcessor(nn.Module):
         return f0, logspc_or_mcep, codeap
 
 
-class TextProcessor(nn.Module):
-    def __init__(
-        self,
-        phonemizer: Any,
-        tokenizer: Any,
-    ) -> None:
-        super().__init__()
-        self.phonemizer = phonemizer
-        self.tokenizer = tokenizer
-
-    @property
-    def vocab_size(self) -> int:
-        return self.tokenizer.vocab_size
-
-    def forward(self, text: Text) -> torch.Tensor:
-        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
-        encoded = self.tokenizer(phoneme)
-        return encoded
-
-
 def get_dataset(
     data_dir: Text,
     dataset: Text,
@@ -441,31 +421,10 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
     return audio_transform
 
 
-def get_text_transform(language: Text, use_align: bool, use_phone: bool, remove_blanks: bool):
-    phonemizer = get_phonemizer(language=language, use_align=use_align, use_phone=use_phone)
-    tokenizer = get_tokenizer(language=language, use_phone=use_phone, remove_blanks=remove_blanks)
-    return TextProcessor(phonemizer, tokenizer)
-
-
-def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
-    if use_align:
-        # Aligned texts are already phonemized.
-        return None
-    if use_phone:
-        # Texts are already phonemized.
-        return None
-    if language == 'en':
-        return BasicPhonemizer()
-    elif language == 'ja':
-        from .japanese import JapanesePhonemizer
-        return JapanesePhonemizer()
-    else:
-        raise ValueError(f"Unsupported language {language}")
-
-
 def get_tokenizer(language: Text, use_phone: bool, remove_blanks: bool):
     if use_phone:
         return BasicTokenizer(language=language, remove_blanks=remove_blanks)
+    assert not remove_blanks
     return CharTokenizer()
 
 
@@ -586,9 +545,9 @@ class AudioTextDataModule(Voice100DataModuleBase):
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
-        self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone, remove_blanks=not use_align)
+        self.text_transform = get_tokenizer(language=self.language, use_phone=use_phone, remove_blanks=not use_align)
         if use_target:
-            self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True, remove_blanks=not use_align)
+            self.text_transform = get_tokenizer(language=self.language, use_phone=True, remove_blanks=not use_align)
         else:
             self.targettext_transform = None
         self.train_ds = None
