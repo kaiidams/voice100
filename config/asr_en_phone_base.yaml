@@ -30,4 +30,4 @@ data:
     sample_rate: 16000
     use_align: false
     use_phone: true
-    batch_size: 128
+    batch_size: 64
