@@ -14,10 +14,12 @@ model:
     vocab_size: 71
     audio_size: 64
     encoder_settings:
-      - [256, false, 3, 2, 1, false]
-      - [256, false, 3, 1, 1, false]
+      - [512, false, 5, 1, 2, false]
+      - [512, false, 5, 2, 2, false]
+      - [512, false, 5, 1, 2, false]
+      - [512, false, 5, 1, 2, false]
     decoder_num_layers: 2
-    decoder_hidden_size: 256
+    decoder_hidden_size: 512
     learning_rate: 1e-3
 data:
   class_path: voice100.data_modules.AudioTextDataModule
