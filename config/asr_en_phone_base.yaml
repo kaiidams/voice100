@@ -1,7 +1,7 @@
 seed_everything: 1234
 trainer:
   max_epochs: 120
-  gradient_clip_val: 0.5
+  gradient_clip_val: 1.0
   callbacks:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
       init_args:
@@ -14,8 +14,8 @@ model:
     vocab_size: 71
     audio_size: 64
     encoder_settings:
-      - [512, false, 5, 1, 2, false]
       - [512, false, 5, 2, 2, false]
+      - [512, false, 5, 1, 2, false]
     decoder_num_layers: 2
     decoder_hidden_size: 512
     learning_rate: 1e-3
