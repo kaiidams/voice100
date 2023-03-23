@@ -1,6 +1,6 @@
 seed_everything: 1234
 trainer:
-  max_epochs: 150
+  max_epochs: 90
   gradient_clip_val: 1.0
   callbacks:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
