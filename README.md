@@ -328,10 +328,10 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 
 | Name | Model Class | Dataset | Download |
 |---|---|---|---|
-| asr_en_base-20230319 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_base-20230319.ckpt) |
-| asr_en_phone_base-20230314 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_phone_base-20230314.ckpt) |
-| asr_en_phone_small-20230309 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_phone_small-20230309.ckpt) |
 | asr_en_small-20230225 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_small-20230225.ckpt) |
+| asr_en_base-20230319 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_base-20230319.ckpt) |
+| asr_en_phone_small-20230309 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_phone_small-20230309.ckpt) |
+| asr_en_phone_base-20230314 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_phone_base-20230314.ckpt) |
 | asr_ja_phone_small-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_small-20230104.ckpt) |
 | asr_ja_phone_base-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_base-20230104.ckpt) |
 | asr_en_base-20210628 (deprecated) | AudioAlignCTC | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
