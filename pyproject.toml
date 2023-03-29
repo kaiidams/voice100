@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voice100"
-version = "1.5.1"
+version = "1.5.2"
 description = "Voice100 is a small TTS for English and Japanese."
 authors = ["Katsuya Iida <katsuya.iida@gmail.com>"]
 license = "MIT"
