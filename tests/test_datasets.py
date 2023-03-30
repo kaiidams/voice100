@@ -50,7 +50,7 @@ def make_random_phone(language: Text):
         text_len = random.randint(a=1, b=10)
         return "/ /".join(random.choices(DUMMY_PHONE, k=text_len))
     elif language == "ja":
-        text_len = random.randint(a=0, b=30)
+        text_len = random.randint(a=1, b=30)
         text = ' '.join(random.choices(DUMMY_JA_PHONE, k=text_len))
     return text
 
