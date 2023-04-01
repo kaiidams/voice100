@@ -427,7 +427,7 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
 def get_tokenizer(language: Text, use_phone: bool, remove_blanks: bool):
     if use_phone:
         return BasicTokenizer(language=language, remove_blanks=remove_blanks)
-    assert remove_blanks
+    assert not remove_blanks
     return CharTokenizer()
 
 
@@ -548,9 +548,10 @@ class AudioTextDataModule(Voice100DataModuleBase):
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
-        self.text_transform = get_tokenizer(language=self.language, use_phone=use_phone, remove_blanks=not use_align)
+        remove_blanks = language == "ja" and not use_align
+        self.text_transform = get_tokenizer(language=self.language, use_phone=use_phone, remove_blanks=remove_blanks)
         if use_target:
-            self.text_transform = get_tokenizer(language=self.language, use_phone=True, remove_blanks=not use_align)
+            self.text_transform = get_tokenizer(language=self.language, use_phone=True, remove_blanks=remove_blanks)
         else:
             self.targettext_transform = None
         self.train_ds = None
