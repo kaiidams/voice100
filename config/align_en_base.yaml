@@ -1,0 +1,25 @@
+seed_everything: 1234
+trainer:
+  gradient_clip_val: 1.0
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        monitor: "train_loss"
+        save_last: true
+        every_n_epochs: 10
+model:
+  class_path: voice100.models.TextToAlignText
+  init_args:
+    vocab_size: 29
+    num_layers: 2
+    hidden_size: 256
+    num_outputs: 2
+    learning_rate: 1e-3
+data:
+  class_path: voice100.data_modules.AlignTextDataModule
+  init_args:
+    dataset: ljspeech
+    language: en
+    use_phone: false
+    batch_size: 128
+    valid_ratio: 0.1
