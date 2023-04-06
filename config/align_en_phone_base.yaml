@@ -20,6 +20,6 @@ data:
   init_args:
     dataset: ljspeech
     language: en
-    use_phone: false
+    use_phone: true
     batch_size: 128
     valid_ratio: 0.1
