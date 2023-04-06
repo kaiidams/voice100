@@ -22,10 +22,10 @@ voice100-train-ttsaudio-v2 = "voice100.train_ttsaudio_v2:cli_main"
 voice100-train-ttsaudio-mt = "voice100.train_ttsaudio_mt:cli_main"
 
 [tool.poetry.dependencies]
-python = "^3.8.1"
-torch = "^1.12"
-torchaudio = "^0"
-pytorch_lightning = { version = "^1.5", extras = ["extra"] }
+python = ">=3.8"
+torch = "^2.0"
+torchaudio = "^2.0"
+pytorch_lightning = { version = "^2.0", extras = ["extra"] }
 pyworld = "^0.3.2"
 g2p-en = "^2.1.0"
 fugashi = "^1.2.1"
