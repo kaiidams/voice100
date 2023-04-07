@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
@@ -22,6 +22,7 @@ class AlignTextToAudio(Voice100ModelBase):
         logspc_weight: float = 5.0,
         learning_rate: float = 1e-3,
         f0_size: int = 1,
+        audio_stat: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -40,6 +41,9 @@ class AlignTextToAudio(Voice100ModelBase):
         self.norm = WORLDNorm(self.logspc_size, self.codeap_size)
         self.criterion = WORLDLoss()
         self.logspc_weight = logspc_weight
+        if audio_stat is not None:
+            print('hoge')
+            self.norm.load_state_dict(torch.load(audio_stat))
 
     def forward(
         self, aligntext: torch.Tensor, aligntext_len: torch.Tensor,
