@@ -18,7 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 import hashlib
 
-from .text import BasicPhonemizer, CharTokenizer, BasicTokenizer
+from .text import CharTokenizer, BasicTokenizer
 
 BLANK_IDX = 0
 MELSPEC_DIM = 64
@@ -121,19 +121,19 @@ class MergeDataset(Dataset):
         self,
         audiotext_ds: Dataset,
         align_ds: Optional[Dataset] = None,
-        phone_ds: Optional[Dataset] = None,
+        text_ds: Optional[Dataset] = None,
         target_ds: Optional[Dataset] = None,
     ) -> None:
         super().__init__()
         if align_ds is not None:
             assert len(audiotext_ds) == len(align_ds)
-        if phone_ds is not None:
-            assert len(audiotext_ds) == len(phone_ds)
+        if text_ds is not None:
+            assert len(audiotext_ds) == len(text_ds)
         if target_ds is not None:
             assert len(audiotext_ds) == len(target_ds)
         self._audiotext_ds = audiotext_ds
         self._align_ds = align_ds
-        self._phone_ds = phone_ds
+        self._text_ds = text_ds
         self._target_ds = target_ds
 
     def __len__(self) -> int:
@@ -152,11 +152,11 @@ class MergeDataset(Dataset):
             # For TTS audio model
             _, aligntext = self._align_ds[index]
             return id1, audio, aligntext
-        elif self._phone_ds is not None:
+        elif self._text_ds is not None:
             # For ASR model and align model
-            id2, phonetext = self._phone_ds[index]
+            id2, text = self._text_ds[index]
             assert id1 == id2
-            return id1, audio, phonetext
+            return id1, audio, text
 
 
 class EncodedCacheDataset(Dataset):
@@ -316,26 +316,6 @@ class WORLDAudioProcessor(nn.Module):
         return f0, logspc_or_mcep, codeap
 
 
-class TextProcessor(nn.Module):
-    def __init__(
-        self,
-        phonemizer: Any,
-        tokenizer: Any,
-    ) -> None:
-        super().__init__()
-        self.phonemizer = phonemizer
-        self.tokenizer = tokenizer
-
-    @property
-    def vocab_size(self) -> int:
-        return self.tokenizer.vocab_size
-
-    def forward(self, text: Text) -> torch.Tensor:
-        phoneme = self.phonemizer(text) if self.phonemizer is not None else text
-        encoded = self.tokenizer(phoneme)
-        return encoded
-
-
 def get_dataset(
     data_dir: Text,
     dataset: Text,
@@ -374,10 +354,13 @@ def get_dataset(
             align_ds = TextDataset(alignfile, idcol=-1, textcol=1)
             ds = MergeDataset(ds, align_ds=align_ds)
 
-        elif use_phone:
-            phonefile = os.path.join(data_dir, f'{dataset}-phone-{split}.txt')
-            phone_ds = TextDataset(phonefile)
-            ds = MergeDataset(ds, phone_ds=phone_ds)
+        else:
+            if use_phone:
+                textfile = os.path.join(data_dir, f'{dataset}-phone-{split}.txt')
+            else:
+                textfile = os.path.join(data_dir, f'{dataset}-{split}.txt')
+            text_ds = TextDataset(textfile)
+            ds = MergeDataset(ds, text_ds=text_ds)
 
         chained_ds = chained_ds + ds if chained_ds is not None else ds
 
@@ -439,28 +422,6 @@ def get_audio_transform(vocoder: Text, sample_rate: int):
     else:
         raise ValueError('Unknown vocoder')
     return audio_transform
-
-
-def get_text_transform(language: Text, use_align: bool, use_phone: bool):
-    phonemizer = get_phonemizer(language=language, use_align=use_align, use_phone=use_phone)
-    tokenizer = get_tokenizer(language=language, use_phone=use_phone)
-    return TextProcessor(phonemizer, tokenizer)
-
-
-def get_phonemizer(language: Text, use_align: bool, use_phone: bool):
-    if use_align:
-        # Aligned texts are already phonemized.
-        return None
-    if use_phone:
-        # Texts are already phonemized.
-        return None
-    if language == 'en':
-        return BasicPhonemizer()
-    elif language == 'ja':
-        from .japanese import JapanesePhonemizer
-        return JapanesePhonemizer()
-    else:
-        raise ValueError(f"Unsupported language {language}")
 
 
 def get_tokenizer(language: Text, use_phone: bool):
@@ -586,9 +547,9 @@ class AudioTextDataModule(Voice100DataModuleBase):
         self.num_workers = num_workers
         self.collate_fn = get_collate_fn(self.vocoder, self.use_target)
         self.audio_transform = get_audio_transform(self.vocoder, self.sample_rate)
-        self.text_transform = get_text_transform(self.language, use_align=use_align, use_phone=use_phone)
+        self.text_transform = get_tokenizer(language=self.language, use_phone=use_phone)
         if use_target:
-            self.targettext_transform = get_text_transform(self.language, use_align=use_align, use_phone=True)
+            self.targettext_transform = get_tokenizer(language=self.language, use_phone=True)
         else:
             self.targettext_transform = None
         self.train_ds = None
