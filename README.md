@@ -169,43 +169,38 @@ prepare aligned texts for dataset to train the TTS models.
 
 ## Training
 
-### Align model with LJ Speech Corpus
-
-Training align model with 
-[LJ Speech Corpus](https://keithito.com/LJ-Speech-Dataset/).
+### Train ASR model
 
 ```sh
-MODEL=align_en_lstm_base_ctc
-DATASET=ljspeech
-LANGUAGE=en
+voice100-prepare-dataset \
+  --dataset ljspeech \
+  --language en \
+  --use_phone
 
-cd data
-curl -O https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
-tar xfz LJSpeech-1.1.tar.bz2
-cd ..
+voice100-prepare-dataset \
+  --dataset librispeech \
+  --language en \
+  --use_phone
 
-voice100-train-align \
-    --gpus 1 \
-    --precision 16 \
-    --batch_size 256 \
-    --max_epochs 100 \
-    --dataset ${DATASET} \
-    --language ${LANGUAGE} \
-    --default_root_dir=model/${MODEL}
+voice100 fit \
+  --config config/asr_en_phone_base.yaml \
+  --trainer.accelerator gpu \
+  --trainer.devices 1 \
+  --trainer.precision 16 \
+  --trainer.default_root_dir ./outputs/asr_en_phone_base \
 ```
 
-### Align text with align model
+### Align text with small ASR model
 
-This generates the aligned text as `data/align-${DATASET}.txt`.
+This generates the aligned text as `data/${DATASET}-phone-align.txt`.
 
 ```sh
-CHECKPOINT=align_en_lstm_base_ctc.ckpt
-
 voice100-align-text \
-    --batch_size 4 \
-    --dataset ${DATASET} \
-    --language ${LANGUAGE} \
-    --checkpoint model/${CHECKPOINT}
+  --batch_size 4 \
+  --dataset ljspeech \
+  --language en \
+  --use_phone \
+  --checkpoint asr_en_phone_small-20230309.ckpt
 ```
 
 ### Train TTS align model
@@ -246,23 +241,6 @@ voice100-train-ttsaudio \
   --batch_size 32 \
   --precision 16 \
   --max_epochs 150 \
-  --default_root_dir ./model/${MODEL}
-```
-
-### Train ASR model
-
-```sh
-DATASET=librispeech
-LANGUAGE=en
-MODEL=stt_en_conv_base_ctc
-
-voice100-train-asr \
-  --gpus 1 \
-  --dataset ${DATASET} \
-  --language ${LANGUAGE} \
-  --batch_size 32 \
-  --precision 16 \
-  --max_epochs 100 \
   --default_root_dir ./model/${MODEL}
 ```
 
