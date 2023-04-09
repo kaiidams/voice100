@@ -5,7 +5,7 @@ import torch
 import os
 from tqdm import tqdm
 
-from .models.align import AudioAlignCTC
+from .models import AudioToAlignText
 from .data_modules import AudioTextDataModule
 
 
@@ -24,12 +24,12 @@ def cli_main():
         args.output = f'data/{args.dataset}-align-{args.split}.txt'
 
     data: AudioTextDataModule = AudioTextDataModule.from_argparse_args(args)
-    model = AudioAlignCTC.load_from_checkpoint(args.checkpoint)
+    model = AudioToAlignText.load_from_checkpoint(args.checkpoint)
     if args.split == "train":
         data.setup("predict")
     else:
         data.setup()
-    encoder = data.text_transform.tokenizer
+    tokenizer = data.text_transform
     model.eval()
     with open(args.output, 'w') as f:
         if args.split == "train":
@@ -50,9 +50,9 @@ def cli_main():
                 for j in hist[i, :path_len[i]]:
                     align[j] += 1
                 align = ' '.join([str(x) for x in align])
-                raw_text = encoder.decode(text[i, :text_len[i]])
+                raw_text = tokenizer.decode(text[i, :text_len[i]])
 
-                raw_align_text = encoder.decode(path[i, :path_len[i]])
+                raw_align_text = tokenizer.decode(path[i, :path_len[i]])
                 f.write(raw_text + '|' + raw_align_text + '|' + align + '\n')
 
 
