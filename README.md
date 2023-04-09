@@ -206,22 +206,11 @@ voice100-align-text \
 ### Train TTS align model
 
 ```sh
-MODEL=ttsalign_en_conv_base
-
-!voice100 fit --config voice100/config/align_ja_phone_base.yaml \
+voice100 fit --config voice100/config/align_en_phone_base.yaml \
   --trainer.accelerator gpu \
   --trainer.devices 1 \
   --trainer.precision 16 \
-  --trainer.default_root_dir=outputs/{MODEL}
-
-voice100-train-ttsalign \
-    --gpus 1 \
-    --batch_size 256 \
-    --precision 16 \
-    --max_epochs 100 \
-    --dataset ${DATASET} \
-    --language ${LANGUAGE} \
-    --default_root_dir=model/align_ \
+  --trainer.default_root_dir=./outputs/align_en_phone_base
 ```
 
 ### Compute audio statistics

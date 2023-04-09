@@ -551,7 +551,7 @@ class AudioTextDataModule(Voice100DataModuleBase):
         remove_blanks = language == "ja" and not use_align
         self.text_transform = get_tokenizer(language=self.language, use_phone=use_phone, remove_blanks=remove_blanks)
         if use_target:
-            self.text_transform = get_tokenizer(language=self.language, use_phone=True, remove_blanks=remove_blanks)
+            self.targettext_transform = get_tokenizer(language=self.language, use_phone=True, remove_blanks=remove_blanks)
         else:
             self.targettext_transform = None
         self.train_ds = None

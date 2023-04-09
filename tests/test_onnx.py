@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from voice100.data_modules import get_audio_transform, get_text_transform
+from voice100.data_modules import get_audio_transform, get_tokenizer
 
 
 @pytest.mark.skip("Need ONNX file")
@@ -14,7 +14,7 @@ def test_onnx_asr():
     onnx_file = "model/onnx/asr_en_conv_base_ctc-20220126.onnx"
     sess = ort.InferenceSession(onnx_file)
     audio_transform = get_audio_transform(vocoder="mel", sample_rate=16000)
-    text_transform = get_text_transform(language="en", use_phone=False)
+    text_transform = get_tokenizer(language="en", use_phone=False)
 
     waveform, sr = librosa.load(audio_file, 16000)
     waveform = torch.from_numpy(waveform)
@@ -73,7 +73,7 @@ def test_onnx_tts():
     onnx_file = "../voice100-runtime/align_ja_phone_base-20230203.onnx"
     sess = ort.InferenceSession(onnx_file)
     audio_transform = get_audio_transform(vocoder="mel", sample_rate=16000)
-    text_transform = get_text_transform(language="ja", use_align=False, use_phone=True)
+    text_transform = get_tokenizer(language="ja", use_align=False, use_phone=True)
     text = 'k o N n i ch i w a'
     text = text_transform(text)[None, :].numpy()
     text_len = np.array([text.shape[1]], dtype=np.int64)

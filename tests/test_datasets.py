@@ -97,8 +97,8 @@ def make_dummy_metadataset(dirpath: Text, language: Text, n: int = 10) -> None:
             make_random_audio(audiopath)
 
 
-def make_dummy_aligntext_dataset(dirpath: Text, language: Text, is_phone: bool, n: int = 10) -> None:
-    if is_phone:
+def make_dummy_aligntext_dataset(dirpath: Text, language: Text, use_phone: bool, n: int = 10) -> None:
+    if use_phone:
         text_file = os.path.join(dirpath, f"dummy_{language}-phone-align-train.txt")
     else:
         text_file = os.path.join(dirpath, f"dummy_{language}-align-train.txt")
@@ -106,20 +106,26 @@ def make_dummy_aligntext_dataset(dirpath: Text, language: Text, is_phone: bool, 
     with open(text_file, "wt") as phone_fp:
         for i in range(n):
             text = make_random_text(language=language)
-            if is_phone:
+            if use_phone:
                 aligntext = make_random_align_phone(language=language)
             else:
                 aligntext = "_".join(make_random_text(language=language))
             phone_fp.write(f"{text}|{aligntext}|0 1 2 3\n")
 
 
-def make_dummy_phonetext_dataset(dirpath: Text, language: Text, n: int = 10) -> None:
-    text_file = os.path.join(dirpath, f"dummy_{language}-phone-train.txt")
+def make_dummy_text_dataset(dirpath: Text, language: Text, use_phone: bool, n: int = 10) -> None:
+    if use_phone:
+        text_file = os.path.join(dirpath, f"dummy_{language}-phone-train.txt")
+    else:
+        text_file = os.path.join(dirpath, f"dummy_{language}-train.txt")
 
     with open(text_file, "wt") as phone_fp:
         for i in range(n):
             clipid = f"dummy001-{i:04}"
-            text = make_random_phone(language=language)
+            if use_phone:
+                text = make_random_phone(language=language)
+            else:
+                text = make_random_text(language=language)
             phone_fp.write(f"{clipid}|{text}\n")
 
 
@@ -131,9 +137,10 @@ class DatasetTest(unittest.TestCase):
         self.data_path = (self.tempdir.name)
         self.dummy_path = os.path.join(self.data_path, f"dummy-speech-{self.language}")
         make_dummy_metadataset(self.dummy_path, language=self.language)
-        make_dummy_aligntext_dataset(self.data_path, language=self.language, is_phone=False)
-        make_dummy_aligntext_dataset(self.data_path, language=self.language, is_phone=True)
-        make_dummy_phonetext_dataset(self.data_path, language=self.language)
+        make_dummy_aligntext_dataset(self.data_path, language=self.language, use_phone=False)
+        make_dummy_aligntext_dataset(self.data_path, language=self.language, use_phone=True)
+        make_dummy_text_dataset(self.data_path, language=self.language, use_phone=False)
+        make_dummy_text_dataset(self.data_path, language=self.language, use_phone=True)
 
     def doCleanups(self) -> None:
         super().doCleanups()
@@ -153,9 +160,9 @@ class DatasetTest(unittest.TestCase):
 
     def test_text_dataset(self):
         phone_file = os.path.join(self.data_path, f"dummy_{self.language}-phone-train.txt")
-        phone_ds = TextDataset(phone_file)
-        self.assertEqual(10, len(phone_ds))
-        for clipid, phone_text in phone_ds:
+        text_ds = TextDataset(phone_file)
+        self.assertEqual(10, len(text_ds))
+        for clipid, phone_text in text_ds:
             self.assertTrue(clipid.startswith("dummy001-"))
             self.assertIsInstance(phone_text, Text)
 
@@ -182,9 +189,9 @@ class DatasetTest(unittest.TestCase):
             idcol=0, textcol=2)
         self.assertEqual(10, len(dataset))
         phone_file = os.path.join(self.data_path, f"dummy_{self.language}-phone-train.txt")
-        phone_ds = TextDataset(phone_file)
-        self.assertEqual(10, len(phone_ds))
-        ds = MergeDataset(dataset, phone_ds=phone_ds)
+        text_ds = TextDataset(phone_file)
+        self.assertEqual(10, len(text_ds))
+        ds = MergeDataset(dataset, text_ds=text_ds)
         self.assertEqual(10, len(ds))
         for clipid, audiopath, phonetext in ds:
             self.assertTrue(clipid.startswith("dummy001-"))
@@ -205,7 +212,7 @@ class DatasetTest(unittest.TestCase):
     @unittest.skipUnless(os.path.exists("./data/LJSpeech-1.1"), "Need LJSpeech-1.1 dataset")
     def test_dataset(self):
         from voice100.data_modules import get_dataset
-        ds = get_dataset("ljspeech", split="train", use_phone=True)
+        ds = get_dataset(data_dir="./data", dataset="ljspeech", split="train", use_phone=True)
         for x, y, z in ds:
             pass  # print(x, y, z)
 
@@ -237,7 +244,7 @@ class DatasetTest(unittest.TestCase):
 
                 for i in range(text.shape[0]):
                     t = text[i, :text_len[i]]
-                    print(data.text_transform.tokenizer.decode(t))
+                    print(data.text_transform.decode(t))
             break
 
 
@@ -246,9 +253,10 @@ def test_data_module(language="ja"):
     with TemporaryDirectory() as data_dir:
         dummy_path = os.path.join(data_dir, f"dummy-speech-{language}")
         make_dummy_metadataset(dummy_path, language=language)
-        make_dummy_aligntext_dataset(data_dir, language=language, is_phone=False)
-        make_dummy_aligntext_dataset(data_dir, language=language, is_phone=True)
-        make_dummy_phonetext_dataset(data_dir, language=language)
+        make_dummy_aligntext_dataset(data_dir, language=language, use_phone=False)
+        make_dummy_aligntext_dataset(data_dir, language=language, use_phone=True)
+        make_dummy_text_dataset(data_dir, language=language, use_phone=False)
+        make_dummy_text_dataset(data_dir, language=language, use_phone=True)
 
         from voice100.audio import BatchSpectrogramAugumentation
         ARGS = "--dataset dummy_ja --language ja --use_phone --vocoder mel"
@@ -293,7 +301,7 @@ def test_data_module(language="ja"):
 @pytest.mark.skip("dataset are needed")
 def test_kokoro_dataset():
     dataset = get_dataset(
-        dataset="kokoro_small", split="train",
+        data_dir="./data", dataset="kokoro_small", split="train",
         use_align=False, use_phone=False, use_target=False)
     s = set()
     for i in range(len(dataset)):
