@@ -307,10 +307,10 @@ Use [Voice100 runtime](https://github.com/kaiidams/voice100-runtime) and exporte
 | asr_en_phone_base-20230314 | AudioToAlignText | LibriSpeech, LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/asr_en_phone_base-20230314.ckpt) |
 | asr_ja_phone_small-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_small-20230104.ckpt) |
 | asr_ja_phone_base-20230104 | AudioToAlignText | Common Voice 12.0 ja | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.0/asr_ja_phone_base-20230104.ckpt) |
-| align_en_base-20230401 | TextToAlignText | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/align_en_base-20230401.ckpt) |
-| tts_en_base-20230407 | AlignTextToAudio | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/tts_en_base-20230407.ckpt) |
-| align_en_phone_base-20230407 | TextToAlignText | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/align_en_phone_base-20230407.ckpt) |
-| tts_en_phone_base-20230401 | AlignTextToAudio | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.2/tts_en_phone_base-20230401.ckpt) |
+| align_en_base-20230401 | TextToAlignText | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.3/align_en_base-20230401.ckpt) |
+| tts_en_base-20230407 | AlignTextToAudio | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.3/tts_en_base-20230407.ckpt) |
+| align_en_phone_base-20230407 | TextToAlignText | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.3/align_en_phone_base-20230407.ckpt) |
+| tts_en_phone_base-20230401 | AlignTextToAudio | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.3/tts_en_phone_base-20230401.ckpt) |
 | align_ja_phone_base-20230203 | TextToAlignText | Kokoro Speech v1.2 large | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.1/align_ja_phone_base-20230203.ckpt) |
 | tts_ja_phone_base-20230204 | AlignTextToAudio | Kokoro Speech v1.2 large | [download](https://github.com/kaiidams/voice100/releases/download/v1.5.1/tts_ja_phone_base-20230204.ckpt) |
 | asr_en_base-20210628 (deprecated) | AudioAlignCTC | LJ Speech 1.1 | [download](https://github.com/kaiidams/voice100/releases/download/v0.7/align_en_lstm_base_ctc-20210628.ckpt)
