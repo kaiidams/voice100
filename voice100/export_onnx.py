@@ -53,7 +53,7 @@ def export_onnx_align(args):
     batch_size = 1
     text_len = 100
     text = torch.randint(low=0, high=vocab_size, size=(batch_size, text_len), requires_grad=False)
-    text_len = torch.tensor([100], dtype=torch.int64, requires_grad=False)
+    text_len = torch.tensor([text_len], dtype=torch.int64, requires_grad=False)
 
     torch.onnx.export(
         model,
@@ -84,8 +84,8 @@ class AlignTextToAudioPredict(nn.Module):
         else:
             self.mc2sp_matrix = None
 
-    def forward(self, aligntext):
-        f0, logspc_or_mcep, codeap = self.model.predict(aligntext)
+    def forward(self, aligntext, aligntext_len):
+        f0, logspc_or_mcep, codeap = self.model.predict(aligntext, aligntext_len)
         if self.mc2sp_matrix is not None:
             logspc = logspc_or_mcep @ self.mc2sp_matrix
         else:
@@ -94,9 +94,9 @@ class AlignTextToAudioPredict(nn.Module):
 
 
 def export_onnx_tts(args):
-    from voice100.models.tts import AlignTextToAudioModel
+    from voice100.models import AlignTextToAudio
 
-    model = AlignTextToAudioModel.load_from_checkpoint(args.ckpt_path)
+    model = AlignTextToAudio.load_from_checkpoint(args.ckpt_path)
     vocab_size = model.hparams["vocab_size"]
     model = AlignTextToAudioPredict(model)
     model.eval()
@@ -105,10 +105,11 @@ def export_onnx_tts(args):
     aligntext = torch.randint(
         low=0, high=vocab_size, size=(BATCH_SIZE, aligntext_len), requires_grad=False
     )
+    aligntext_len = torch.tensor([aligntext_len], dtype=torch.int64)
 
     torch.onnx.export(
         model,
-        aligntext,
+        (aligntext, aligntext_len),
         args.output,
         export_params=True,
         verbose=args.verbose,
