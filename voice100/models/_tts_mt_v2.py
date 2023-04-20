@@ -46,7 +46,6 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
         self.target_criterion = nn.CrossEntropyLoss(reduction='none')
         self.logspc_weight = logspc_weight
         if audio_stat is not None:
-            print('hoge')
             self.norm.load_state_dict(torch.load(audio_stat))
 
     def forward(
@@ -96,9 +95,6 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
         (f0, f0_len, logspc, codeap), (aligntext, aligntext_len), (targettext, targettext_len) = batch
-        if True:
-            print(aligntext[0, :aligntext_len[0]].detach().numpy())
-            print(targettext[0, :targettext_len[0]].detach().numpy())
         hasf0 = (f0 >= 30.0).to(torch.float32)
         hascodeap = (codeap < -0.2).to(torch.float32)
         f0, logspc, codeap = self.norm.normalize(f0, logspc, codeap)
