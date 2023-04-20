@@ -129,7 +129,7 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
         self._log_loss('test', loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss, target_loss)
 
     def _log_loss(self, task, loss, hasf0_loss, f0_loss, logspc_loss, hascodeap_loss, codeap_loss, target_loss) -> None:
-        self.log(f'{task}_loss', loss)
+        self.log(f'{task}_loss', loss, prog_bar=True)
         self.log(f'{task}_hasf0_loss', hasf0_loss)
         self.log(f'{task}_f0_loss', f0_loss)
         self.log(f'{task}_logspc_loss', logspc_loss)
