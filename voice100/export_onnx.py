@@ -1,6 +1,7 @@
 # Copyright (C) 2021 Katsuya Iida. All rights reserved.
 
 from argparse import ArgumentParser
+import os
 import torch
 from torch import nn
 
@@ -15,20 +16,23 @@ def export_onnx_asr(args):
     model.eval()
 
     audio = torch.rand(size=[1, 100, MELSPEC_DIM], dtype=torch.float32)
+    audio_len = torch.tensor([audio.shape[1]], dtype=torch.int64)
 
     torch.onnx.export(
         model,
-        audio,
+        (audio, audio_len),
         args.output,
         export_params=True,
         verbose=args.verbose,
         opset_version=args.opset_version,
         do_constant_folding=True,
-        input_names=["audio"],
-        output_names=["logits"],
+        input_names=["audio", "audio_len"],
+        output_names=["logits", "logits_len"],
         dynamic_axes={
             "audio": {0: "batch_size", 1: "audio_len"},
+            "audio_len": {0: "batch_size"},
             "logits": {0: "batch_size", 1: "logits_len"},
+            "logits_len": {0: "batch_size"},
         },
     )
 
@@ -130,12 +134,22 @@ def export_onnx_tts(args):
 def cli_main():
     parser = ArgumentParser()
     parser.add_argument("--ckpt_path", type=str, required=True)
-    parser.add_argument("--output", type=str, required=True)
-    parser.add_argument("--model", type=str, choices=["asr", "align", "tts", "tts_mt"], required=True)
+    parser.add_argument("--output", type=str)
+    parser.add_argument("--model", type=str, choices=["asr", "align", "tts", "tts_mt"])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--opset_version", type=int, default=13)
 
     args = parser.parse_args()
+    if args.model is None:
+        basename = os.path.basename(args.ckpt_path)
+        args.model = basename.partition('_')[0]
+
+    if args.output is None:
+        basename = os.path.basename(args.ckpt_path)
+        args.output, ext = os.path.splitext(basename)
+        if ext != ".ckpt":
+            raise ValueError(ext)
+        args.output += ".onnx"
 
     if args.model == "asr":
         export_onnx_asr(args)
