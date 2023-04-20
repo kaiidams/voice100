@@ -23,7 +23,7 @@ model:
       - [512, true, 5, 2, 2, false]
       - [512, false, 5, 1, 2, false]
     learning_rate: 1e-3
-    audio_stat: ./data/audio_mcep-stat2.pt
+    audio_stat: ./data/audio_mcep-stat.pt
 data:
   class_path: voice100.data_modules.AudioTextDataModule
   init_args:
