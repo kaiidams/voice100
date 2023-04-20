@@ -1,0 +1,38 @@
+seed_everything: 1234
+trainer:
+  max_epochs: 400
+  gradient_clip_val: 1.0
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        monitor: "train_loss"
+        save_last: true
+        every_n_epochs: 10
+model:
+  class_path: voice100.models.AlignTextToAudioAlignText
+  init_args:
+    vocab_size: 29
+    target_vocab_size: 71
+    f0_size: 1
+    logspc_size: 25
+    codeap_size: 1
+    logspc_weight: 5.0
+    encoder_num_layers: 2
+    encoder_hidden_size: 512
+    decoder_settings:
+      - [512, false, 5, 1, 2, false]
+      - [512, true, 5, 2, 2, false]
+      - [512, false, 5, 1, 2, false]
+    learning_rate: 1e-3
+data:
+  class_path: voice100.data_modules.AudioTextDataModule
+  init_args:
+    vocoder: world_mcep
+    dataset: ljspeech
+    sample_rate: 16000
+    language: en
+    use_align: true
+    use_phone: false
+    use_target: true
+    batch_size: 128
+    valid_ratio: 0.1
