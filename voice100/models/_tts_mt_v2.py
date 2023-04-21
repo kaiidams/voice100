@@ -59,8 +59,8 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
         packed_lstm_out, _ = self.lstm(packed_x)
         lstm_out, lstm_out_len = pad_packed_sequence(packed_lstm_out, batch_first=True)
         # x: [batch_size, aligntext_len, encoder_hidden_size]
-        target_logits = self.target_projection(x)
-        # target_logits: [batch_size, aligntext_len, target_vocab_size]
+        targettext_logits = self.target_projection(x)
+        # targettext_logits: [batch_size, aligntext_len, target_vocab_size]
 
         x = torch.transpose(lstm_out, -2, -1)
         x = self.decoder(x)
@@ -77,13 +77,13 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
         ], dim=2)
         hasf0_logits = hasf0_logits[:, :, 0]
         f0_hat = f0_hat[:, :, 0]
-        return hasf0_logits, f0_hat, logspc_hat, hascodeap_logits, codeap_hat, target_logits
+        return hasf0_logits, f0_hat, logspc_hat, hascodeap_logits, codeap_hat, targettext_logits
 
     def predict(
         self, aligntext: torch.Tensor, aligntext_len: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        hasf0, f0, logspc, hascodeap, codeap, target_logits = self.forward(aligntext, aligntext_len)
+        hasf0, f0, logspc, hascodeap, codeap, targettext_logits = self.forward(aligntext, aligntext_len)
         f0, logspc, codeap = self.norm.unnormalize(f0, logspc, codeap)
         f0 = torch.where(
             hasf0 < 0, torch.zeros(size=(1,), dtype=f0.dtype, device=f0.device), f0
@@ -91,7 +91,8 @@ class AlignTextToAudioAlignText(Voice100ModelBase):
         codeap = torch.where(
             hascodeap < 0, torch.zeros(size=(1, 1), dtype=codeap.dtype, device=codeap.device), codeap
         )
-        return f0, logspc, codeap, target_logits
+        targettext = torch.argmax(targettext_logits, -1)
+        return f0, logspc, codeap, targettext
 
     def _calc_batch_loss(self, batch) -> Tuple[torch.Tensor, ...]:
         (f0, f0_len, logspc, codeap), (aligntext, aligntext_len), (targettext, targettext_len) = batch
