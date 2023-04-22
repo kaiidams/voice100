@@ -9,6 +9,10 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from ._base import Voice100ModelBase
 from ._layers_v2 import generate_padding_mask
 
+__all__ = [
+    'TextToAlignText',
+]
+
 
 class TextToAlignText(Voice100ModelBase):
     def __init__(self, vocab_size, num_layers, hidden_size, num_outputs, learning_rate) -> None:

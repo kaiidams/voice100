@@ -9,6 +9,10 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from ._base import Voice100ModelBase
 from ._layers_v2 import get_conv_layers, WORLDNorm, WORLDLoss
 
+__all__ = [
+    'AlignTextToAudio',
+]
+
 
 class AlignTextToAudio(Voice100ModelBase):
     def __init__(
