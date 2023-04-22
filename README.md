@@ -219,33 +219,26 @@ This generates the statistics as `data/${DATASET}-stat.pt`.
 
 ```sh
 voice100-calc-stat \
-    --dataset ${DATASET} \
-    --language ${LANGUAGE} \
-    --output data/${DATASET}-stat.py
+    --dataset ljspeech \
+    --language en \
+    --output data/audio-stat.py
 ```
 
 ### Train TTS audio model
 
 ```sh
-MODEL=ttsaudio_en_conv_base
-
-voice100-train-ttsaudio \
+voice100 fit --config voice100/config/tts_en_phone_base.yaml \
+  --trainer.accelerator gpu \
   --gpus 1 \
-  --dataset ${DATASET} \
-  --language ${LANGUAGE} \
-  --batch_size 32 \
   --precision 16 \
-  --max_epochs 150 \
-  --default_root_dir ./model/${MODEL}
+  --trainer.default_root_dir=./outputs/tts_en_phone_base
 ```
 
 ## Exporting to ONNX
 
 ```sh
 voice100-export-onnx \
-    --model ttsaudio \
-    --checkpoint model/${MODEL}/lightning_logs/version_0/checkpoints/last.ckpt \
-    --output model/onnx/${MODEL}.onnx
+    --checkpoint model/${MODEL}/lightning_logs/version_0/checkpoints/last.ckpt
 ```
 
 ## CMU models
