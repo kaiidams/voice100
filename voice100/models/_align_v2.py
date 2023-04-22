@@ -54,12 +54,13 @@ class TextToAlignText(Voice100ModelBase):
 
         assert text.dim() == 1
         assert align.dim() == 2
-        aligntext_len = head + int(torch.sum(align)) + tail
+        aligntext_len = head + int(torch.sum(align) - align[0, 0]) + tail
         aligntext = torch.zeros(aligntext_len, dtype=text.dtype)
         t = head
         u = 0
         for i in range(align.shape[0]):
-            t += align[i, 0].item()
+            if i > 0:
+                t += align[i, 0].item()
             s = int(t)
             if s < u:
                 s = u
